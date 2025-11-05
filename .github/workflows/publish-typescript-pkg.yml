@@ -1,0 +1,87 @@
+name: Publish TypeScript Package
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_bump:
+        description: 'Version bump type (patch, minor, major)'
+        required: false
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  publish:
+    runs-on: [self-hosted, linux, arm64]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@1stdigital'
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: typescript
+
+      - name: Run tests
+        run: npm test
+        working-directory: typescript
+
+      - name: Build package
+        run: npm run build
+        working-directory: typescript
+
+      - name: Bump version
+        if: github.event.inputs.version_bump != ''
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          npm version ${{ github.event.inputs.version_bump }} -m "chore: bump version to %s"
+          git push origin master --tags
+        working-directory: typescript
+
+      - name: Publish to GitHub Packages
+        run: npm publish
+        working-directory: typescript/dist
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create Release
+        if: github.event.inputs.version_bump != ''
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: typescript-v${{ steps.get_version.outputs.version }}
+          release_name: TypeScript SDK v${{ steps.get_version.outputs.version }}
+          body: |
+            ## TypeScript Express Middleware Release
+            
+            ### Package
+            - **Name**: @1stdigital/prism-express-middleware
+            - **Version**: ${{ steps.get_version.outputs.version }}
+            
+            ### Installation
+            ```bash
+            npm install @1stdigital/prism-express-middleware
+            ```
+            
+            See [documentation](https://github.com/1stdigital/fd-prism-sdk/tree/master/typescript) for usage details.
+          draft: false
+          prerelease: false

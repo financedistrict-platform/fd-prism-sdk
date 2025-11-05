@@ -1,9 +1,21 @@
 {
-  "name": "@prism/express-middleware",
+  "name": "@1stdigital/prism-express-middleware",
   "version": "0.1.0",
   "description": "Express.js middleware for Prism x402 payment protocol",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/1stdigital/fd-prism-sdk.git"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "files": [
+    "dist/**/*",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",

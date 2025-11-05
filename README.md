@@ -2,14 +2,41 @@
 
 Multi-language SDK for implementing the x402 payment protocol with Prism Gateway.
 
+## 📦 Installation
+
+### TypeScript / Express.js
+
+```bash
+npm install @1stdigital/prism-express-middleware
+```
+
+Or configure for GitHub Packages:
+
+```bash
+echo "@1stdigital:registry=https://npm.pkg.github.com" >> .npmrc
+npm install @1stdigital/prism-express-middleware
+```
+
+### C# / .NET _(coming soon)_
+
+```bash
+dotnet add package Prism.AspNetCore
+```
+
+### Python / Flask _(coming soon)_
+
+```bash
+pip install prism-flask
+```
+
 ## 📦 Available SDKs
 
 ### TypeScript / JavaScript
 
-- **[@prism/express](./typescript/)** - Express.js middleware ✅
-- [@prism/fastify](./typescript/) - Fastify plugin _(coming soon)_
-- [@prism/nestjs](./typescript/) - NestJS module _(coming soon)_
-- [@prism/next](./typescript/) - Next.js middleware _(coming soon)_
+- **[@1stdigital/prism-express-middleware](./typescript/)** - Express.js middleware ✅
+- [@1stdigital/prism-fastify](./typescript/) - Fastify plugin _(coming soon)_
+- [@1stdigital/prism-nestjs](./typescript/) - NestJS module _(coming soon)_
+- [@1stdigital/prism-next](./typescript/) - Next.js middleware _(coming soon)_
 
 ### C# / .NET
 
