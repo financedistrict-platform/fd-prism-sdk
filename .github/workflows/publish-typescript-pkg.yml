@@ -53,12 +53,12 @@ jobs:
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
           npm version ${{ github.event.inputs.version_bump }} -m "chore: bump version to %s"
-          git push origin master --tags
+          git push origin HEAD:${{ github.ref_name }} --tags
         working-directory: typescript
 
       - name: Publish to GitHub Packages
         run: npm publish
-        working-directory: typescript/dist
+        working-directory: typescript
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
