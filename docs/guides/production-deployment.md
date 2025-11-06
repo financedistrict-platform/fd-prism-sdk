@@ -37,8 +37,7 @@ Before deploying to production:
 ```typescript
 const config = {
   apiKey: "prod-key-abc123", // Don't do this!
-  useSandbox: false,
-};
+  baseUrl: 'https://prism-api.1stdigital.tech',`n          };
 ```
 
 ✅ **Good:**
@@ -92,8 +91,7 @@ async function getPrismApiKey(): Promise<string> {
 
 const config = {
   apiKey: await getPrismApiKey(),
-  useSandbox: false,
-};
+  baseUrl: 'https://prism-api.1stdigital.tech',`n          };
 ```
 
 **Azure Key Vault:**
@@ -124,8 +122,7 @@ Rotate API keys regularly (every 90 days):
 const config = {
   apiKey: process.env.PRISM_API_KEY_CURRENT,
   fallbackApiKey: process.env.PRISM_API_KEY_PREVIOUS, // For transition period
-  useSandbox: false,
-};
+  baseUrl: 'https://prism-api.1stdigital.tech',`n          };
 ```
 
 ### 2. Rate Limiting
@@ -417,8 +414,7 @@ const config = {
   apiKey: process.env.PRISM_API_KEY,
   gatewayUrl: process.env.PRISM_GATEWAY_URL,
   fallbackGatewayUrl: process.env.PRISM_GATEWAY_FALLBACK_URL,
-  useSandbox: false,
-};
+  baseUrl: 'https://prism-api.1stdigital.tech',`n          };
 
 // Client with automatic failover
 class ResilientPrismClient extends PrismClient {

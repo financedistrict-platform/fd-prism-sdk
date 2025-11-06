@@ -36,7 +36,6 @@ app.use(
   prismPaymentMiddleware(
     {
       apiKey: "dev-key-123",
-      useSandbox: true,
       // Mode is internally set to 'on-demand'
     },
     {

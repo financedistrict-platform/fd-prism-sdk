@@ -21,7 +21,6 @@ app.use(
   prismPaymentMiddleware(
     {
       apiKey: "your-api-key",
-      useSandbox: true, // Use test environment
     },
     {
       "/api/premium": {
@@ -58,10 +57,9 @@ interface PrismMiddlewareConfig {
   // Required: API Key for Prism Gateway authentication
   apiKey: string;
 
-  // Optional: Use sandbox (test) environment (default: true)
-  useSandbox?: boolean;
-
-  // Optional: Custom base URL (overrides useSandbox)
+  // Optional: Gateway URL (defaults to test environment)
+  // Test: https://prism-api.test.1stdigital.tech (default)
+  // Production: https://prism-api.1stdigital.tech
   baseUrl?: string;
 }
 ```
@@ -159,10 +157,17 @@ app.get("/api/premium", (req, res) => {
 
 ## Environments
 
-- **Sandbox (Test)**: `https://prism-api.test.1stdigital.tech`
+- **Test (default)**: `https://prism-api.test.1stdigital.tech`
 - **Production**: `https://prism-api.1stdigital.tech`
 
-Use `useSandbox: true` for testing and `useSandbox: false` for production.
+The middleware defaults to the test environment. For production, specify the `baseUrl`:
+
+```typescript
+{
+  apiKey: "your-api-key",
+  baseUrl: "https://prism-api.1stdigital.tech"
+}
+```
 
 ## API Endpoints Used
 

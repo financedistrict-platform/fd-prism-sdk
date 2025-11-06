@@ -54,7 +54,7 @@ export class PrismPaymentGuard implements CanActivate {
  *   imports: [
  *     PrismModule.forRoot({
  *       apiKey: 'your-api-key',
- *       useSandbox: true
+ *       // Defaults to test environment
  *     })
  *   ]
  * })

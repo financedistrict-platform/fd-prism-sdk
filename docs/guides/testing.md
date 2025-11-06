@@ -12,18 +12,18 @@ This guide covers how to test your Prism SDK integration, from local development
 
 ## Sandbox Environment
 
-Prism provides a sandbox environment for development and testing:
+Prism provides a test environment for development and testing:
 
 ```typescript
 const config = {
   apiKey: "dev-key-123",
-  useSandbox: true, // Use sandbox Gateway
+  // Defaults to test environment
 };
 ```
 
-**Sandbox characteristics:**
+**Test environment characteristics:**
 
-- Base URL: `https://prism-api.test.1stdigital.tech`
+- Base URL: `https://prism-api.test.1stdigital.tech` (default)
 - Test API keys accepted
 - Test networks (e.g., `base-sepolia`, `ethereum-sepolia`)
 - No real payments processed
@@ -158,7 +158,7 @@ describe("Prism Middleware", () => {
     const next = jest.fn();
 
     const middleware = prismPaymentMiddleware(
-      { apiKey: "dev-key-123", useSandbox: true },
+      { apiKey: "dev-key-123" },
       {
         "/api/weather": {
           price: 0.001,
@@ -183,7 +183,7 @@ describe("Prism Middleware", () => {
     const next = jest.fn();
 
     const middleware = prismPaymentMiddleware(
-      { apiKey: "dev-key-123", useSandbox: true },
+      { apiKey: "dev-key-123" },
       {
         "/api/weather": {
           price: 0.001,

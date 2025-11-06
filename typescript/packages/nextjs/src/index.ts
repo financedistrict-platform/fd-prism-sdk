@@ -24,7 +24,7 @@ export interface PrismNextConfig extends PrismMiddlewareConfig {
  * 
  * export const middleware = createPrismMiddleware({
  *   apiKey: 'your-api-key',
- *   useSandbox: true,
+ *   // Defaults to test environment,
  *   routes: {
  *     '/api/paid': { price: 0.01, description: 'Paid API' }
  *   }

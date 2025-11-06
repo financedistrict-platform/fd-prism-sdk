@@ -82,6 +82,10 @@ export interface PrismMiddlewareConfig {
   // Test: https://prism-api.test.1stdigital.tech
   // Production: https://prism-api.1stdigital.tech
   baseUrl?: string;
+
+  // INTERNAL: Optional client instance for dependency injection (used in testing)
+  // When provided, middleware will use this client instead of creating new one
+  client?: any;
 }
 
 /**

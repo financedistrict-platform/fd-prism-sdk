@@ -57,16 +57,16 @@ The API key automatically configures:
 
 ## Environments
 
-### Sandbox (Test)
+### Test Environment
 
 ```typescript
 {
-  apiKey: 'dev-key-123',
-  useSandbox: true  // Uses test.1stdigital.tech
+  apiKey: "dev-key-123";
+  // Defaults to: https://prism-api.test.1stdigital.tech
 }
 ```
 
-Base URL: `https://prism-api.test.1stdigital.tech`
+Base URL: `https://prism-api.test.1stdigital.tech` (default)
 
 - Test tokens (no real value)
 - Testnet blockchains (Base Sepolia, etc.)
@@ -77,7 +77,7 @@ Base URL: `https://prism-api.test.1stdigital.tech`
 ```typescript
 {
   apiKey: 'prod-key-xyz',
-  useSandbox: false  // Uses 1stdigital.tech
+  baseUrl: 'https://prism-api.1stdigital.tech'
 }
 ```
 

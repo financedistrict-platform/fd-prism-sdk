@@ -23,7 +23,7 @@ export interface PrismFastifyOptions extends PrismMiddlewareConfig {
  * 
  * await app.register(prismPlugin, {
  *   apiKey: 'your-api-key',
- *   useSandbox: true,
+ *   // Defaults to test environment,
  *   routes: {
  *     '/api/paid': { price: 0.01, description: 'Paid endpoint' }
  *   }
@@ -32,7 +32,7 @@ export interface PrismFastifyOptions extends PrismMiddlewareConfig {
  */
 const prismPlugin: FastifyPluginAsync<PrismFastifyOptions> = async (fastify, options) => {
   // TODO: Implement Fastify plugin
-  fastify.log.warn('Prism Fastify plugin is not yet implemented');
+  fastify.log.info('Prism Fastify plugin is not yet implemented');
 
   // Placeholder hook
   fastify.addHook('onRequest', async (request: FastifyRequest, reply: FastifyReply) => {

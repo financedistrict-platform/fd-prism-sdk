@@ -2,22 +2,18 @@ import express, { Express, Request, Response } from 'express';
 import request from 'supertest';
 import { prismPaymentMiddleware } from '../../middleware/prism-middleware';
 
-// Mock @1stdigital/prism-core module
+// Create mock client methods
 const mockGetPaymentRequirements = jest.fn();
 const mockVerifyPayment = jest.fn();
 const mockSettlePayment = jest.fn();
+const mockGetAuthInfo = jest.fn();
 
-jest.mock('@1stdigital/prism-core', () => {
-  const actual = jest.requireActual('@1stdigital/prism-core');
-
-  return {
-    ...actual,
-    PrismClient: jest.fn().mockImplementation(() => ({
-      getPaymentRequirements: mockGetPaymentRequirements,
-      verifyPayment: mockVerifyPayment,
-      settlePayment: mockSettlePayment,
-    })),
-  };
+// Create mock client object
+const createMockClient = () => ({
+  getPaymentRequirements: mockGetPaymentRequirements,
+  verifyPayment: mockVerifyPayment,
+  settlePayment: mockSettlePayment,
+  getAuthInfo: mockGetAuthInfo,
 });
 
 describe('prismPaymentMiddleware', () => {
@@ -34,6 +30,7 @@ describe('prismPaymentMiddleware', () => {
       const middleware = prismPaymentMiddleware(
         {
           apiKey: 'test-api-key',
+          client: createMockClient(), // Inject mock client
         },
         {
           '/api/premium': {
@@ -51,6 +48,7 @@ describe('prismPaymentMiddleware', () => {
         prismPaymentMiddleware(
           {
             apiKey: 'test-api-key',
+            client: createMockClient(), // Inject mock client
           },
           {}
         )
@@ -71,6 +69,7 @@ describe('prismPaymentMiddleware', () => {
         prismPaymentMiddleware(
           {
             apiKey: 'test-api-key',
+            client: createMockClient(), // Inject mock client
           },
           {}
         )
@@ -115,6 +114,7 @@ describe('prismPaymentMiddleware', () => {
         prismPaymentMiddleware(
           {
             apiKey: 'test-api-key',
+            client: createMockClient(), // Inject mock client
           },
           {
             '/api/premium': {
@@ -174,6 +174,7 @@ describe('prismPaymentMiddleware', () => {
         prismPaymentMiddleware(
           {
             apiKey: 'test-api-key',
+            client: createMockClient(), // Inject mock client
           },
           {
             '/api/premium': {
@@ -238,6 +239,7 @@ describe('prismPaymentMiddleware', () => {
         prismPaymentMiddleware(
           {
             apiKey: 'test-api-key',
+            client: createMockClient(), // Inject mock client
           },
           {
             '/api/premium': {
@@ -285,6 +287,7 @@ describe('prismPaymentMiddleware', () => {
         prismPaymentMiddleware(
           {
             apiKey: 'test-api-key',
+            client: createMockClient(), // Inject mock client
           },
           {
             '/api/premium': {
@@ -317,6 +320,7 @@ describe('prismPaymentMiddleware', () => {
         prismPaymentMiddleware(
           {
             apiKey: 'test-api-key',
+            client: createMockClient(), // Inject mock client
           },
           {
             '/api/premium': {

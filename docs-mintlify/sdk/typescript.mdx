@@ -144,8 +144,7 @@ The **Prism Express Middleware** is a drop-in solution for protecting your Node.
     app.use(
       prismPaymentMiddleware(
         {
-          apiKey: process.env.PRISM_API_KEY,
-                  },
+          apiKey: process.env.PRISM_API_KEY },
         {
           '/api/premium': {
             price: 0.01,
@@ -180,19 +179,15 @@ const app = express();
 app.use(
   prismPaymentMiddleware(
     {
-      apiKey: "dev-key-123",
-    },
+      apiKey: "dev-key-123" },
     {
       "/api/weather": {
         price: 0.001,
         description: "Weather API access",
-        mimeType: "application/json",
-      },
+        mimeType: "application/json" },
       "/api/premium/*": {
         price: 0.01,
-        description: "Premium API endpoints",
-      },
-    }
+        description: "Premium API endpoints" } }
   )
 );
 
@@ -206,16 +201,14 @@ app.get("/api/weather", (req, res) => {
   res.json({
     location: "San Francisco",
     temperature: 72,
-    condition: "Sunny",
-  });
+    condition: "Sunny" });
 });
 
 // Protected premium endpoint
 app.get("/api/premium/data", (req, res) => {
   res.json({
     premium: true,
-    data: "This is premium content",
-  });
+    data: "This is premium content" });
 });
 
 app.listen(3000, () => {
@@ -639,16 +632,14 @@ app.use((err, req, res, next) => {
       message: err.message,
       details: err.details,
       endpoint: req.path,
-      method: req.method,
-    });
+      method: req.method });
 
     // Alert on critical errors (5xx)
     if (err.statusCode >= 500) {
       alerting.critical("Prism Gateway Internal Error", {
         traceId: err.traceId,
         endpoint: req.path,
-        message: err.message,
-      });
+        message: err.message });
     }
 
     // Return error with trace ID for support
@@ -658,23 +649,19 @@ app.use((err, req, res, next) => {
       details: err.details,
       support: {
         traceId: err.traceId,
-        message: "Please contact support with this trace ID",
-      },
-    });
+        message: "Please contact support with this trace ID" } });
   }
 
   if (err instanceof PrismNetworkError) {
     // Alert ops - Gateway is down
     alerting.critical("Prism Gateway Unreachable", {
       error: err.message,
-      originalError: err.originalError?.code,
-    });
+      originalError: err.originalError?.code });
 
     return res.status(503).json({
       x402Version: 1,
       error: "Payment service temporarily unavailable",
-      retryAfter: 60,
-    });
+      retryAfter: 60 });
   }
 
   next(err);
@@ -687,8 +674,7 @@ app.use((err, req, res, next) => {
 import {
   PrismClient,
   PrismNetworkError,
-  PrismGatewayError,
-} from "@1stdigital/prism-core";
+  PrismGatewayError } from "@1stdigital/prism-core";
 
 async function makePaymentRequestWithRetry(
   client: PrismClient,
@@ -753,8 +739,7 @@ app.use((err, req, res, next) => {
       404: "Payment resource not found.",
       500: "Payment service is experiencing issues. Please try again later.",
       502: "Payment gateway temporarily unavailable.",
-      503: "Payment service under maintenance. Please try again soon.",
-    };
+      503: "Payment service under maintenance. Please try again soon." };
 
     const userMessage =
       userMessages[err.statusCode] || "Payment processing failed.";
@@ -765,9 +750,7 @@ app.use((err, req, res, next) => {
         message:
           "If the problem persists, contact support with this information:",
         traceId: err.traceId,
-        timestamp: err.timestamp,
-      },
-    });
+        timestamp: err.timestamp } });
   }
 
   next(err);
@@ -783,20 +766,17 @@ import { Counter, Histogram } from "prom-client";
 const paymentErrorCounter = new Counter({
   name: "prism_payment_errors_total",
   help: "Total payment errors by type and status",
-  labelNames: ["error_type", "status_code"],
-});
+  labelNames: ["error_type", "status_code"] });
 
 const gatewayLatency = new Histogram({
   name: "prism_gateway_latency_seconds",
-  help: "Prism Gateway API latency",
-});
+  help: "Prism Gateway API latency" });
 
 app.use((err, req, res, next) => {
   if (err instanceof PrismGatewayError) {
     paymentErrorCounter.inc({
       error_type: "gateway",
-      status_code: err.statusCode,
-    });
+      status_code: err.statusCode });
 
     // Track error by category
     if (err.statusCode >= 500) {
@@ -809,8 +789,7 @@ app.use((err, req, res, next) => {
   if (err instanceof PrismNetworkError) {
     paymentErrorCounter.inc({
       error_type: "network",
-      status_code: 503,
-    });
+      status_code: 503 });
     metrics.increment("prism.gateway.unreachable");
   }
 
@@ -833,17 +812,14 @@ app.get("/api/paid", async (req, res) => {
         traceId: error.traceId, // ← Include in bug reports
         timestamp: error.timestamp,
         statusCode: error.statusCode,
-        message: error.message,
-      });
+        message: error.message });
 
       // Return trace ID to client for support tickets
       return res.status(error.statusCode).json({
         error: "Payment processing failed",
         supportInfo: {
           traceId: error.traceId,
-          message: "Please contact support with this trace ID",
-        },
-      });
+          message: "Please contact support with this trace ID" } });
     }
   }
 });
@@ -866,8 +842,7 @@ Error: "42703: column p.ProviderId does not exist"
 
 ```typescript
 const config = {
-  apiKey: process.env.PRISM_API_KEY,
-};
+  apiKey: process.env.PRISM_API_KEY };
 
 app.use(prismPaymentMiddleware(config, routes));
 ```
@@ -904,8 +879,7 @@ app.get("/api/premium", (req, res) => {
 
   res.json({
     data: "Premium content",
-    paidBy: payerAddress,
-  });
+    paidBy: payerAddress });
 });
 ```
 
@@ -920,8 +894,7 @@ import rateLimit from "express-rate-limit";
 const freeLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 100,
-  message: "Free tier limit reached. Please upgrade or pay per request.",
-});
+  message: "Free tier limit reached. Please upgrade or pay per request." });
 
 app.use("/api/free", freeLimiter);
 
@@ -929,8 +902,7 @@ app.use("/api/free", freeLimiter);
 app.use(
   "/api/paid",
   prismPaymentMiddleware(config, {
-    "/api/paid/*": { price: 0.001 },
-  })
+    "/api/paid/*": { price: 0.001 } })
 );
 ```
 
@@ -944,21 +916,17 @@ import {
   PrismMiddlewareConfig,
   RoutePaymentConfig,
   PaymentInfo,
-  PrismError,
-} from "@1stdigital/prism-express";
+  PrismError } from "@1stdigital/prism-express";
 
 // Type-safe configuration
 const config: PrismMiddlewareConfig = {
   apiKey: process.env.PRISM_API_KEY!,
-  timeout: 15000,
-};
+  timeout: 15000 };
 
 const routes: Record<string, RoutePaymentConfig> = {
   "/api/data": {
     price: 0.001,
-    description: "Data access",
-  },
-};
+    description: "Data access" } };
 
 // Type-safe middleware
 app.use(prismPaymentMiddleware(config, routes));
@@ -1009,7 +977,7 @@ describe("Prism Payment Middleware", () => {
     app = express();
     app.use(
       prismPaymentMiddleware(
-        { apiKey: "test-key", useSandbox: true },
+        { apiKey: "test-key" },
         { "/api/paid": { price: 0.01 } }
       )
     );
@@ -1059,8 +1027,7 @@ describe("Payment Flow Integration", () => {
       payment.typedData.domain,
       {
         TransferWithAuthorization:
-          payment.typedData.types.TransferWithAuthorization,
-      },
+          payment.typedData.types.TransferWithAuthorization },
       payment.typedData.message
     );
 
@@ -1071,8 +1038,7 @@ describe("Payment Flow Integration", () => {
         "X-PAYMENT-AUTHORIZATION",
         JSON.stringify({
           signature,
-          ...payment.typedData.message,
-        })
+          ...payment.typedData.message })
       );
 
     expect(res2.status).toBe(200);
@@ -1114,8 +1080,7 @@ const config = {
   retries: 2,
   // Use HTTP keep-alive
   httpAgent: new http.Agent({ keepAlive: true }),
-  httpsAgent: new https.Agent({ keepAlive: true }),
-};
+  httpsAgent: new https.Agent({ keepAlive: true }) };
 ```
 
 ## Migration Guide
@@ -1145,7 +1110,7 @@ const config = {
     prismMiddleware({ key: 'xxx', sandbox: true }, routes)
     
     // New
-    prismPaymentMiddleware({ apiKey: 'xxx', useSandbox: true }, routes)
+    prismPaymentMiddleware({ apiKey: 'xxx' }, routes)
     ```
   </Step>
 </Steps>
@@ -1253,7 +1218,7 @@ Creates Express middleware for x402 payment protection.
 
 ```typescript
 const middleware = prismPaymentMiddleware(
-  { apiKey: "key", useSandbox: true },
+  { apiKey: "key" },
   { "/api/paid": { price: 0.01 } }
 );
 
@@ -1309,8 +1274,7 @@ app.use((err, req, res, next) => {
       traceId: err.traceId,
       statusCode: err.statusCode,
       message: err.message,
-      details: err.details,
-    });
+      details: err.details });
   }
 });
 ```
@@ -1369,8 +1333,7 @@ if (error instanceof PrismPaymentError) {
   // Client sent invalid payment
   return res.status(402).json({
     error: error.message,
-    details: error.details,
-  });
+    details: error.details });
 }
 ```
 
@@ -1393,8 +1356,7 @@ if (error instanceof PrismValidationError) {
   return res.status(400).json({
     error: "Validation failed",
     field: error.field,
-    message: error.message,
-  });
+    message: error.message });
 }
 ```
 

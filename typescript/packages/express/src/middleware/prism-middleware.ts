@@ -52,7 +52,8 @@ export function prismPaymentMiddleware(
   const mode: ConfigurationMode = 'on-demand';
 
   // Initialize client for on-demand mode
-  const client = new PrismClient(config);
+  // Use injected client if provided (for testing), otherwise create new one
+  const client = config.client || new PrismClient(config);
 
   // PLACEHOLDER: Static config for cloud/file modes (future implementation)
   // When implementing cloud/file modes, uncomment and implement the config loading below:
@@ -109,6 +110,7 @@ export function prismPaymentMiddleware(
         // else if (mode === 'cloud' || mode === 'file') { ... }
 
         // Return 402 Payment Required
+        res.set('X-PAYMENT-REQUIREMENTS', JSON.stringify(paymentRequirements));
         return res.status(402).json(paymentRequirements);
       } catch (error: any) {
         console.error('Error generating payment requirements:', error);
@@ -238,6 +240,12 @@ export function prismPaymentMiddleware(
       }
     } catch (error: any) {
       console.error('Error processing payment:', error);
+
+      // If response already sent (error during settlement), just log and return
+      if (res.headersSent) {
+        console.error('Response already sent, cannot send error response');
+        return;
+      }
 
       // Handle PrismPaymentError (invalid payment)
       if (error instanceof PrismPaymentError) {

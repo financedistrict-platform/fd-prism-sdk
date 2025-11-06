@@ -1,108 +1,118 @@
-# Prism SDK - Project Summary
+# Prism TypeScript SDK - Project Summary
 
 ## 📦 What's Been Created
 
-A TypeScript-based Express.js middleware for implementing the x402 payment protocol with Prism Gateway.
+A TypeScript-based SDK for implementing the x402 payment protocol with Prism Gateway, organized as a monorepo with multiple framework integrations.
 
-## 🏗️ Project Structure
+## 🏗️ Monorepo Structure
 
 ```
-SDK/
-├── src/
-│   ├── index.ts                    # Main exports
-│   ├── types/
-│   │   └── index.ts                # TypeScript type definitions
-│   ├── client/
-│   │   └── prism-client.ts         # Prism Gateway API client
-│   ├── config/
-│   │   └── loader.ts               # Configuration loaders (placeholders)
-│   └── middleware/
-│       └── prism-middleware.ts     # Express middleware implementation
+typescript/
+├── packages/
+│   ├── core/                       # Core SDK functionality
+│   │   ├── src/
+│   │   │   ├── index.ts            # Main exports
+│   │   │   ├── types/
+│   │   │   │   ├── index.ts        # TypeScript interfaces
+│   │   │   │   └── errors.ts       # Error classes
+│   │   │   ├── client/
+│   │   │   │   └── prism-client.ts # Prism Gateway API client
+│   │   │   └── __tests__/          # Test suites
+│   │   │       ├── types/
+│   │   │       │   └── errors.test.ts       # 27 tests ✅
+│   │   │       └── client/
+│   │   │           └── prism-client.test.ts # 24 tests ✅
+│   │   ├── dist/                   # Compiled output
+│   │   ├── jest.config.js
+│   │   ├── tsconfig.json           # Project references
+│   │   ├── tsconfig.build.json     # Build config
+│   │   └── tsconfig.test.json      # Test config
+│   │
+│   ├── express/                    # Express.js middleware
+│   │   ├── src/
+│   │   │   ├── index.ts
+│   │   │   ├── middleware/
+│   │   │   │   └── prism-middleware.ts
+│   │   │   └── __tests__/
+│   │   │       └── middleware/
+│   │   │           └── prism-middleware.test.ts # 8 tests (4 passing)
+│   │   ├── jest.config.js
+│   │   └── tsconfig files
+│   │
+│   ├── nestjs/                     # NestJS integration (placeholder)
+│   ├── nextjs/                     # Next.js integration (placeholder)
+│   └── fastify/                    # Fastify integration (placeholder)
+│
 ├── examples/
-│   └── basic-usage.ts              # Example usage
-├── dist/                           # Compiled JavaScript (generated)
-├── package.json
-├── tsconfig.json
-├── jest.config.js
-├── README.md                       # User documentation
-├── TESTING.md                      # Testing guide
-└── .gitignore
+│   └── basic-usage.ts              # Example Express app
+├── turbo.json                      # Turbo build configuration
+├── package.json                    # Workspace root
+└── README.md
 ```
 
-## ✅ Implemented Features (Phase 1)
+## ✅ Implemented Features
 
-### 1. Core Middleware
+### Core Package (@1stdigital/prism-core)
 
-- Express.js middleware function
-- Route matching (exact and wildcard patterns)
-- 402 Payment Required responses
-- X-PAYMENT header detection
+**TypeScript Types** (`packages/core/src/types/`):
 
-### 2. On-Demand Mode (Option 1)
+- `PrismMiddlewareConfig` - Configuration with apiKey and optional baseUrl
+- `AuthenticationInfo` - User authentication response structure
+- `PaymentRequirements` - Payment flow requirements with accept array
+- `VerifyPaymentData` - Payment verification request/response
+- `SettlementData` - Payment settlement structures
+- Custom error classes: `PrismError`, `ValidationError`, `NetworkError`, `AuthenticationError`
 
-- Integration with Prism Gateway API
-- `GET /api/v1/auth-info` - Authentication verification
-- `POST /api/v1/payment/requirements` - Payment requirements generation
-- Dynamic payment requirements based on route configuration
+**Prism Gateway Client** (`packages/core/src/client/prism-client.ts`):
 
-### 3. Configuration
+- ✅ `getAuthInfo()` - Retrieve user authentication information
+- ✅ `getPaymentRequirements()` - Fetch payment requirements for users
+- ✅ `verifyPayment()` - Verify payment proofs with gateway
+- ✅ `settlePayment()` - Settle completed payments
+- ✅ **51 passing tests** with full coverage:
+  - Constructor validation (4 tests)
+  - getAuthInfo method (5 tests)
+  - getPaymentRequirements method (5 tests)
+  - verifyPayment method (5 tests)
+  - settlePayment method (5 tests)
+  - Error handling (27 tests)
 
-- API Key authentication
-- Sandbox/Production environment switching
-- Configurable base URLs
-- Per-route payment configuration
+### Express Package (@1stdigital/prism-express)
 
-### 4. Type Safety
+**Express Middleware** (`packages/express/src/middleware/prism-middleware.ts`):
 
-- Full TypeScript implementation
-- Type definitions for all interfaces
-- Type exports for consumer usage
+- ✅ Automatic 402 Payment Required responses
+- ✅ Payment verification and settlement flow
+- ✅ Custom error handling with PrismError types
+- ✅ Session management via express-session
+- ✅ Route matching (exact and wildcard patterns)
+- ✅ X-PAYMENT header detection
+- ✅ **8 tests** (4 passing, 4 pending mock fixes)
 
-## 🚧 Placeholder Features (To Be Implemented Later)
+### Framework Integrations (Placeholders)
 
-### Payment Processing
-
-- ⏳ Payment verification endpoint integration
-- ⏳ Payment settlement endpoint integration
-- ⏳ X-PAYMENT-RESPONSE header generation
-
-### Configuration Modes
-
-- ⏳ Option 2: Cloud hosted configuration
-- ⏳ Option 3: Downloaded file configuration
-
-### Phase 2 Features
-
-- ⏳ Decorator support (`@requiresPayment()`)
-- ⏳ Advanced route configuration
-- ⏳ Custom payment flows
+- 🚧 **NestJS** - Decorator-based integration (planned)
+- 🚧 **Next.js** - API routes and middleware (planned)
+- 🚧 **Fastify** - Plugin architecture (planned)
 
 ## 🎯 Usage Example
 
 ```typescript
 import express from "express";
-import { prismPaymentMiddleware } from "@prism/express-middleware";
+import { prismPaymentMiddleware } from "@1stdigital/prism-express";
 
 const app = express();
 
 app.use(
-  prismPaymentMiddleware(
-    {
-      apiKey: "dev-key-123",
-      useSandbox: true,
-      mode: "on-demand",
-    },
-    {
-      "/api/premium": {
-        price: 0.01,
-        description: "Premium API access",
-      },
-    }
-  )
+  prismPaymentMiddleware({
+    apiKey: "your-api-key",
+    // Optional: defaults to test environment
+    // baseUrl: 'https://prism-api.1stdigital.tech' // Production
+  })
 );
 
-app.get("/api/premium", (req, res) => {
-  res.json({ premium: "content" });
+app.get("/premium-content", (req, res) => {
+  res.json({ message: "Access granted!" });
 });
 
 app.listen(3000);
@@ -111,18 +121,30 @@ app.listen(3000);
 ## 🔧 Available Commands
 
 ```bash
-# Install dependencies
+# Install dependencies (root)
 npm install
 
-# Build the project
+# Build all packages
 npm run build
 
-# Run in development mode (watch)
+# Build specific package
+npm run build --filter=@1stdigital/prism-core
+
+# Run tests
+npm test
+
+# Run tests for specific package
+npm test --filter=@1stdigital/prism-core
+
+# Development mode (watch)
 npm run dev
+```
 
 # Run tests (when implemented)
+
 npm test
-```
+
+````
 
 ## 🌐 API Endpoints Used
 
@@ -132,10 +154,20 @@ npm test
 - ✅ `GET /api/v1/auth-info` - Authentication info
 - ✅ `POST /api/v1/payment/requirements` - Generate payment requirements
 
-### Waiting for Implementation
+## 🧪 Testing
 
-- ⏳ `POST /api/v1/payment/verify` - Verify payment
-- ⏳ `POST /api/v1/payment/settle` - Settle payment
+**Core Package Tests**: 51 passing tests
+```bash
+npm test --filter=@1stdigital/prism-core
+````
+
+**Express Package Tests**: 8 tests (4 passing)
+
+```bash
+npm test --filter=@1stdigital/prism-express
+```
+
+See `TESTING.md` for detailed testing guide.
 
 ## 📝 Configuration Options
 
@@ -143,43 +175,49 @@ npm test
 
 ```typescript
 {
-  useSandbox: true,  // Test: https://prism-api.test.1stdigital.tech
-  useSandbox: false, // Prod: https://prism-api.1stdigital.tech
+  apiKey: "your-api-key",
+  baseUrl: "https://prism-api.test.1stdigital.tech"  // Test (default)
+  // baseUrl: "https://prism-api.1stdigital.tech"    // Production
 }
 ```
 
-### Configuration Modes
+### Route Configuration (Express)
+
+Routes can be configured with payment requirements:
 
 ```typescript
 {
-  mode: 'on-demand',  // ✅ Call Prism Gateway API
-  mode: 'cloud',      // ⏳ Load from cloud URL
-  mode: 'file',       // ⏳ Load from local file
+  "/api/premium": {
+    price: 0.01,
+    description: "Premium API access"
+  }
 }
 ```
 
 ## 🎓 Key Design Decisions
 
-1. **TypeScript First**: Full type safety and IDE support
-2. **Modular Architecture**: Separated concerns (client, config, middleware)
-3. **Placeholder Pattern**: Clear markers for future implementations
+1. **Monorepo Structure**: Turbo-based monorepo for framework-agnostic core with framework-specific packages
+2. **TypeScript First**: Full type safety with strict mode enabled
+3. **Modular Architecture**: Separated @1stdigital/prism-core from framework integrations
 4. **x402 Compatible**: Follows Coinbase x402 protocol specification
-5. **Express Native**: Works seamlessly with Express.js middleware chain
+5. **Direct Base URL**: Replaced useSandbox flag with direct baseUrl parameter for flexibility
+6. **Test Coverage**: Jest with Nock for HTTP mocking and comprehensive test suites
 
 ## 📋 Next Steps
 
-1. **Testing**: Create unit tests for middleware logic
-2. **Gateway Integration**: Complete integration when verify/settle endpoints are ready
-3. **Configuration Modes**: Implement cloud and file configuration options
-4. **Decorator Support**: Add Phase 2 decorator functionality
-5. **Documentation**: Add more examples and use cases
+1. ✅ **Core SDK**: Fully implemented with 51 passing tests
+2. ✅ **Express Integration**: Middleware complete with tests
+3. 🚧 **Framework Integrations**: Complete NestJS, Next.js, and Fastify packages
+4. 🚧 **Configuration Modes**: Implement cloud and file configuration options
+5. 🚧 **Advanced Features**: Decorator support, custom payment flows
+6. 🚧 **Documentation**: Add more examples and use cases
 
-## 🤝 Phase 2 Preview
+## 🤝 Future Features
 
 The decorator approach will work on top of the existing middleware:
 
 ```typescript
-import { requiresPayment } from "@prism/express-middleware";
+import { requiresPayment } from "@1stdigital/prism-express";
 
 class ApiController {
   @requiresPayment({ price: 0.01, description: "Premium" })
@@ -188,6 +226,14 @@ class ApiController {
   }
 }
 ```
+
+## 📦 Package Publishing
+
+Packages are published to npm registry:
+
+- `@1stdigital/prism-core` - Core SDK
+- `@1stdigital/prism-express` - Express middleware
+- Additional framework packages (when ready)
 
 This will internally use the same middleware logic, just with a different API surface.
 

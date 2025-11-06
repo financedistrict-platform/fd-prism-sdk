@@ -45,8 +45,7 @@ app.use(
   prismPaymentMiddleware(
     {
       apiKey: "dev-key-123",
-      useSandbox: true,
-    },
+      },
     {
       "/api/weather": {
         price: 0.001,
