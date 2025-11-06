@@ -41,7 +41,7 @@ npm run build
 # Test locally with npm link
 npm link
 cd ../your-test-project
-npm link @1stdigital/prism-express-middleware
+npm link @1stdigital/prism-express
 ```
 
 ### Version Management
@@ -135,4 +135,4 @@ Make sure:
 
 - `.npmrc` is configured with `@1stdigital:registry=https://npm.pkg.github.com`
 - User is authenticated to GitHub Packages
-- Package name matches: `@1stdigital/prism-express-middleware`
+- Package name matches: `@1stdigital/prism-express`

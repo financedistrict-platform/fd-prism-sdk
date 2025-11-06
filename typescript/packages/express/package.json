@@ -1,0 +1,42 @@
+{
+  "name": "@1stdigital/prism-express",
+  "version": "1.0.2",
+  "description": "Prism SDK - Express.js middleware",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "keywords": [
+    "prism",
+    "payment",
+    "x402",
+    "express",
+    "middleware",
+    "eip3009"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "clean": "rimraf dist",
+    "dev": "tsc --watch",
+    "test": "jest"
+  },
+  "dependencies": {
+    "@1stdigital/prism-core": "*"
+  },
+  "peerDependencies": {
+    "express": "^4.0.0 || ^5.0.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.10.0",
+    "express": "^4.18.2",
+    "rimraf": "^5.0.5",
+    "typescript": "^5.3.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/1stdigital/fd-prism-sdk.git",
+    "directory": "typescript/packages/express"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  }
+}

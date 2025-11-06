@@ -1,0 +1,186 @@
+import axios, { AxiosInstance } from 'axios';
+import {
+  AuthInfoResponse,
+  PaymentRequirementsRequest,
+  PaymentRequiredResponse,
+  PaymentRequirements,
+  PaymentPayload,
+  PrismMiddlewareConfig,
+} from '../types';
+import {
+  PrismError,
+  PrismGatewayError,
+  PrismNetworkError,
+  PrismConfigError,
+} from '../types/errors';
+
+/**
+ * Client for interacting with Prism Gateway API
+ */
+export class PrismClient {
+  private client: AxiosInstance;
+  private apiKey: string;
+
+  constructor(config: PrismMiddlewareConfig) {
+    this.apiKey = config.apiKey;
+
+    // Determine base URL
+    let baseUrl = config.baseUrl;
+    if (!baseUrl) {
+      baseUrl = config.useSandbox !== false
+        ? 'https://prism-api.test.1stdigital.tech'
+        : 'https://prism-api.1stdigital.tech'; // TODO: Update with production URL when available
+    }
+
+    this.client = axios.create({
+      baseURL: baseUrl,
+      headers: {
+        'X-API-Key': this.apiKey,
+        'Content-Type': 'application/json',
+      },
+    });
+  }
+
+  /**
+   * Handle Axios errors and convert to structured Prism errors
+   */
+  private handleError(error: any, context: string): never {
+    // Axios error with response from server (4xx, 5xx)
+    if (error.response) {
+      const { status, data } = error.response;
+
+      // Extract error details from RFC 7807 Problem Details format
+      const message = data.title || data.error || `${context} failed`;
+      const details = data.detail;
+      const traceId = data.traceId;
+      const timestamp = data.timestamp;
+
+      throw new PrismGatewayError(
+        message,
+        status,
+        traceId,
+        timestamp,
+        details
+      );
+    }
+
+    // Network error (timeout, connection refused, DNS error, etc.)
+    if (error.request) {
+      throw new PrismNetworkError(
+        `Failed to reach Prism Gateway: ${error.message}`,
+        error
+      );
+    }
+
+    // Request setup error (invalid config, etc.)
+    if (error.code === 'ERR_BAD_OPTION_VALUE' || error.code === 'ERR_BAD_OPTION') {
+      throw new PrismConfigError(
+        `Invalid Prism client configuration: ${error.message}`,
+        error
+      );
+    }
+
+    // Unknown error
+    throw new PrismError(
+      error.message || `${context} failed`,
+      'UNKNOWN_ERROR',
+      500,
+      error
+    );
+  }
+
+  /**
+   * Get authentication info for the API key
+   */
+  async getAuthInfo(): Promise<AuthInfoResponse> {
+    try {
+      const response = await this.client.get<AuthInfoResponse>('/api/v1/auth-info');
+      return response.data;
+    } catch (error: any) {
+      return this.handleError(error, 'Get auth info');
+    }
+  }
+
+  /**
+   * Get payment requirements for a resource (On-demand mode)
+   */
+  async getPaymentRequirements(
+    request: PaymentRequirementsRequest
+  ): Promise<PaymentRequiredResponse> {
+    try {
+      const response = await this.client.post<PaymentRequiredResponse>(
+        '/api/v1/payment/requirements',
+        request
+      );
+      return response.data;
+    } catch (error: any) {
+      return this.handleError(error, 'Get payment requirements');
+    }
+  }
+
+  /**
+   * Verify a payment payload
+   * Verifies the cryptographic signature and payment authorization
+   * 
+   * @param paymentHeader - Base64-encoded X-PAYMENT header value
+   * @param paymentRequirements - Payment requirements for validation
+   * @returns Verification result with payer address if valid
+   */
+  async verifyPayment(
+    paymentHeader: string,
+    paymentRequirements: PaymentRequirements
+  ): Promise<{ isValid: boolean; payer?: string; error?: string }> {
+    try {
+      const response = await this.client.post<{
+        isValid: boolean;
+        payer?: string;
+        error?: string;
+      }>('/api/v1/payment/verify', {
+        paymentHeader,
+        paymentRequirements,
+      });
+
+      return response.data;
+    } catch (error: any) {
+      return this.handleError(error, 'Verify payment');
+    }
+  }
+
+  /**
+   * Settle/execute a payment
+   * Submits the signed payment authorization to blockchain via Prism Gateway
+   */
+  async settlePayment(
+    paymentPayload: PaymentPayload,
+    paymentRequirements: PaymentRequirements,
+  ): Promise<{
+    success: boolean;
+    payer?: string;
+    transaction?: string;
+    network?: string;
+    errorReason?: string;
+  }> {
+    try {
+      const response = await this.client.post<{
+        success: boolean;
+        payer: string;
+        transaction: string;
+        network: string;
+        errorReason?: string;
+      }>('/api/v1/payment/settle', {
+        paymentPayload,
+        paymentRequirements,
+      });
+
+      return {
+        success: response.data.success,
+        payer: response.data.payer,
+        transaction: response.data.transaction,
+        network: response.data.network,
+        errorReason: response.data.errorReason,
+      };
+    } catch (error: any) {
+      return this.handleError(error, 'Settle payment');
+    }
+  }
+}

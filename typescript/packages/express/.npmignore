@@ -1,0 +1,17 @@
+# Source files
+src/
+tsconfig.json
+
+# Build artifacts
+*.tsbuildinfo
+
+# Tests
+**/*.test.ts
+**/*.test.js
+**/*.spec.ts
+**/*.spec.js
+coverage/
+
+# Development
+node_modules/
+.turbo/

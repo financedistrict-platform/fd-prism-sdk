@@ -1,0 +1,42 @@
+{
+  "name": "@1stdigital/prism-nextjs",
+  "version": "1.0.0",
+  "description": "Prism SDK - Next.js middleware",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "keywords": [
+    "prism",
+    "payment",
+    "x402",
+    "nextjs",
+    "middleware",
+    "edge",
+    "eip3009"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "clean": "rimraf dist",
+    "dev": "tsc --watch",
+    "test": "jest"
+  },
+  "dependencies": {
+    "@1stdigital/prism-core": "*"
+  },
+  "peerDependencies": {
+    "next": "^13.0.0 || ^14.0.0 || ^15.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "next": "^15.0.0",
+    "rimraf": "^5.0.5",
+    "typescript": "^5.3.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/1stdigital/fd-prism-sdk.git",
+    "directory": "typescript/packages/nextjs"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  }
+}

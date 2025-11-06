@@ -1,49 +1,31 @@
 {
-  "name": "@1stdigital/prism-express-middleware",
-  "version": "0.1.0",
-  "description": "Express.js middleware for Prism x402 payment protocol",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/1stdigital/fd-prism-sdk.git"
-  },
-  "publishConfig": {
-    "registry": "https://npm.pkg.github.com"
-  },
-  "files": [
-    "dist/**/*",
-    "README.md",
-    "LICENSE"
-  ],
+  "name": "@1stdigital/prism-sdk-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Prism SDK - TypeScript/JavaScript monorepo",
+  "packageManager": "npm@11.4.2",
+  "workspaces": ["packages/*"],
   "scripts": {
-    "build": "tsc",
-    "dev": "tsc --watch",
-    "test": "jest --passWithNoTests",
-    "prepublishOnly": "npm run build"
-  },
-  "keywords": [
-    "prism",
-    "x402",
-    "payment",
-    "express",
-    "middleware",
-    "crypto"
-  ],
-  "author": "FD Technologies",
-  "license": "MIT",
-  "peerDependencies": {
-    "express": "^4.18.0 || ^5.0.0"
-  },
-  "dependencies": {
-    "axios": "^1.6.0"
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "clean": "turbo run clean",
+    "dev": "turbo run dev --parallel"
   },
   "devDependencies": {
-    "@types/express": "^4.17.21",
-    "@types/node": "^20.0.0",
-    "typescript": "^5.3.0",
-    "jest": "^29.7.0",
-    "@types/jest": "^29.5.0",
-    "ts-jest": "^29.1.0"
-  }
+    "turbo": "^2.0.0",
+    "typescript": "^5.3.3",
+    "rimraf": "^5.0.5"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/1stdigital/fd-prism-sdk.git",
+    "directory": "typescript"
+  },
+  "author": "FD Technologies",
+  "license": "MIT"
 }
