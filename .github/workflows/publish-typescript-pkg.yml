@@ -157,7 +157,7 @@ jobs:
       - name: Create Git Tag
         if: github.event.inputs.version_bump != ''
         run: |
-          TAG="typescript-${{ steps.package_version.outputs.package_name }}-v${{ steps.package_version.outputs.version }}"
+          TAG="ts-${{ steps.package_version.outputs.package_name }}-v${{ steps.package_version.outputs.version }}"
           git tag $TAG
           git push origin $TAG
 
@@ -167,7 +167,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: typescript-${{ steps.package_version.outputs.package_name }}-v${{ steps.package_version.outputs.version }}
+          tag_name: ts-${{ steps.package_version.outputs.package_name }}-v${{ steps.package_version.outputs.version }}
           release_name: Prism SDK - @1stdigital/prism-${{ steps.package_version.outputs.package_name }} v${{ steps.package_version.outputs.version }}
           body: |
             ## @1stdigital/prism-${{ steps.package_version.outputs.package_name }} Release
