@@ -69,7 +69,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: typescript-v${{ steps.get_version.outputs.version }}
-          release_name: TypeScript SDK v${{ steps.get_version.outputs.version }}
+          release_name: TypeScript SDK v0.0.1${{ steps.get_version.outputs.version }}
           body: |
             ## TypeScript Express Middleware Release
             
