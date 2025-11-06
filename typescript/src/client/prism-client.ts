@@ -3,6 +3,8 @@ import {
   AuthInfoResponse,
   PaymentRequirementsRequest,
   PaymentRequiredResponse,
+  PaymentRequirements,
+  PaymentPayload,
   PrismMiddlewareConfig,
 } from '../types';
 
@@ -76,20 +78,50 @@ export class PrismClient {
 
   /**
    * Settle/execute a payment
-   * TODO: Implement when Prism Gateway provides settlement endpoint
+   * Submits the signed payment authorization to blockchain via Prism Gateway
    */
-  async settlePayment(paymentHeader: string): Promise<{ success: boolean; txHash?: string; error?: string }> {
-    // PLACEHOLDER: This endpoint doesn't exist yet in Prism Gateway
-    console.warn('Payment settlement endpoint not yet implemented in Prism Gateway');
+  async settlePayment(
+    paymentPayload: PaymentPayload,
+    paymentRequirements: PaymentRequirements,
+  ): Promise<{
+    success: boolean;
+    payer?: string;
+    transaction?: string;
+    network?: string;
+    errorReason?: string;
+  }> {
+    try {
+      const response = await this.client.post<{
+        success: boolean;
+        payer: string;
+        transaction: string;
+        network: string;
+        errorReason?: string;
+      }>('/api/v1/payment/settle', {
+        paymentPayload,
+        paymentRequirements,
+      });
 
-    // TODO: Implement actual settlement call when available
-    // Expected endpoint: POST /api/v1/payment/settle
-    // Body: { paymentHeader: string }
-    // Response: { success: boolean, txHash?: string, error?: string }
+      return {
+        success: response.data.success,
+        payer: response.data.payer,
+        transaction: response.data.transaction,
+        network: response.data.network,
+        errorReason: response.data.errorReason,
+      };
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response) {
+        return {
+          success: false,
+          errorReason: error.response.data?.errorReason || `Settlement failed with status ${error.response.status}`,
+        };
+      }
 
-    return {
-      success: false,
-      error: 'Payment settlement not yet implemented',
-    };
+      console.error('Settlement request failed:', error);
+      return {
+        success: false,
+        errorReason: error instanceof Error ? error.message : 'Settlement request failed',
+      };
+    }
   }
 }

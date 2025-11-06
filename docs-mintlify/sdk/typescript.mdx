@@ -1,0 +1,940 @@
+---
+title: "TypeScript / JavaScript SDK"
+description: "Express.js middleware for x402 payment protocol"
+icon: "js"
+---
+
+<img
+  className="block dark:hidden"
+  src="/images/typescript-hero-light.svg"
+  alt="TypeScript SDK"
+/>
+<img
+  className="hidden dark:block"
+  src="/images/typescript-hero-dark.svg"
+  alt="TypeScript SDK"
+/>
+
+## Overview
+
+The **Prism Express Middleware** is a drop-in solution for protecting your Node.js API routes with blockchain-based micropayments using the x402 protocol.
+
+<CardGroup cols={3}>
+  <Card title="Zero Config" icon="bolt">
+    Works out of the box with Express.js
+  </Card>
+  
+  <Card title="Type Safe" icon="shield-check">
+    Full TypeScript support with IntelliSense
+  </Card>
+
+  <Card title="Flexible Pricing" icon="dollar-sign">
+    Per-route pricing with wildcards
+  </Card>
+</CardGroup>
+
+## Installation
+
+<Tabs>
+  <Tab title="npm">
+    ```bash
+    npm install @1stdigital/prism-express-middleware
+    ```
+  </Tab>
+  
+  <Tab title="yarn">
+    ```bash
+    yarn add @1stdigital/prism-express-middleware
+    ```
+  </Tab>
+
+  <Tab title="pnpm">
+    ```bash
+    pnpm add @1stdigital/prism-express-middleware
+    ```
+  </Tab>
+</Tabs>
+
+<Info>
+  **Package Registry:** GitHub Packages **Scope:** `@1stdigital` **Package:**
+  `prism-express-middleware`
+</Info>
+
+## Quick Start
+
+<Steps>
+  <Step title="Install Package">
+    ```bash
+    npm install @1stdigital/prism-express-middleware
+    ```
+  </Step>
+  
+  <Step title="Import Middleware">
+    ```typescript
+    import express from 'express';
+    import { prismPaymentMiddleware } from '@1stdigital/prism-express-middleware';
+    ```
+  </Step>
+  
+  <Step title="Configure Middleware">
+    ```typescript
+    const app = express();
+    
+    app.use(
+      prismPaymentMiddleware(
+        {
+          apiKey: process.env.PRISM_API_KEY,
+          useSandbox: true
+        },
+        {
+          '/api/premium': {
+            price: 0.01,
+            description: 'Premium API access'
+          }
+        }
+      )
+    );
+    ```
+  </Step>
+  
+  <Step title="Add Protected Route">
+    ```typescript
+    app.get('/api/premium', (req, res) => {
+      res.json({ data: 'Premium content' });
+    });
+    
+    app.listen(3000);
+    ```
+  </Step>
+</Steps>
+
+## Basic Usage
+
+```typescript
+import express from "express";
+import { prismPaymentMiddleware } from "@1stdigital/prism-express-middleware";
+
+const app = express();
+
+// Configure payment middleware
+app.use(
+  prismPaymentMiddleware(
+    {
+      apiKey: "dev-key-123",
+      useSandbox: true,
+    },
+    {
+      "/api/weather": {
+        price: 0.001,
+        description: "Weather API access",
+        mimeType: "application/json",
+      },
+      "/api/premium/*": {
+        price: 0.01,
+        description: "Premium API endpoints",
+      },
+    }
+  )
+);
+
+// Public endpoint (no payment)
+app.get("/", (req, res) => {
+  res.json({ message: "Welcome to Prism API" });
+});
+
+// Protected endpoint (requires payment)
+app.get("/api/weather", (req, res) => {
+  res.json({
+    location: "San Francisco",
+    temperature: 72,
+    condition: "Sunny",
+  });
+});
+
+// Protected premium endpoint
+app.get("/api/premium/data", (req, res) => {
+  res.json({
+    premium: true,
+    data: "This is premium content",
+  });
+});
+
+app.listen(3000, () => {
+  console.log("Server running on http://localhost:3000");
+});
+```
+
+## Configuration
+
+### Middleware Config
+
+The first parameter to `prismPaymentMiddleware` is the global configuration:
+
+```typescript
+interface PrismMiddlewareConfig {
+  apiKey: string; // Required: Your Prism API key
+  useSandbox?: boolean; // Optional: Use test environment (default: true)
+  baseUrl?: string; // Optional: Custom gateway URL
+  timeout?: number; // Optional: Request timeout in ms (default: 10000)
+  retries?: number; // Optional: Failed request retries (default: 3)
+}
+```
+
+<ParamField path="apiKey" type="string" required>
+  Your Prism API key from [Client Portal](https://prism.1stdigital.tech)
+  <Tip>Store in environment variable: `process.env.PRISM_API_KEY`</Tip>
+</ParamField>
+
+<ParamField path="useSandbox" type="boolean" default="true">
+  Use sandbox environment for testing with testnet tokens - `true`: Sandbox
+  Gateway (`prism-api.test.1stdigital.tech`) - `false`: Production Gateway
+  (`prism-api.1stdigital.tech`)
+</ParamField>
+
+<ParamField path="baseUrl" type="string">
+  Custom Prism Gateway URL (overrides `useSandbox`)
+  
+  ```typescript
+  {
+    apiKey: 'key',
+    baseUrl: 'https://custom-gateway.example.com'
+  }
+  ```
+</ParamField>
+
+<ParamField path="timeout" type="number" default="10000">
+  Request timeout in milliseconds
+  <Info>Gateway calls that exceed timeout will fail gracefully</Info>
+</ParamField>
+
+<ParamField path="retries" type="number" default="3">
+  Number of retry attempts for failed Gateway requests
+</ParamField>
+
+### Route Configuration
+
+The second parameter defines which routes require payment:
+
+```typescript
+interface RoutePaymentConfig {
+  price: number | string; // Required: Price per request
+  description?: string; // Optional: Human-readable description
+  mimeType?: string; // Optional: Response content type
+  maxTimeoutSeconds?: number; // Optional: Payment timeout
+  resource?: string; // Optional: Custom resource URL
+}
+```
+
+<ParamField path="price" type="number | string" required>
+  Price to charge per request **Formats:** - Number: `0.001` (USDC) - String:
+  `"$0.001"` (explicit USD) - String: `"0.001 USDC"` (explicit token)
+  <Tip>Use small decimals for micropayments: `0.001` = $0.001 = 0.1¢</Tip>
+</ParamField>
+
+<ParamField path="description" type="string">
+  Human-readable description shown to users
+  
+  ```typescript
+  {
+    price: 0.01,
+    description: 'Weather API - Current conditions'
+  }
+  ```
+</ParamField>
+
+<ParamField path="mimeType" type="string" default="application/json">
+  Response content type **Common values:** - `application/json` - `text/html` -
+  `image/png` - `video/mp4`
+</ParamField>
+
+<ParamField path="maxTimeoutSeconds" type="number" default="300">
+  Maximum time (seconds) to wait for payment
+  <Warning>After timeout, payment authorization expires</Warning>
+</ParamField>
+
+<ParamField path="resource" type="string">
+  Custom resource URL (overrides request path)
+  
+  ```typescript
+  {
+    price: 0.01,
+    resource: 'https://api.example.com/v2/premium'
+  }
+  ```
+</ParamField>
+
+## Route Patterns
+
+### Exact Match
+
+```typescript
+{
+  '/api/weather': {
+    price: 0.001,
+    description: 'Weather data'
+  }
+}
+```
+
+Matches:
+
+- ✅ `/api/weather`
+- ❌ `/api/weather/forecast`
+- ❌ `/api/weather-data`
+
+### Wildcard Routes
+
+```typescript
+{
+  '/api/premium/*': {
+    price: 0.01,
+    description: 'All premium endpoints'
+  }
+}
+```
+
+Matches:
+
+- ✅ `/api/premium/data`
+- ✅ `/api/premium/analytics`
+- ✅ `/api/premium/users/123`
+- ❌ `/api/public/data`
+
+### Multiple Routes
+
+```typescript
+{
+  '/api/basic': {
+    price: 0.001,
+    description: 'Basic tier'
+  },
+  '/api/premium': {
+    price: 0.01,
+    description: 'Premium tier'
+  },
+  '/api/enterprise/*': {
+    price: 0.1,
+    description: 'Enterprise tier'
+  }
+}
+```
+
+### Route Priority
+
+When multiple patterns match, **most specific wins**:
+
+```typescript
+{
+  '/api/*': { price: 0.001 },           // Generic
+  '/api/premium/*': { price: 0.01 },    // More specific
+  '/api/premium/gold': { price: 0.05 }  // Most specific (used)
+}
+```
+
+Request to `/api/premium/gold` → uses `0.05` price
+
+## Accessing Payment Info
+
+Payment details are available in route handlers via `res.locals.payment`:
+
+```typescript
+app.get("/api/premium", (req, res) => {
+  const payment = res.locals.payment;
+
+  console.log("Payment scheme:", payment.scheme);
+  console.log("Network:", payment.network);
+  console.log("Token:", payment.asset);
+  console.log("Amount:", payment.amount);
+  console.log("Transaction hash:", payment.txHash);
+
+  res.json({ data: "Premium content" });
+});
+```
+
+### Payment Object Type
+
+```typescript
+interface PaymentInfo {
+  scheme: string; // 'exact' | 'range' | 'any'
+  network: string; // 'base-sepolia' | 'ethereum' | 'bsc'
+  asset: string; // Token contract address
+  amount: string; // Amount in smallest unit
+  payTo: string; // Provider wallet address
+  txHash?: string; // Transaction hash (after settlement)
+  validAfter: number; // Unix timestamp
+  validBefore: number; // Unix timestamp
+  nonce: string; // Unique payment nonce
+}
+```
+
+## Error Handling
+
+### Built-in Error Responses
+
+The middleware automatically handles errors:
+
+<AccordionGroup>
+  <Accordion icon="circle-xmark" title="402 Payment Required">
+    **When:** Client requests protected route without payment
+    
+    **Response:**
+    ```json
+    {
+      "error": "Payment required",
+      "code": "PAYMENT_REQUIRED",
+      "message": "This resource requires payment"
+    }
+    ```
+    
+    **Headers:**
+    ```
+    HTTP/1.1 402 Payment Required
+    X-PAYMENT: <payment-options-json>
+    ```
+  </Accordion>
+  
+  <Accordion icon="ban" title="401 Unauthorized">
+    **When:** Payment verification fails
+    
+    **Response:**
+    ```json
+    {
+      "error": "Invalid payment",
+      "code": "INVALID_PAYMENT",
+      "message": "Payment verification failed"
+    }
+    ```
+  </Accordion>
+  
+  <Accordion icon="clock" title="408 Request Timeout">
+    **When:** Payment not received within timeout
+    
+    **Response:**
+    ```json
+    {
+      "error": "Payment timeout",
+      "code": "PAYMENT_TIMEOUT",
+      "message": "Payment not received within timeout period"
+    }
+    ```
+  </Accordion>
+  
+  <Accordion icon="triangle-exclamation" title="503 Service Unavailable">
+    **When:** Prism Gateway is unreachable
+    
+    **Response:**
+    ```json
+    {
+      "error": "Gateway unavailable",
+      "code": "GATEWAY_ERROR",
+      "message": "Unable to reach Prism Gateway"
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### Custom Error Handling
+
+```typescript
+import { PrismError } from "@1stdigital/prism-express-middleware";
+
+app.use((err, req, res, next) => {
+  if (err instanceof PrismError) {
+    console.error("Prism payment error:", err.code, err.message);
+
+    // Custom logging, alerting, etc.
+    logToService(err);
+
+    // Custom response
+    res.status(err.statusCode).json({
+      error: err.code,
+      message: err.message,
+      details: err.details,
+    });
+  } else {
+    next(err);
+  }
+});
+```
+
+## Advanced Usage
+
+### Environment-Based Configuration
+
+```typescript
+const config = {
+  apiKey: process.env.PRISM_API_KEY,
+  useSandbox: process.env.NODE_ENV !== "production",
+};
+
+app.use(prismPaymentMiddleware(config, routes));
+```
+
+**.env.development:**
+
+```bash
+PRISM_API_KEY=dev-key-123
+NODE_ENV=development
+```
+
+**.env.production:**
+
+```bash
+PRISM_API_KEY=prod-key-456
+NODE_ENV=production
+```
+
+### Dynamic Pricing
+
+```typescript
+import { prismPaymentMiddleware } from "@1stdigital/prism-express-middleware";
+
+// Base routes
+const routes = {
+  "/api/standard": { price: 0.01 },
+};
+
+// Apply middleware
+app.use(prismPaymentMiddleware(config, routes));
+
+// Add dynamic pricing for specific scenarios
+app.get(
+  "/api/premium",
+  async (req, res, next) => {
+    const user = await getUserFromAuth(req);
+
+    if (user.subscription === "premium") {
+      // Skip payment for premium subscribers
+      return next();
+    }
+
+    // Apply payment requirement
+    res.locals.prismPrice = 0.05;
+    next();
+  },
+  (req, res) => {
+    res.json({ data: "Premium content" });
+  }
+);
+```
+
+### Payment Webhooks
+
+Monitor payment events in real-time:
+
+```typescript
+import {
+  prismPaymentMiddleware,
+  PaymentEvent,
+} from "@1stdigital/prism-express-middleware";
+
+const middleware = prismPaymentMiddleware(config, routes);
+
+// Listen to payment events
+middleware.on("payment:initiated", (event: PaymentEvent) => {
+  console.log("Payment initiated:", event.nonce);
+});
+
+middleware.on("payment:verified", (event: PaymentEvent) => {
+  console.log("Payment verified:", event.txHash);
+});
+
+middleware.on("payment:settled", (event: PaymentEvent) => {
+  console.log("Payment settled:", event.txHash);
+  // Update database, send notifications, etc.
+});
+
+middleware.on("payment:failed", (event: PaymentEvent) => {
+  console.error("Payment failed:", event.error);
+});
+
+app.use(middleware);
+```
+
+### Rate Limiting with Payments
+
+Combine with rate limiting for hybrid monetization:
+
+```typescript
+import rateLimit from "express-rate-limit";
+
+// Free tier: 100 requests/hour
+const freeLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 100,
+  message: "Free tier limit reached. Please upgrade or pay per request.",
+});
+
+app.use("/api/free", freeLimiter);
+
+// Paid tier: No rate limit, but requires payment
+app.use(
+  "/api/paid",
+  prismPaymentMiddleware(config, {
+    "/api/paid/*": { price: 0.001 },
+  })
+);
+```
+
+## TypeScript Support
+
+### Full Type Definitions
+
+```typescript
+import {
+  prismPaymentMiddleware,
+  PrismMiddlewareConfig,
+  RoutePaymentConfig,
+  PaymentInfo,
+  PrismError,
+} from "@1stdigital/prism-express-middleware";
+
+// Type-safe configuration
+const config: PrismMiddlewareConfig = {
+  apiKey: process.env.PRISM_API_KEY!,
+  useSandbox: true,
+  timeout: 15000,
+};
+
+const routes: Record<string, RoutePaymentConfig> = {
+  "/api/data": {
+    price: 0.001,
+    description: "Data access",
+  },
+};
+
+// Type-safe middleware
+app.use(prismPaymentMiddleware(config, routes));
+
+// Type-safe payment info
+app.get("/api/data", (req, res) => {
+  const payment: PaymentInfo | undefined = res.locals.payment;
+
+  if (payment) {
+    console.log(`Paid ${payment.amount} on ${payment.network}`);
+  }
+
+  res.json({ data: "Content" });
+});
+```
+
+### Express Types Extension
+
+Add types to `res.locals`:
+
+```typescript
+// types/express.d.ts
+import { PaymentInfo } from "@1stdigital/prism-express-middleware";
+
+declare global {
+  namespace Express {
+    interface Locals {
+      payment?: PaymentInfo;
+      prismPrice?: number;
+    }
+  }
+}
+```
+
+## Testing
+
+### Unit Tests
+
+```typescript
+import request from "supertest";
+import express from "express";
+import { prismPaymentMiddleware } from "@1stdigital/prism-express-middleware";
+
+describe("Prism Payment Middleware", () => {
+  let app: express.Application;
+
+  beforeEach(() => {
+    app = express();
+    app.use(
+      prismPaymentMiddleware(
+        { apiKey: "test-key", useSandbox: true },
+        { "/api/paid": { price: 0.01 } }
+      )
+    );
+
+    app.get("/api/paid", (req, res) => {
+      res.json({ data: "content" });
+    });
+  });
+
+  it("should return 402 for unpaid request", async () => {
+    const res = await request(app).get("/api/paid");
+
+    expect(res.status).toBe(402);
+    expect(res.headers["x-payment"]).toBeDefined();
+  });
+
+  it("should allow request with valid payment", async () => {
+    const paymentHeader = generateValidPayment();
+
+    const res = await request(app)
+      .get("/api/paid")
+      .set("X-PAYMENT-AUTHORIZATION", paymentHeader);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toBe("content");
+  });
+});
+```
+
+### Integration Tests with Sandbox
+
+```typescript
+import { ethers } from "ethers";
+
+describe("Payment Flow Integration", () => {
+  it("should complete full payment cycle", async () => {
+    // 1. Request protected resource
+    const res1 = await request(app).get("/api/paid");
+    expect(res1.status).toBe(402);
+
+    // 2. Parse payment requirements
+    const payment = JSON.parse(res1.headers["x-payment"]);
+
+    // 3. Sign authorization (with test wallet)
+    const wallet = new ethers.Wallet(process.env.TEST_PRIVATE_KEY!);
+    const signature = await wallet.signTypedData(
+      payment.typedData.domain,
+      {
+        TransferWithAuthorization:
+          payment.typedData.types.TransferWithAuthorization,
+      },
+      payment.typedData.message
+    );
+
+    // 4. Retry with signature
+    const res2 = await request(app)
+      .get("/api/paid")
+      .set(
+        "X-PAYMENT-AUTHORIZATION",
+        JSON.stringify({
+          signature,
+          ...payment.typedData.message,
+        })
+      );
+
+    expect(res2.status).toBe(200);
+    expect(res2.body.data).toBe("content");
+  });
+});
+```
+
+## Performance Optimization
+
+### Caching Payment Requirements
+
+```typescript
+import NodeCache from "node-cache";
+
+const cache = new NodeCache({ stdTTL: 300 }); // 5 minutes
+
+app.use((req, res, next) => {
+  const cacheKey = `payment:${req.path}`;
+  const cached = cache.get(cacheKey);
+
+  if (cached) {
+    res.set("X-PAYMENT", JSON.stringify(cached));
+    return res.status(402).json({ error: "Payment required" });
+  }
+
+  next();
+});
+
+app.use(prismPaymentMiddleware(config, routes));
+```
+
+### Connection Pooling
+
+```typescript
+const config = {
+  apiKey: process.env.PRISM_API_KEY,
+  useSandbox: true,
+  timeout: 5000,
+  retries: 2,
+  // Use HTTP keep-alive
+  httpAgent: new http.Agent({ keepAlive: true }),
+  httpsAgent: new https.Agent({ keepAlive: true }),
+};
+```
+
+## Migration Guide
+
+### From v0.x to v1.x
+
+<Steps>
+  <Step title="Update Package">
+    ```bash
+    npm install @1stdigital/prism-express-middleware@latest
+    ```
+  </Step>
+  
+  <Step title="Update Import">
+    ```typescript
+    // Old
+    import { prismMiddleware } from '@prism/middleware';
+    
+    // New
+    import { prismPaymentMiddleware } from '@1stdigital/prism-express-middleware';
+    ```
+  </Step>
+  
+  <Step title="Update Configuration">
+    ```typescript
+    // Old
+    prismMiddleware({ key: 'xxx', sandbox: true }, routes)
+    
+    // New
+    prismPaymentMiddleware({ apiKey: 'xxx', useSandbox: true }, routes)
+    ```
+  </Step>
+</Steps>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion icon="circle-question" title="402 responses not working">
+    **Symptoms:** Routes always return 200, no payment required
+    
+    **Solutions:**
+    - Verify middleware is registered **before** route handlers
+    - Check route paths match exactly (case-sensitive)
+    - Ensure `apiKey` is valid
+    - Check Gateway connectivity (`curl https://prism-api.test.1stdigital.tech/health`)
+  </Accordion>
+  
+  <Accordion icon="clock" title="Gateway timeout errors">
+    **Symptoms:** `503 Service Unavailable` or timeout errors
+    
+    **Solutions:**
+    - Check network connectivity to Gateway
+    - Increase `timeout` in config: `{ timeout: 30000 }`
+    - Verify no firewall blocking outbound HTTPS
+    - Check Gateway status page
+  </Accordion>
+  
+  <Accordion icon="key" title="Invalid API key errors">
+    **Symptoms:** `401 Unauthorized` from Gateway
+    
+    **Solutions:**
+    - Verify API key in [Client Portal](https://prism.1stdigital.tech)
+    - Check environment variable: `echo $PRISM_API_KEY`
+    - Ensure key hasn't been revoked
+    - Use correct environment (sandbox vs production)
+  </Accordion>
+  
+  <Accordion icon="code" title="TypeScript compilation errors">
+    **Symptoms:** Type errors during build
+    
+    **Solutions:**
+    - Install type definitions: `npm install -D @types/express`
+    - Update `tsconfig.json`: `"moduleResolution": "node"`
+    - Ensure TypeScript version >= 4.5
+  </Accordion>
+</AccordionGroup>
+
+## API Reference
+
+### `prismPaymentMiddleware(config, routes)`
+
+Creates Express middleware for x402 payment protection.
+
+**Parameters:**
+
+- `config` (PrismMiddlewareConfig) - Global configuration
+- `routes` (Record&lt;string, RoutePaymentConfig&gt;) - Route payment settings
+
+**Returns:** Express middleware function
+
+**Example:**
+
+```typescript
+const middleware = prismPaymentMiddleware(
+  { apiKey: "key", useSandbox: true },
+  { "/api/paid": { price: 0.01 } }
+);
+
+app.use(middleware);
+```
+
+### `PrismError`
+
+Custom error class for payment-related errors.
+
+**Properties:**
+
+- `code` (string) - Error code
+- `message` (string) - Error message
+- `statusCode` (number) - HTTP status code
+- `details` (object) - Additional error context
+
+**Error Codes:**
+
+- `PAYMENT_REQUIRED` - Payment needed (402)
+- `INVALID_PAYMENT` - Payment verification failed (401)
+- `PAYMENT_TIMEOUT` - Payment timeout exceeded (408)
+- `GATEWAY_ERROR` - Gateway unreachable (503)
+
+## Resources
+
+<CardGroup cols={2}>
+  <Card
+    title="GitHub Repository"
+    icon="github"
+    href="https://github.com/1stdigital/fd-prism-sdk/tree/master/typescript"
+  >
+    View source code and examples
+  </Card>
+
+<Card
+  title="npm Package"
+  icon="npm"
+  href="https://github.com/1stdigital/fd-prism-sdk/packages"
+>
+  Package on GitHub Packages
+</Card>
+
+<Card title="API Reference" icon="book" href="/api-reference/introduction">
+  Prism Gateway REST API docs
+</Card>
+
+  <Card
+    title="Examples"
+    icon="code"
+    href="https://github.com/1stdigital/fd-prism-sdk/tree/master/typescript/examples"
+  >
+    Complete code examples
+  </Card>
+</CardGroup>
+
+## What's Next?
+
+<CardGroup cols={2}>
+  <Card title="Quick Start Guide" icon="rocket" href="/quickstart">
+    5-minute integration tutorial
+  </Card>
+
+<Card title="Testing Guide" icon="vial" href="/guides/testing">
+  Test with sandbox environment
+</Card>
+
+<Card
+  title="Production Deployment"
+  icon="server"
+  href="/guides/production-deployment"
+>
+  Production best practices
+</Card>
+
+  <Card
+    title="System Overview"
+    icon="diagram-project"
+    href="/concepts/system-overview"
+  >
+    Understand Prism architecture
+  </Card>
+</CardGroup>

@@ -120,6 +120,21 @@ export function prismPaymentMiddleware(
       // Decode payment payload from header
       const paymentPayload = decodePaymentHeader(paymentHeader);
 
+      // Reconstruct payment requirements for settlement
+      const resourceUrl = routeConfig.resource || `${req.protocol}://${req.get('host')}${req.originalUrl}`;
+      const price = parsePrice(routeConfig.price);
+
+      const request: PaymentRequirementsRequest = {
+        resourceUrl,
+        requestedAmount: price,
+        description: routeConfig.description || 'Payment required',
+        mimeType: routeConfig.mimeType || 'application/json',
+      };
+
+      // Get payment requirements for settlement
+      const paymentRequirementsResponse = await client.getPaymentRequirements(request);
+      const paymentRequirements = paymentRequirementsResponse.accepts[0]; // Use first accepted method
+
       // Verify payment
       // FUTURE: Implement verification when Prism Gateway provides endpoint
       const verificationResult = await client.verifyPayment(paymentHeader);
@@ -138,14 +153,19 @@ export function prismPaymentMiddleware(
       // Execute the route handler
       await next();
 
-      // After successful response, settle the payment
-      // FUTURE: Implement settlement when Prism Gateway provides endpoint
+      // After successful response, settle the payment on blockchain
       if (res.statusCode < 400) {
-        const settlementResult = await client.settlePayment(paymentHeader);
+        const settlementResult = await client.settlePayment(paymentPayload, paymentRequirements);
 
-        if (settlementResult.success && settlementResult.txHash) {
-          // Add payment response header
-          res.setHeader('X-PAYMENT-RESPONSE', settlementResult.txHash);
+        if (settlementResult.success && settlementResult.transaction) {
+          // Add payment response header with transaction hash
+          res.setHeader('X-PAYMENT-RESPONSE', settlementResult.transaction);
+
+          // Optionally log settlement info
+          console.log(`Payment settled: ${settlementResult.transaction} on ${settlementResult.network || 'unknown'} by ${settlementResult.payer}`);
+        } else if (settlementResult.errorReason) {
+          console.error('Settlement failed:', settlementResult.errorReason);
+          // Note: Response already sent to client, settlement happens async
         }
       }
     } catch (error) {

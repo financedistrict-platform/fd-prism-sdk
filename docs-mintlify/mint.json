@@ -1,0 +1,101 @@
+{
+  "$schema": "https://mintlify.com/schema.json",
+  "name": "Prism SDK",
+  "logo": {
+    "dark": "/logo/dark.svg",
+    "light": "/logo/light.svg"
+  },
+  "favicon": "/favicon.svg",
+  "colors": {
+    "primary": "#0D9373",
+    "light": "#07C983",
+    "dark": "#0D9373",
+    "anchors": {
+      "from": "#0D9373",
+      "to": "#07C983"
+    }
+  },
+  "topbarLinks": [
+    {
+      "name": "Support",
+      "url": "mailto:support@1stdigital.tech"
+    }
+  ],
+  "topbarCtaButton": {
+    "name": "Client Portal",
+    "url": "https://prism.1stdigital.tech"
+  },
+  "tabs": [
+    {
+      "name": "SDK",
+      "url": "sdk"
+    },
+    {
+      "name": "API Reference",
+      "url": "api-reference"
+    }
+  ],
+  "anchors": [
+    {
+      "name": "GitHub",
+      "icon": "github",
+      "url": "https://github.com/1stdigital/fd-prism-sdk"
+    },
+    {
+      "name": "Discord",
+      "icon": "discord",
+      "url": "https://discord.gg/your-discord"
+    }
+  ],
+  "navigation": [
+    {
+      "group": "Get Started",
+      "pages": [
+        "introduction",
+        "quickstart"
+      ]
+    },
+    {
+      "group": "Core Concepts",
+      "pages": [
+        "concepts/system-overview",
+        "concepts/x402-protocol",
+        "concepts/eip3009-settlement",
+        "concepts/payment-flow",
+        "concepts/payment-modes",
+        "concepts/authentication",
+        "concepts/configuration-modes"
+      ]
+    },
+    {
+      "group": "Guides",
+      "pages": [
+        "guides/testing",
+        "guides/production-deployment",
+        "guides/security-best-practices"
+      ]
+    },
+    {
+      "group": "SDK Documentation",
+      "pages": [
+        "sdk/typescript",
+        "sdk/csharp",
+        "sdk/python"
+      ]
+    },
+    {
+      "group": "API Documentation",
+      "pages": [
+        "api-reference/introduction",
+        "api-reference/auth-info",
+        "api-reference/payment-requirements",
+        "api-reference/verify-payment",
+        "api-reference/settle-payment"
+      ]
+    }
+  ],
+  "footerSocials": {
+    "github": "https://github.com/1stdigital/fd-prism-sdk",
+    "linkedin": "https://www.linkedin.com/company/1stdigital"
+  }
+}
