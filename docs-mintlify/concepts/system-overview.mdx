@@ -119,8 +119,7 @@ graph TB
     ```typescript
     {
       apiKey: string;              // Your API key
-      useSandbox: boolean;         // Sandbox vs production
-      gatewayUrl?: string;         // Custom gateway URL
+      baseUrl?: string;            // Gateway URL (defaults to test)
       timeout?: number;            // Request timeout (ms)
       retries?: number;            // Failed request retries
     }
@@ -210,7 +209,7 @@ graph TB
     
     app.use(
       prismPaymentMiddleware(
-        { apiKey: 'key', useSandbox: true },
+        { apiKey: 'key' },
         { '/api/premium': { price: 0.001 } }
       )
     );
@@ -832,6 +831,7 @@ sequenceDiagram
   </Tab>
 
 {" "}
+
 <Tab title="Multi-Region">
   **Architecture:** ``` Internet → CDN → Regional Load Balancers → App Servers →
   Prism Gateway ``` **Pros:** - High availability - Low latency
@@ -841,6 +841,7 @@ sequenceDiagram
 </Tab>
 
 {" "}
+
 <Tab title="Microservices">
   **Architecture:** ``` Internet → API Gateway → [Auth Service, Payment Service,
   Resource Service] → Prism Gateway ``` **Pros:** - Service isolation -
@@ -866,18 +867,20 @@ sequenceDiagram
     Revenue per resource - Active payment sessions
   </Card>
 
-  <Card title="Alerting Triggers" icon="bell">
-    - Payment success rate &lt; 95% - Gateway API errors &gt; 5% - Signature
-    verification failures spike - Settlement delays &gt; 5 minutes - API key
-    approaching rate limit - Facilitator wallet low balance - Blockchain network
-    congestion
-  </Card>
+{" "}
+<Card title="Alerting Triggers" icon="bell">
+  - Payment success rate &lt; 95% - Gateway API errors &gt; 5% - Signature
+  verification failures spike - Settlement delays &gt; 5 minutes - API key
+  approaching rate limit - Facilitator wallet low balance - Blockchain network
+  congestion
+</Card>
 
-  <Card title="Logging Best Practices" icon="file-lines">
-    - Log all payment attempts - Include request IDs for tracing - Never log API
-    keys or signatures - Structured logging (JSON format) - Centralized log
-    aggregation - Retention: 90 days minimum
-  </Card>
+{" "}
+<Card title="Logging Best Practices" icon="file-lines">
+  - Log all payment attempts - Include request IDs for tracing - Never log API
+  keys or signatures - Structured logging (JSON format) - Centralized log
+  aggregation - Retention: 90 days minimum
+</Card>
 
   <Card title="Tools Integration" icon="screwdriver-wrench">
     - **Metrics:** Prometheus, Datadog, New Relic - **Logging:** ELK Stack,

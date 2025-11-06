@@ -145,8 +145,7 @@ The **Prism Express Middleware** is a drop-in solution for protecting your Node.
       prismPaymentMiddleware(
         {
           apiKey: process.env.PRISM_API_KEY,
-          useSandbox: true
-        },
+                  },
         {
           '/api/premium': {
             price: 0.01,
@@ -182,7 +181,6 @@ app.use(
   prismPaymentMiddleware(
     {
       apiKey: "dev-key-123",
-      useSandbox: true,
     },
     {
       "/api/weather": {
@@ -234,8 +232,7 @@ The first parameter to `prismPaymentMiddleware` is the global configuration:
 ```typescript
 interface PrismMiddlewareConfig {
   apiKey: string; // Required: Your Prism API key
-  useSandbox?: boolean; // Optional: Use test environment (default: true)
-  baseUrl?: string; // Optional: Custom gateway URL
+  baseUrl?: string; // Optional: Gateway URL (defaults to test environment)
   timeout?: number; // Optional: Request timeout in ms (default: 10000)
   retries?: number; // Optional: Failed request retries (default: 3)
 }
@@ -246,19 +243,16 @@ interface PrismMiddlewareConfig {
   <Tip>Store in environment variable: `process.env.PRISM_API_KEY`</Tip>
 </ParamField>
 
-<ParamField path="useSandbox" type="boolean" default="true">
-  Use sandbox environment for testing with testnet tokens - `true`: Sandbox
-  Gateway (`prism-api.test.1stdigital.tech`) - `false`: Production Gateway
-  (`prism-api.1stdigital.tech`)
-</ParamField>
-
 <ParamField path="baseUrl" type="string">
-  Custom Prism Gateway URL (overrides `useSandbox`)
+  Prism Gateway URL. Defaults to test environment.
+  
+  - Test: `https://prism-api.test.1stdigital.tech` (default)
+  - Production: `https://prism-api.1stdigital.tech`
   
   ```typescript
   {
     apiKey: 'key',
-    baseUrl: 'https://custom-gateway.example.com'
+    baseUrl: 'https://prism-api.1stdigital.tech' // Production
   }
   ```
 </ParamField>
@@ -873,7 +867,6 @@ Error: "42703: column p.ProviderId does not exist"
 ```typescript
 const config = {
   apiKey: process.env.PRISM_API_KEY,
-  useSandbox: process.env.NODE_ENV !== "production",
 };
 
 app.use(prismPaymentMiddleware(config, routes));
@@ -957,7 +950,6 @@ import {
 // Type-safe configuration
 const config: PrismMiddlewareConfig = {
   apiKey: process.env.PRISM_API_KEY!,
-  useSandbox: true,
   timeout: 15000,
 };
 
@@ -1118,7 +1110,6 @@ app.use(prismPaymentMiddleware(config, routes));
 ```typescript
 const config = {
   apiKey: process.env.PRISM_API_KEY,
-  useSandbox: true,
   timeout: 5000,
   retries: 2,
   // Use HTTP keep-alive

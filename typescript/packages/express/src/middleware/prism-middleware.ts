@@ -24,8 +24,7 @@ import {
  * ```typescript
  * app.use(prismPaymentMiddleware(
  *   {
- *     apiKey: 'dev-key-123',
- *     useSandbox: true
+ *     apiKey: 'dev-key-123'
  *   },
  *   {
  *     '/api/premium': {

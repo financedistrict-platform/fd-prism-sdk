@@ -78,10 +78,9 @@ export interface PrismMiddlewareConfig {
   // API Key for authentication with Prism Gateway
   apiKey: string;
 
-  // Use sandbox environment (test) or production
-  useSandbox?: boolean;
-
-  // Custom base URL (overrides useSandbox)
+  // Base URL for Prism Gateway (defaults to test environment)
+  // Test: https://prism-api.test.1stdigital.tech
+  // Production: https://prism-api.1stdigital.tech
   baseUrl?: string;
 }
 

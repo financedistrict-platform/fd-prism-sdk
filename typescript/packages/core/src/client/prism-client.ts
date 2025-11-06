@@ -20,17 +20,13 @@ import {
 export class PrismClient {
   private client: AxiosInstance;
   private apiKey: string;
+  private static readonly DEFAULT_BASE_URL = 'https://prism-api.test.1stdigital.tech';
 
   constructor(config: PrismMiddlewareConfig) {
     this.apiKey = config.apiKey;
 
-    // Determine base URL
-    let baseUrl = config.baseUrl;
-    if (!baseUrl) {
-      baseUrl = config.useSandbox !== false
-        ? 'https://prism-api.test.1stdigital.tech'
-        : 'https://prism-api.1stdigital.tech'; // TODO: Update with production URL when available
-    }
+    // Use provided baseUrl or default to test environment
+    const baseUrl = config.baseUrl || PrismClient.DEFAULT_BASE_URL;
 
     this.client = axios.create({
       baseURL: baseUrl,
