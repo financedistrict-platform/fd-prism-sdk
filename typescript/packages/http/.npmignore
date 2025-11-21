@@ -1,0 +1,8 @@
+src/
+examples/
+*.test.ts
+__tests__/
+tsconfig*.json
+jest.config.js
+.turbo/
+*.tsbuildinfo

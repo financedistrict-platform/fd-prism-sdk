@@ -18,3 +18,21 @@ export {
   PrismPaymentError,
   PrismValidationError
 } from './types/errors';
+
+// Export middleware core
+export {
+  PrismMiddlewareCore,
+  type MiddlewareResult,
+  type MiddlewareRequestData,
+} from './middleware';
+
+// Export utility functions
+export {
+  parsePrice,
+  findMatchingRoute,
+  build402Response,
+  buildErrorResponse,
+  buildInvalidPaymentHeaderResponse,
+  buildInvalidPaymentResponse,
+  type MiddlewareResponse,
+} from './utils';

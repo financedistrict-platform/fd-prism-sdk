@@ -83,6 +83,9 @@ export interface PrismMiddlewareConfig {
   // Production: https://prism-api.1stdigital.tech
   baseUrl?: string;
 
+  // Enable debug logging (logs requests/responses to console)
+  debug?: boolean;
+
   // INTERNAL: Optional client instance for dependency injection (used in testing)
   // When provided, middleware will use this client instead of creating new one
   client?: any;

@@ -11,6 +11,7 @@ on:
           - all
           - core
           - express
+          - http
           - fastify
           - nestjs
           - nextjs
@@ -78,6 +79,13 @@ jobs:
           npm version ${{ github.event.inputs.version_bump }} --no-git-tag-version
         working-directory: typescript
 
+      - name: Bump HTTP Version
+        if: (github.event.inputs.package == 'all' || github.event.inputs.package == 'http') && github.event.inputs.version_bump != ''
+        run: |
+          cd packages/http
+          npm version ${{ github.event.inputs.version_bump }} --no-git-tag-version
+        working-directory: typescript
+
       - name: Bump Fastify Version
         if: (github.event.inputs.package == 'all' || github.event.inputs.package == 'fastify') && github.event.inputs.version_bump != ''
         run: |
@@ -117,6 +125,13 @@ jobs:
         if: github.event.inputs.package == 'all' || github.event.inputs.package == 'express'
         run: npm publish
         working-directory: typescript/packages/express
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish HTTP Package
+        if: github.event.inputs.package == 'all' || github.event.inputs.package == 'http'
+        run: npm publish
+        working-directory: typescript/packages/http
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -178,6 +193,7 @@ jobs:
             ${{ github.event.inputs.package == 'all' && '#### All Packages Published:
             - **@1stdigital/prism-core** - Core client library
             - **@1stdigital/prism-express** - Express.js middleware
+            - **@1stdigital/prism-http** - Node.js HTTP middleware
             - **@1stdigital/prism-fastify** - Fastify plugin (placeholder)
             - **@1stdigital/prism-nestjs** - NestJS module (placeholder)
             - **@1stdigital/prism-nextjs** - Next.js middleware (placeholder)' || '' }}
@@ -191,6 +207,11 @@ jobs:
             - **@1stdigital/prism-express** - Express.js middleware for Prism payment protocol
             
             Easily integrate Prism payments into your Express.js applications.' || '' }}
+            
+            ${{ github.event.inputs.package == 'http' && '#### Node.js HTTP Middleware:
+            - **@1stdigital/prism-http** - Node.js HTTP server middleware for Prism payment protocol
+            
+            Integrate Prism payments into your raw Node.js HTTP servers.' || '' }}
             
             ${{ github.event.inputs.package == 'fastify' && '#### Fastify Plugin:
             - **@1stdigital/prism-fastify** - Fastify plugin for Prism payment protocol (Q1 2025)' || '' }}

@@ -20,10 +20,12 @@ import {
 export class PrismClient {
   private client: AxiosInstance;
   private apiKey: string;
+  private debug: boolean;
   private static readonly DEFAULT_BASE_URL = 'https://prism-api.test.1stdigital.tech';
 
   constructor(config: PrismMiddlewareConfig) {
     this.apiKey = config.apiKey;
+    this.debug = config.debug || false;
 
     // Use provided baseUrl or default to test environment
     const baseUrl = config.baseUrl || PrismClient.DEFAULT_BASE_URL;
@@ -104,12 +106,24 @@ export class PrismClient {
     request: PaymentRequirementsRequest
   ): Promise<PaymentRequiredResponse> {
     try {
+      if (this.debug) {
+        console.log('[PrismClient] getPaymentRequirements request:', JSON.stringify(request, null, 2));
+      }
+
       const response = await this.client.post<PaymentRequiredResponse>(
         '/api/v1/payment/requirements',
         request
       );
+
+      if (this.debug) {
+        console.log('[PrismClient] getPaymentRequirements response:', JSON.stringify(response.data, null, 2));
+      }
+
       return response.data;
     } catch (error: any) {
+      if (this.debug) {
+        console.log('[PrismClient] getPaymentRequirements error:', error.message);
+      }
       return this.handleError(error, 'Get payment requirements');
     }
   }
@@ -127,6 +141,13 @@ export class PrismClient {
     paymentRequirements: PaymentRequirements
   ): Promise<{ isValid: boolean; payer?: string; error?: string }> {
     try {
+      if (this.debug) {
+        console.log('[PrismClient] verifyPayment request:', {
+          paymentHeader: paymentHeader.substring(0, 50) + '...',
+          paymentRequirements: paymentRequirements
+        });
+      }
+
       const response = await this.client.post<{
         isValid: boolean;
         payer?: string;
@@ -136,8 +157,15 @@ export class PrismClient {
         paymentRequirements,
       });
 
+      if (this.debug) {
+        console.log('[PrismClient] verifyPayment response:', response.data);
+      }
+
       return response.data;
     } catch (error: any) {
+      if (this.debug) {
+        console.log('[PrismClient] verifyPayment error:', error.message);
+      }
       return this.handleError(error, 'Verify payment');
     }
   }
@@ -157,6 +185,13 @@ export class PrismClient {
     errorReason?: string;
   }> {
     try {
+      if (this.debug) {
+        console.log('[PrismClient] settlePayment request:', {
+          paymentPayload,
+          paymentRequirements
+        });
+      }
+
       const response = await this.client.post<{
         success: boolean;
         payer: string;
@@ -168,6 +203,10 @@ export class PrismClient {
         paymentRequirements,
       });
 
+      if (this.debug) {
+        console.log('[PrismClient] settlePayment response:', response.data);
+      }
+
       return {
         success: response.data.success,
         payer: response.data.payer,
@@ -176,6 +215,9 @@ export class PrismClient {
         errorReason: response.data.errorReason,
       };
     } catch (error: any) {
+      if (this.debug) {
+        console.log('[PrismClient] settlePayment error:', error.message);
+      }
       return this.handleError(error, 'Settle payment');
     }
   }
