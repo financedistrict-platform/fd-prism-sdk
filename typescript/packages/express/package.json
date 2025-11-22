@@ -19,7 +19,7 @@
     "test": "jest"
   },
   "dependencies": {
-    "@1stdigital/prism-core": "*"
+    "@1stdigital/prism-core": "^1.2.0"
   },
   "peerDependencies": {
     "express": "^4.0.0 || ^5.0.0"
