@@ -4,6 +4,7 @@ import {
   RoutesConfig,
   PaymentRequirementsRequest,
   PaymentPayload,
+  PaymentRequirements,
   ConfigurationMode,
 } from '../types';
 import {
@@ -205,22 +206,18 @@ export class PrismMiddlewareCore {
     resourceUrl: string
   ): Promise<MiddlewareResult> {
     try {
-      // Parse payment header
-      let paymentPayload: PaymentPayload;
-      try {
-        paymentPayload = JSON.parse(paymentHeader);
-        if (this.debug) {
-          console.log('[PrismMiddlewareCore] Parsed payment payload:', paymentPayload);
-        }
-      } catch (parseError) {
-        if (this.debug) {
-          console.log('[PrismMiddlewareCore] Failed to parse payment header');
-        }
+      // Decode and parse payment header
+      const paymentPayload = this.decodePaymentHeader(paymentHeader);
+      if (!paymentPayload) {
         const response = buildInvalidPaymentHeaderResponse();
         return {
           handled: true,
           ...response,
         };
+      }
+
+      if (this.debug) {
+        console.log('[PrismMiddlewareCore] Parsed payment payload:', paymentPayload);
       }
 
       // Reconstruct payment requirements for verification
@@ -239,7 +236,23 @@ export class PrismMiddlewareCore {
 
       // Get payment requirements for verification and settlement
       const paymentRequirementsResponse = await this.client.getPaymentRequirements(request);
-      const paymentRequirements = paymentRequirementsResponse.accepts[0];
+
+      // Find the payment requirement that matches the client's payment
+      const paymentRequirements = this.findMatchingPaymentRequirement(
+        paymentRequirementsResponse.accepts,
+        paymentPayload
+      );
+
+      if (!paymentRequirements) {
+        if (this.debug) {
+          console.log('[PrismMiddlewareCore] No matching payment requirement found for payment:', paymentPayload);
+        }
+        const response = buildInvalidPaymentResponse('No matching payment requirement found for the provided payment');
+        return {
+          handled: true,
+          ...response,
+        };
+      }
 
       // Verify payment with Gateway
       const verificationResult = await this.client.verifyPayment(paymentHeader, paymentRequirements);
@@ -281,20 +294,57 @@ export class PrismMiddlewareCore {
   }
 
   /**
+   * Decode and parse X-PAYMENT header (base64 encoded JSON)
+   * 
+   * @param paymentHeader - Base64 encoded payment header
+   * @returns Parsed PaymentPayload or null if invalid
+   */
+  private decodePaymentHeader(paymentHeader: string): PaymentPayload | null {
+    try {
+      // Decode base64 to string, then parse JSON
+      const decodedString = Buffer.from(paymentHeader, 'base64').toString('utf-8');
+      const paymentPayload = JSON.parse(decodedString);
+      return paymentPayload as PaymentPayload;
+    } catch (error: any) {
+      if (this.debug) {
+        console.log('[PrismMiddlewareCore] Failed to decode/parse payment header:', error.message);
+      }
+      return null;
+    }
+  }
+
+  /**
+   * Find the payment requirement that matches the client's payment
+   * 
+   * @param paymentRequirements - Array of accepted payment requirements
+   * @param paymentPayload - Payment payload from client
+   * @returns Matching payment requirement or undefined if no match
+   */
+  private findMatchingPaymentRequirement(
+    paymentRequirements: PaymentRequirements[],
+    paymentPayload: PaymentPayload
+  ): PaymentRequirements | undefined {
+    return paymentRequirements.find(
+      (req) => req.scheme === paymentPayload.scheme && req.network === paymentPayload.network && paymentPayload.asset === req.asset
+    );
+  }
+
+  /**
    * Settlement callback - call this after successful response
    * 
    * @param paymentPayload - Payment payload
    * @param paymentRequirements - Payment requirements
    * @param statusCode - Response status code
+   * @returns Settlement result with transaction hash if successful
    */
   async settlementCallback(
     paymentPayload: PaymentPayload,
     paymentRequirements: any,
     statusCode: number
-  ): Promise<void> {
+  ): Promise<{ success: boolean; transaction?: string; payer?: string; network?: string; errorReason?: string } | null> {
     // Only settle if response was successful (< 400)
     if (statusCode >= 400) {
-      return;
+      return null;
     }
 
     try {
@@ -307,8 +357,11 @@ export class PrismMiddlewareCore {
       } else if (settlementResult.errorReason) {
         console.error('Settlement failed:', settlementResult.errorReason);
       }
+
+      return settlementResult;
     } catch (error: any) {
       console.error('Error during settlement:', error);
+      return null;
     }
   }
 }

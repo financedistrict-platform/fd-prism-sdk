@@ -69,6 +69,9 @@ export interface PaymentPayload {
 
   // payload is scheme dependent
   payload: any;
+
+  // Our custom extension: asset being used in format: 0x036cbd53842c5426634e7929541ec2318f3dcf7e (EIP-3009 compliant ERC20 contract)
+  asset: string;
 }
 
 /**

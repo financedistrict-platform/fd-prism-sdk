@@ -113,27 +113,66 @@ export function prismPaymentMiddleware(
 
       // Set up response interception for settlement
       const originalEnd = res.end.bind(res);
+      const originalWriteHead = res.writeHead.bind(res);
       let endCalled = false;
+      let settlementDone = false;
+      let transactionHash: string | undefined;
 
-      res.end = function (chunk?: any, encodingOrCallback?: any, callback?: any): any {
+      // Intercept writeHead to add X-PAYMENT-RESPONSE header if available
+      res.writeHead = function (statusCode: number, statusMessage?: any, headers?: any): any {
+        // Handle both writeHead(statusCode, headers) and writeHead(statusCode, statusMessage, headers)
+        let finalHeaders = headers;
+        if (typeof statusMessage === 'object' && !headers) {
+          finalHeaders = statusMessage;
+        }
+
+        // Add transaction hash header if settlement completed
+        if (settlementDone && transactionHash) {
+          if (!finalHeaders) {
+            finalHeaders = {};
+          }
+          finalHeaders['X-PAYMENT-RESPONSE'] = transactionHash;
+        }
+
+        if (typeof statusMessage === 'string') {
+          return originalWriteHead(statusCode, statusMessage, finalHeaders);
+        } else {
+          return originalWriteHead(statusCode, finalHeaders);
+        }
+      };
+
+      res.end = async function (chunk?: any, encodingOrCallback?: any, callback?: any): Promise<any> {
         if (endCalled) {
           return originalEnd(chunk, encodingOrCallback, callback);
         }
         endCalled = true;
 
-        // Trigger settlement callback after response is sent
-        setImmediate(() => {
-          core.settlementCallback(
-            result.paymentInfo!.payment,
-            result.paymentInfo!.paymentRequirements,
-            res.statusCode
-          ).catch((err: any) => {
-            console.error('Settlement callback error:', err);
-          });
-        });
+        // Perform settlement BEFORE sending response (if status < 400)
+        if (res.statusCode < 400) {
+          try {
+            const settlementResult = await core.settlementCallback(
+              result.paymentInfo!.payment,
+              result.paymentInfo!.paymentRequirements,
+              res.statusCode
+            );
+
+            if (settlementResult && settlementResult.success && settlementResult.transaction) {
+              transactionHash = settlementResult.transaction;
+              settlementDone = true;
+
+              // If writeHead wasn't called yet, add header now
+              if (!res.headersSent) {
+                res.setHeader('X-PAYMENT-RESPONSE', transactionHash);
+              }
+            }
+          } catch (err: any) {
+            console.error('Settlement error:', err);
+            // Continue sending response even if settlement fails
+          }
+        }
 
         return originalEnd(chunk, encodingOrCallback, callback);
-      };
+      } as any;
     }
 
     // Allow request to continue (payment verified or route not protected)
