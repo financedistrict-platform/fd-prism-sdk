@@ -255,7 +255,7 @@ export class PrismMiddlewareCore {
       }
 
       // Verify payment with Gateway
-      const verificationResult = await this.client.verifyPayment(paymentHeader, paymentRequirements);
+      const verificationResult = await this.client.verifyPayment(paymentPayload, paymentRequirements);
 
       if (!verificationResult.isValid) {
         if (this.debug) {

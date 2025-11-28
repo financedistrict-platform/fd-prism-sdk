@@ -132,19 +132,19 @@ export class PrismClient {
    * Verify a payment payload
    * Verifies the cryptographic signature and payment authorization
    * 
-   * @param paymentHeader - Base64-encoded X-PAYMENT header value
+   * @param paymentPayload - Decoded payment payload from X-PAYMENT header
    * @param paymentRequirements - Payment requirements for validation
    * @returns Verification result with payer address if valid
    */
   async verifyPayment(
-    paymentHeader: string,
+    paymentPayload: PaymentPayload,
     paymentRequirements: PaymentRequirements
   ): Promise<{ isValid: boolean; payer?: string; error?: string }> {
     try {
       if (this.debug) {
         console.log('[PrismClient] verifyPayment request:', {
-          paymentHeader: paymentHeader.substring(0, 50) + '...',
-          paymentRequirements: paymentRequirements
+          paymentPayload,
+          paymentRequirements
         });
       }
 
@@ -153,7 +153,7 @@ export class PrismClient {
         payer?: string;
         error?: string;
       }>('/api/v1/payment/verify', {
-        paymentHeader,
+        paymentPayload,
         paymentRequirements,
       });
 

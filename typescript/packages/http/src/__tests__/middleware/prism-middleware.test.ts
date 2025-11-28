@@ -234,6 +234,7 @@ describe('prismPaymentMiddleware (HTTP)', () => {
         x402Version: 1,
         scheme: 'eip3009',
         network: '1',
+        asset: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
         payload: {
           from: '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb',
           to: '0x1234567890123456789012345678901234567890',
@@ -288,7 +289,7 @@ describe('prismPaymentMiddleware (HTTP)', () => {
         method: 'GET',
         path: '/api/premium',
         headers: {
-          'X-PAYMENT': JSON.stringify(mockPayment),
+          'X-PAYMENT': Buffer.from(JSON.stringify(mockPayment)).toString('base64'),
         },
       });
 
@@ -348,7 +349,7 @@ describe('prismPaymentMiddleware (HTTP)', () => {
         method: 'GET',
         path: '/api/premium',
         headers: {
-          'X-PAYMENT': JSON.stringify({ invalid: 'payment' }),
+          'X-PAYMENT': Buffer.from(JSON.stringify({ invalid: 'payment' })).toString('base64'),
         },
       });
 

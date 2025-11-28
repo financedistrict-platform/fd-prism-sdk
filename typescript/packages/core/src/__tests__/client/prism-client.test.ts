@@ -59,7 +59,8 @@ describe('PrismClient', () => {
 
   describe('getAuthInfo', () => {
     const client = new PrismClient({
-      apiKey: API_KEY,    });
+      apiKey: API_KEY,
+    });
 
     it('should return auth info on successful request', async () => {
       const mockAuthInfo = {
@@ -152,7 +153,8 @@ describe('PrismClient', () => {
 
   describe('getPaymentRequirements', () => {
     const client = new PrismClient({
-      apiKey: API_KEY,    });
+      apiKey: API_KEY,
+    });
 
     it('should return payment requirements on successful request', async () => {
       const request = {
@@ -286,10 +288,17 @@ describe('PrismClient', () => {
 
   describe('verifyPayment', () => {
     const client = new PrismClient({
-      apiKey: API_KEY,    });
+      apiKey: API_KEY,
+    });
 
     it('should return valid payment verification', async () => {
-      const paymentHeader = 'base64-encoded-payment-header';
+      const paymentPayload = {
+        x402Version: 1,
+        scheme: 'eip3009',
+        network: '1',
+        asset: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
+        payload: { authorization: '0xsignature123' },
+      };
       const paymentRequirements = {
         scheme: 'eip3009',
         network: '1',
@@ -310,13 +319,13 @@ describe('PrismClient', () => {
 
       nock(TEST_URL)
         .post('/api/v1/payment/verify', {
-          paymentHeader,
+          paymentPayload,
           paymentRequirements,
         })
         .reply(200, mockVerifyResponse);
 
       const result = await client.verifyPayment(
-        paymentHeader,
+        paymentPayload,
         paymentRequirements
       );
 
@@ -326,7 +335,13 @@ describe('PrismClient', () => {
     });
 
     it('should return invalid payment verification', async () => {
-      const paymentHeader = 'invalid-payment-header';
+      const paymentPayload = {
+        x402Version: 1,
+        scheme: 'eip3009',
+        network: '1',
+        asset: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
+        payload: { authorization: 'invalid-signature' },
+      };
       const paymentRequirements = {
         scheme: 'eip3009',
         network: '1',
@@ -350,7 +365,7 @@ describe('PrismClient', () => {
         .reply(200, mockVerifyResponse);
 
       const result = await client.verifyPayment(
-        paymentHeader,
+        paymentPayload,
         paymentRequirements
       );
 
@@ -359,7 +374,13 @@ describe('PrismClient', () => {
     });
 
     it('should throw PrismGatewayError on 400 Bad Request', async () => {
-      const paymentHeader = 'malformed-header';
+      const paymentPayload = {
+        x402Version: 1,
+        scheme: 'eip3009',
+        network: '1',
+        asset: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
+        payload: {},
+      };
       const paymentRequirements = {} as any; // Incomplete requirements
 
       nock(TEST_URL)
@@ -369,7 +390,7 @@ describe('PrismClient', () => {
         });
 
       try {
-        await client.verifyPayment(paymentHeader, paymentRequirements);
+        await client.verifyPayment(paymentPayload, paymentRequirements);
       } catch (error: any) {
         expect(error).toBeInstanceOf(PrismGatewayError);
         expect(error.statusCode).toBe(400);
@@ -377,7 +398,13 @@ describe('PrismClient', () => {
     });
 
     it('should throw PrismGatewayError on 500 Internal Error', async () => {
-      const paymentHeader = 'payment-header';
+      const paymentPayload = {
+        x402Version: 1,
+        scheme: 'eip3009',
+        network: '1',
+        asset: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
+        payload: { authorization: '0xsig' },
+      };
       const paymentRequirements = {
         scheme: 'eip3009',
         network: '1',
@@ -399,7 +426,7 @@ describe('PrismClient', () => {
       });
 
       try {
-        await client.verifyPayment(paymentHeader, paymentRequirements);
+        await client.verifyPayment(paymentPayload, paymentRequirements);
       } catch (error: any) {
         expect(error).toBeInstanceOf(PrismGatewayError);
         expect(error.statusCode).toBe(500);
@@ -408,7 +435,13 @@ describe('PrismClient', () => {
     });
 
     it('should throw PrismNetworkError on network error', async () => {
-      const paymentHeader = 'payment-header';
+      const paymentPayload = {
+        x402Version: 1,
+        scheme: 'eip3009',
+        network: '1',
+        asset: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
+        payload: { authorization: '0xsig' },
+      };
       const paymentRequirements = {
         scheme: 'eip3009',
         network: '1',
@@ -428,7 +461,7 @@ describe('PrismClient', () => {
       });
 
       try {
-        await client.verifyPayment(paymentHeader, paymentRequirements);
+        await client.verifyPayment(paymentPayload, paymentRequirements);
       } catch (error: any) {
         expect(error).toBeInstanceOf(PrismNetworkError);
         expect(error.statusCode).toBe(503);
@@ -438,13 +471,15 @@ describe('PrismClient', () => {
 
   describe('settlePayment', () => {
     const client = new PrismClient({
-      apiKey: API_KEY,    });
+      apiKey: API_KEY,
+    });
 
     it('should return successful settlement', async () => {
       const paymentPayload = {
         x402Version: 1,
         scheme: 'eip3009',
         network: '1',
+        asset: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
         payload: {
           authorization: '0xsignature123',
           validAfter: 0,
@@ -494,6 +529,7 @@ describe('PrismClient', () => {
         x402Version: 1,
         scheme: 'eip3009',
         network: '1',
+        asset: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
         payload: {
           authorization: '0xinvalidsignature',
           validAfter: 0,
@@ -571,6 +607,7 @@ describe('PrismClient', () => {
         x402Version: 1,
         scheme: 'eip3009',
         network: '1',
+        asset: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
         payload: {
           authorization: '0xsignature123',
           validAfter: 0,
@@ -612,6 +649,7 @@ describe('PrismClient', () => {
         x402Version: 1,
         scheme: 'eip3009',
         network: '1',
+        asset: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
         payload: {
           authorization: '0xsignature123',
           validAfter: 0,

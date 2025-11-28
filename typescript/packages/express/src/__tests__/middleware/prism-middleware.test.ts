@@ -194,6 +194,7 @@ describe('prismPaymentMiddleware', () => {
           x402Version: 1,
           scheme: 'eip3009',
           network: '1',
+          asset: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
           payload: { authorization: '0xsignature123' },
         })
       ).toString('base64');
@@ -259,6 +260,7 @@ describe('prismPaymentMiddleware', () => {
           x402Version: 1,
           scheme: 'eip3009',
           network: '1',
+          asset: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
           payload: { authorization: '0xinvalidsignature' },
         })
       ).toString('base64');
