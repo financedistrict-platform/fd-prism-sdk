@@ -69,23 +69,44 @@ export function prismPaymentMiddleware(
       // Store payment info in res.locals for route handler access
       res.locals.payment = result.paymentInfo.payment;
       res.locals.payer = result.paymentInfo.payer;
+
+      // Intercept res.end() to perform settlement before sending response
+      const originalEnd = res.end.bind(res);
+      let endCalled = false;
+
+      res.end = async function (chunk?: any, encodingOrCallback?: any, callback?: any): Promise<any> {
+        if (endCalled) {
+          return originalEnd(chunk, encodingOrCallback, callback);
+        }
+        endCalled = true;
+
+        // Perform settlement BEFORE sending response (if status < 400)
+        if (res.statusCode < 400) {
+          try {
+            const settlementResult = await core.settlementCallback(
+              result.paymentInfo!.payment,
+              result.paymentInfo!.paymentRequirements,
+              res.statusCode
+            );
+
+            if (settlementResult && settlementResult.success && settlementResult.transaction) {
+              // Set header before sending response
+              if (!res.headersSent) {
+                res.setHeader('X-PAYMENT-RESPONSE', settlementResult.transaction);
+              }
+            }
+          } catch (error: any) {
+            console.error('Settlement error:', error);
+            // Continue sending response even if settlement fails
+          }
+        }
+
+        return originalEnd(chunk, encodingOrCallback, callback);
+      } as any;
     }
 
     // Execute the route handler
+    // eslint-disable-next-line @typescript-eslint/await-thenable
     await next();
-
-    // After successful response, settle the payment if there was one
-    if (result.paymentInfo && res.statusCode < 400) {
-      const settlementResult = await core.settlementCallback(
-        result.paymentInfo.payment,
-        result.paymentInfo.paymentRequirements,
-        res.statusCode
-      );
-
-      if (settlementResult && settlementResult.success && settlementResult.transaction) {
-        // Add payment response header with transaction hash
-        res.setHeader('X-PAYMENT-RESPONSE', settlementResult.transaction);
-      }
-    }
   };
 }
