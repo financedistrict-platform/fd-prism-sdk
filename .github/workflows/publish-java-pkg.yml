@@ -45,7 +45,11 @@ jobs:
           server-id: github
           server-username: MAVEN_USERNAME
           server-password: MAVEN_TOKEN
-
+      - name: Install Maven
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y maven
+          mvn --version
       - name: Build with Maven
         run: mvn clean compile
         working-directory: java

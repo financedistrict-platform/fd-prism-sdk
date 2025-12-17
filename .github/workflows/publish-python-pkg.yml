@@ -38,19 +38,22 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Setup Python 3.11
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
+      - name: Setup Python
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3 python3-pip python3-venv
+          python3 --version
 
       - name: Install Poetry
         run: |
           curl -sSL https://install.python-poetry.org | python3 -
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          export PATH="$HOME/.local/bin:$PATH"
+          poetry --version
 
       - name: Install dependencies
         run: |
           cd python
+          export PATH="$HOME/.local/bin:$PATH"
           poetry install
 
       - name: Run tests
@@ -69,13 +72,14 @@ jobs:
       - name: Bump Core Version
         if: (github.event.inputs.package == 'all' || github.event.inputs.package == 'core') && github.event.inputs.version_bump != ''
         run: |
+          export PATH="$HOME/.local/bin:$PATH"
           cd packages/core
           poetry version ${{ github.event.inputs.version_bump }}
         working-directory: python
 
       - name: Bump Flask Version
         if: (github.event.inputs.package == 'all' || github.event.inputs.package == 'flask') && github.event.inputs.version_bump != ''
-        run: |
+        ruexport PATH="$HOME/.local/bin:$PATH"
           cd packages/flask
           poetry version ${{ github.event.inputs.version_bump }}
         working-directory: python
@@ -83,12 +87,15 @@ jobs:
       - name: Bump FastAPI Version
         if: (github.event.inputs.package == 'all' || github.event.inputs.package == 'fastapi') && github.event.inputs.version_bump != ''
         run: |
+          export PATH="$HOME/.local/bin:$PATH"
           cd packages/fastapi
           poetry version ${{ github.event.inputs.version_bump }}
         working-directory: python
 
       - name: Bump Django Version
         if: (github.event.inputs.package == 'all' || github.event.inputs.package == 'django') && github.event.inputs.version_bump != ''
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"ithub.event.inputs.package == 'all' || github.event.inputs.package == 'django') && github.event.inputs.version_bump != ''
         run: |
           cd packages/django
           poetry version ${{ github.event.inputs.version_bump }}
@@ -101,9 +108,7 @@ jobs:
           git commit -m "chore: bump Python ${{ github.event.inputs.package }} package(s) to ${{ github.event.inputs.version_bump }}" || echo "No changes to commit"
           git push origin HEAD:${{ github.ref_name }}
 
-      - name: Build & Publish Core Package
-        if: github.event.inputs.package == 'all' || github.event.inputs.package == 'core'
-        run: |
+      - naexport PATH="$HOME/.local/bin:$PATH"
           poetry build
           poetry publish --username __token__ --password ${{ secrets.PYPI_TOKEN }}
         working-directory: python/packages/core
@@ -111,6 +116,7 @@ jobs:
       - name: Build & Publish Flask Package
         if: github.event.inputs.package == 'all' || github.event.inputs.package == 'flask'
         run: |
+          export PATH="$HOME/.local/bin:$PATH"
           poetry build
           poetry publish --username __token__ --password ${{ secrets.PYPI_TOKEN }}
         working-directory: python/packages/flask
@@ -118,6 +124,7 @@ jobs:
       - name: Build & Publish FastAPI Package
         if: github.event.inputs.package == 'all' || github.event.inputs.package == 'fastapi'
         run: |
+          export PATH="$HOME/.local/bin:$PATH"
           poetry build
           poetry publish --username __token__ --password ${{ secrets.PYPI_TOKEN }}
         working-directory: python/packages/fastapi
@@ -125,11 +132,16 @@ jobs:
       - name: Build & Publish Django Package
         if: github.event.inputs.package == 'all' || github.event.inputs.package == 'django'
         run: |
+          export PATH="$HOME/.local/bin:$PATH"
+      - name: Build & Publish Django Package
+        if: github.event.inputs.package == 'all' || github.event.inputs.package == 'django'
+        run: |
           poetry build
           poetry publish --username __token__ --password ${{ secrets.PYPI_TOKEN }}
         working-directory: python/packages/django
 
-      - name: Get Package Version
+      - naexport PATH="$HOME/.local/bin:$PATH"
+          me: Get Package Version
         if: github.event.inputs.version_bump != ''
         id: package_version
         run: |
