@@ -68,10 +68,14 @@ jobs:
         if: github.event.inputs.version_bump != ''
         id: version_calc
         run: |
-          CURRENT_VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout | grep -v '\[')
+          CURRENT_VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout 2>/dev/null | tail -n 1)
+          echo "Current version: $CURRENT_VERSION"
           echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
 
-          IFS='.' read -r MAJOR MINOR PATCH <<< "${CURRENT_VERSION%-SNAPSHOT}"
+          VERSION_NO_SNAPSHOT="${CURRENT_VERSION%-SNAPSHOT}"
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION_NO_SNAPSHOT"
+
+          echo "Parsed: MAJOR=$MAJOR MINOR=$MINOR PATCH=$PATCH"
 
           case "${{ github.event.inputs.version_bump }}" in
             major)
@@ -85,6 +89,7 @@ jobs:
               ;;
           esac
 
+          echo "New version: $NEW_VERSION"
           echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
         working-directory: java
 
