@@ -1,0 +1,21 @@
+[tool.poetry]
+name = "prism-fastapi"
+version = "1.0.0"
+description = "Prism SDK - FastAPI middleware"
+authors = ["FD Technologies <engineering@1stdigital.tech>"]
+readme = "README.md"
+packages = [{include = "prism_fastapi"}]
+
+[tool.poetry.dependencies]
+python = "^3.8"
+prism-sdk-core = {path = "../core", develop = true}
+fastapi = "^0.100.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.4.0"
+pytest-asyncio = "^0.21.0"
+httpx = "^0.24.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

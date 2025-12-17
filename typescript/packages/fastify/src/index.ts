@@ -1,19 +1,23 @@
 /**
  * @1stdigital/prism-fastify
  * Fastify plugin for Prism payment protocol
- * 
- * @status COMING SOON - Q1 2025
  */
 
 import type { FastifyPluginAsync, FastifyRequest, FastifyReply } from 'fastify';
-import type { PrismMiddlewareConfig, RoutePaymentConfig } from '@1stdigital/prism-core';
+import fp from 'fastify-plugin';
+import {
+  PrismMiddlewareCore,
+  type PrismMiddlewareConfig,
+  type RoutesConfig,
+} from '@1stdigital/prism-core';
 
 export interface PrismFastifyOptions extends PrismMiddlewareConfig {
-  routes: Record<string, RoutePaymentConfig>;
+  routes: RoutesConfig;
 }
 
 /**
  * Prism payment plugin for Fastify
+ * 
  * @example
  * ```typescript
  * import Fastify from 'fastify';
@@ -22,23 +26,100 @@ export interface PrismFastifyOptions extends PrismMiddlewareConfig {
  * const app = Fastify();
  * 
  * await app.register(prismPlugin, {
- *   apiKey: 'your-api-key',
- *   // Defaults to test environment,
+ *   apiKey: 'dev-key-123',
  *   routes: {
- *     '/api/paid': { price: 0.01, description: 'Paid endpoint' }
+ *     '/api/premium': { price: 0.01, description: 'Premium API' }
  *   }
  * });
  * ```
  */
-const prismPlugin: FastifyPluginAsync<PrismFastifyOptions> = async (fastify, options) => {
-  // TODO: Implement Fastify plugin
-  fastify.log.info('Prism Fastify plugin is not yet implemented');
+const prismPluginCore: FastifyPluginAsync<PrismFastifyOptions> = async (fastify, options) => {
+  const { routes, ...config } = options;
 
-  // Placeholder hook
+  // Create middleware core instance
+  const core = new PrismMiddlewareCore(config, routes);
+
+  // Store payment info per request
+  const requestPaymentInfo = new WeakMap<FastifyRequest, any>();
+
+  // Add onRequest hook for payment verification
   fastify.addHook('onRequest', async (request: FastifyRequest, reply: FastifyReply) => {
-    // TODO: Implement payment verification logic
+    // Construct resource URL
+    const protocol = request.protocol;
+    const host = request.hostname;
+    const resourceUrl = `${protocol}://${host}${request.url}`;
+
+    // Get payment header
+    const paymentHeader = request.headers['x-payment'] as string | undefined;
+
+    // Process request through middleware core
+    const result = await core.handleRequest({
+      path: request.routerPath || request.url.split('?')[0],
+      paymentHeader,
+      resourceUrl,
+    });
+
+    // If middleware handled the request (returned error or 402)
+    if (result.handled) {
+      // Set headers
+      if (result.headers) {
+        Object.entries(result.headers).forEach(([key, value]) => {
+          reply.header(key, value);
+        });
+      }
+
+      reply.code(result.statusCode!).send(result.body);
+      return;
+    }
+
+    // Payment verified or route not protected
+    if (result.paymentInfo) {
+      // Store payment info in request for route handler access
+      (request as any).payment = result.paymentInfo.payment;
+      (request as any).payer = result.paymentInfo.payer;
+
+      // Store for onSend hook
+      requestPaymentInfo.set(request, result.paymentInfo);
+    }
   });
+
+  // Add onSend hook for settlement after successful response
+  fastify.addHook('onSend', async (request: FastifyRequest, reply: FastifyReply, payload) => {
+    const paymentInfo = requestPaymentInfo.get(request);
+
+    // Perform settlement BEFORE sending response (if status < 400)
+    if (paymentInfo && reply.statusCode < 400) {
+      try {
+        const settlementResult = await core.settlementCallback(
+          paymentInfo.payment,
+          paymentInfo.paymentRequirements,
+          reply.statusCode
+        );
+
+        if (settlementResult && settlementResult.success && settlementResult.transaction) {
+          reply.header('X-PAYMENT-RESPONSE', settlementResult.transaction);
+        }
+      } catch (error: any) {
+        fastify.log.error('Settlement error:', error);
+        // Continue sending response even if settlement fails
+      }
+
+      // Clean up
+      requestPaymentInfo.delete(request);
+    }
+
+    return payload;
+  });
+
+  // Add decorators for accessing payment info in routes
+  fastify.decorateRequest('payment', null);
+  fastify.decorateRequest('payer', null);
 };
+
+const prismPlugin = fp(prismPluginCore, {
+  fastify: '4.x',
+  name: '@1stdigital/prism-fastify',
+});
 
 export default prismPlugin;
 export { prismPlugin };
