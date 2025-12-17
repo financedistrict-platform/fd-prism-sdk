@@ -1,0 +1,4 @@
+META-INF/spring-configuration-metadata.json
+org/fdtech/prism/spring/PrismAutoConfiguration.class
+org/fdtech/prism/spring/PrismProperties.class
+org/fdtech/prism/spring/PrismProperties$RouteConfig.class
