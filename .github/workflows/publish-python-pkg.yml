@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       package:
-        description: "Package to publish"
+        description: 'Package to publish'
         required: true
         type: choice
         options:
@@ -14,9 +14,9 @@ on:
           - fastapi
           - django
       version_bump:
-        description: "Version bump type"
+        description: 'Version bump type'
         required: false
-        default: "patch"
+        default: 'patch'
         type: choice
         options:
           - patch
