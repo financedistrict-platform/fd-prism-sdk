@@ -89,7 +89,7 @@ export class PrismPaymentGuard implements CanActivate {
   constructor(
     private reflector: Reflector,
     @Inject('PRISM_CORE') private core: PrismMiddlewareCore,
-  ) {}
+  ) { }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     // Get payment config from decorator
@@ -171,9 +171,31 @@ export class PrismPaymentGuard implements CanActivate {
               if (!response.headersSent) {
                 response.setHeader('X-PAYMENT-RESPONSE', settlementResult.transaction);
               }
+            } else if (settlementResult && !settlementResult.success) {
+              // Settlement failed - DO NOT send data, return 402 Payment Required
+              console.error('Settlement failed:', settlementResult.errorReason || 'Unknown error');
+              if (!response.headersSent) {
+                response.status(402);
+                response.setHeader('Content-Type', 'application/json');
+              }
+              return originalEnd(JSON.stringify({
+                x402Version: 1,
+                error: 'Payment settlement failed',
+                details: settlementResult.errorReason || 'Payment could not be settled. Please try again.',
+              }));
             }
           } catch (error: any) {
             console.error('Settlement error:', error);
+            // Settlement error - DO NOT send data, return 500 error
+            if (!response.headersSent) {
+              response.status(500);
+              response.setHeader('Content-Type', 'application/json');
+            }
+            return originalEnd(JSON.stringify({
+              x402Version: 1,
+              error: 'Settlement processing error',
+              details: 'An error occurred while settling the payment. Please try again.',
+            }));
           }
         }
 
@@ -190,7 +212,7 @@ export class PrismPaymentGuard implements CanActivate {
  */
 @Injectable()
 export class PrismPaymentMiddleware implements NestMiddleware {
-  constructor(@Inject('PRISM_CORE') private core: PrismMiddlewareCore) {}
+  constructor(@Inject('PRISM_CORE') private core: PrismMiddlewareCore) { }
 
   async use(req: Request, res: Response, next: NextFunction) {
     const resourceUrl = `${req.protocol}://${req.get('host')}${req.originalUrl}`;
@@ -236,9 +258,31 @@ export class PrismPaymentMiddleware implements NestMiddleware {
               if (!res.headersSent) {
                 res.setHeader('X-PAYMENT-RESPONSE', settlementResult.transaction);
               }
+            } else if (settlementResult && !settlementResult.success) {
+              // Settlement failed - DO NOT send data, return 402 Payment Required
+              console.error('Settlement failed:', settlementResult.errorReason || 'Unknown error');
+              if (!res.headersSent) {
+                res.status(402);
+                res.setHeader('Content-Type', 'application/json');
+              }
+              return originalEnd(JSON.stringify({
+                x402Version: 1,
+                error: 'Payment settlement failed',
+                details: settlementResult.errorReason || 'Payment could not be settled. Please try again.',
+              }));
             }
           } catch (error: any) {
             console.error('Settlement error:', error);
+            // Settlement error - DO NOT send data, return 500 error
+            if (!res.headersSent) {
+              res.status(500);
+              res.setHeader('Content-Type', 'application/json');
+            }
+            return originalEnd(JSON.stringify({
+              x402Version: 1,
+              error: 'Settlement processing error',
+              details: 'An error occurred while settling the payment. Please try again.',
+            }));
           }
         }
 

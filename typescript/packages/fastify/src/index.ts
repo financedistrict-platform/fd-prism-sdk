@@ -98,10 +98,29 @@ const prismPluginCore: FastifyPluginAsync<PrismFastifyOptions> = async (fastify,
 
         if (settlementResult && settlementResult.success && settlementResult.transaction) {
           reply.header('X-PAYMENT-RESPONSE', settlementResult.transaction);
+        } else if (settlementResult && !settlementResult.success) {
+          // Settlement failed - DO NOT send data, return 402 Payment Required
+          fastify.log.error('Settlement failed:', settlementResult.errorReason || 'Unknown error');
+          reply.code(402);
+          reply.header('Content-Type', 'application/json');
+          requestPaymentInfo.delete(request);
+          return JSON.stringify({
+            x402Version: 1,
+            error: 'Payment settlement failed',
+            details: settlementResult.errorReason || 'Payment could not be settled. Please try again.',
+          });
         }
       } catch (error: any) {
         fastify.log.error('Settlement error:', error);
-        // Continue sending response even if settlement fails
+        // Settlement error - DO NOT send data, return 500 error
+        reply.code(500);
+        reply.header('Content-Type', 'application/json');
+        requestPaymentInfo.delete(request);
+        return JSON.stringify({
+          x402Version: 1,
+          error: 'Settlement processing error',
+          details: 'An error occurred while settling the payment. Please try again.',
+        });
       }
 
       // Clean up

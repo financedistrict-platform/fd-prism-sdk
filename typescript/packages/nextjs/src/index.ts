@@ -121,7 +121,7 @@ export function withPrismPayment(
   routeConfig: RoutePaymentConfig,
   middlewareConfig: PrismMiddlewareConfig
 ): (request: Request, context?: any) => Promise<Response> {
-  const core = new PrismMiddlewareCore(middlewareConfig, { 
+  const core = new PrismMiddlewareCore(middlewareConfig, {
     ['']: routeConfig // Single route config
   });
 
@@ -157,14 +157,41 @@ export function withPrismPayment(
     // Settlement callback after response (only if status < 400)
     if (result.paymentInfo && response.status < 400) {
       try {
-        await core.settlementCallback(
+        const settlementResult = await core.settlementCallback(
           result.paymentInfo.payment,
           result.paymentInfo.paymentRequirements,
           response.status
         );
+
+        if (settlementResult && !settlementResult.success) {
+          // Settlement failed - DO NOT return data, return 402 Payment Required
+          console.error('Settlement failed:', settlementResult.errorReason || 'Unknown error');
+          return new Response(
+            JSON.stringify({
+              x402Version: 1,
+              error: 'Payment settlement failed',
+              details: settlementResult.errorReason || 'Payment could not be settled. Please try again.',
+            }),
+            {
+              status: 402,
+              headers: { 'Content-Type': 'application/json' },
+            }
+          );
+        }
       } catch (error) {
         console.error('Settlement error:', error);
-        // Continue returning response even if settlement fails
+        // Settlement error - DO NOT return data, return 500 error
+        return new Response(
+          JSON.stringify({
+            x402Version: 1,
+            error: 'Settlement processing error',
+            details: 'An error occurred while settling the payment. Please try again.',
+          }),
+          {
+            status: 500,
+            headers: { 'Content-Type': 'application/json' },
+          }
+        );
       }
     }
 

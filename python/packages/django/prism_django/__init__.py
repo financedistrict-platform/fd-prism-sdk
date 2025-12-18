@@ -110,10 +110,24 @@ class PrismPaymentMiddleware:
                 
                 if settlement_result.get('success') and settlement_result.get('transaction'):
                     response['X-Payment-Response'] = settlement_result['transaction']
+                elif settlement_result and not settlement_result.get('success'):
+                    # Settlement failed - DO NOT send data, return 402 Payment Required
+                    error_reason = settlement_result.get('errorReason', 'Unknown error')
+                    print(f"[Prism] Settlement failed: {error_reason}")
+                    return JsonResponse({
+                        'x402Version': 1,
+                        'error': 'Payment settlement failed',
+                        'details': error_reason or 'Payment could not be settled. Please try again.'
+                    }, status=402)
             except Exception as e:
                 if self.config.debug:
                     print(f"[Prism] Settlement error: {e}")
-                # Continue sending response even if settlement fails
+                # Settlement error - DO NOT send data, return 500 error
+                return JsonResponse({
+                    'x402Version': 1,
+                    'error': 'Settlement processing error',
+                    'details': 'An error occurred while settling the payment. Please try again.'
+                }, status=500)
         
         return response
 
