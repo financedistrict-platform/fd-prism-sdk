@@ -164,9 +164,10 @@ export function prismPaymentMiddleware(
               if (!res.headersSent) {
                 res.setHeader('X-PAYMENT-RESPONSE', transactionHash);
               }
-            } else if (settlementResult && !settlementResult.success) {
-              // Settlement failed - DO NOT send data, return 402 Payment Required
-              console.error('Settlement failed:', settlementResult.errorReason || 'Unknown error');
+            } else if (!settlementResult || (settlementResult && !settlementResult.success)) {
+              // Settlement failed or returned null - DO NOT send data, return 402 Payment Required
+              const errorReason = settlementResult?.errorReason || 'Settlement processing failed';
+              console.error('Settlement failed:', errorReason);
               if (!res.headersSent) {
                 res.statusCode = 402;
                 res.setHeader('Content-Type', 'application/json');
@@ -174,7 +175,7 @@ export function prismPaymentMiddleware(
               return originalEnd(JSON.stringify({
                 x402Version: 1,
                 error: 'Payment settlement failed',
-                details: settlementResult.errorReason || 'Payment could not be settled. Please try again.',
+                details: errorReason,
               }), encodingOrCallback, callback);
             }
           } catch (err: any) {

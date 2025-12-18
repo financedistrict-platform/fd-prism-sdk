@@ -165,15 +165,32 @@ export function withPrismPayment(
 
         if (settlementResult && !settlementResult.success) {
           // Settlement failed - DO NOT return data, return 402 Payment Required
-          console.error('Settlement failed:', settlementResult.errorReason || 'Unknown error');
+          const errorReason = settlementResult.errorReason || 'Settlement processing failed';
+          console.error('Settlement failed:', errorReason);
           return new Response(
             JSON.stringify({
               x402Version: 1,
               error: 'Payment settlement failed',
-              details: settlementResult.errorReason || 'Payment could not be settled. Please try again.',
+              details: errorReason,
             }),
             {
               status: 402,
+              headers: { 'Content-Type': 'application/json' },
+            }
+          );
+        }
+
+        if (!settlementResult) {
+          // Settlement returned null (exception) - DO NOT return data, return 500 error
+          console.error('Settlement error: returned null');
+          return new Response(
+            JSON.stringify({
+              x402Version: 1,
+              error: 'Settlement processing error',
+              details: 'An error occurred while settling the payment. Please try again.',
+            }),
+            {
+              status: 500,
               headers: { 'Content-Type': 'application/json' },
             }
           );

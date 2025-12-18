@@ -171,9 +171,10 @@ export class PrismPaymentGuard implements CanActivate {
               if (!response.headersSent) {
                 response.setHeader('X-PAYMENT-RESPONSE', settlementResult.transaction);
               }
-            } else if (settlementResult && !settlementResult.success) {
-              // Settlement failed - DO NOT send data, return 402 Payment Required
-              console.error('Settlement failed:', settlementResult.errorReason || 'Unknown error');
+            } else if (!settlementResult || (settlementResult && !settlementResult.success)) {
+              // Settlement failed or returned null - DO NOT send data, return 402 Payment Required
+              const errorReason = settlementResult?.errorReason || 'Settlement processing failed';
+              console.error('Settlement failed:', errorReason);
               if (!response.headersSent) {
                 response.status(402);
                 response.setHeader('Content-Type', 'application/json');
@@ -181,7 +182,7 @@ export class PrismPaymentGuard implements CanActivate {
               return originalEnd(JSON.stringify({
                 x402Version: 1,
                 error: 'Payment settlement failed',
-                details: settlementResult.errorReason || 'Payment could not be settled. Please try again.',
+                details: errorReason,
               }));
             }
           } catch (error: any) {
@@ -258,9 +259,10 @@ export class PrismPaymentMiddleware implements NestMiddleware {
               if (!res.headersSent) {
                 res.setHeader('X-PAYMENT-RESPONSE', settlementResult.transaction);
               }
-            } else if (settlementResult && !settlementResult.success) {
-              // Settlement failed - DO NOT send data, return 402 Payment Required
-              console.error('Settlement failed:', settlementResult.errorReason || 'Unknown error');
+            } else if (!settlementResult || (settlementResult && !settlementResult.success)) {
+              // Settlement failed or returned null - DO NOT send data, return 402 Payment Required
+              const errorReason = settlementResult?.errorReason || 'Settlement processing failed';
+              console.error('Settlement failed:', errorReason);
               if (!res.headersSent) {
                 res.status(402);
                 res.setHeader('Content-Type', 'application/json');
@@ -268,7 +270,7 @@ export class PrismPaymentMiddleware implements NestMiddleware {
               return originalEnd(JSON.stringify({
                 x402Version: 1,
                 error: 'Payment settlement failed',
-                details: settlementResult.errorReason || 'Payment could not be settled. Please try again.',
+                details: errorReason,
               }));
             }
           } catch (error: any) {
