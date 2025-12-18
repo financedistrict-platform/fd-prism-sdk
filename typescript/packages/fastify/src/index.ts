@@ -100,7 +100,7 @@ const prismPluginCore: FastifyPluginAsync<PrismFastifyOptions> = async (fastify,
           reply.header('X-PAYMENT-RESPONSE', settlementResult.transaction);
         } else if (settlementResult && !settlementResult.success) {
           // Settlement failed - DO NOT send data, return 402 Payment Required
-          fastify.log.error('Settlement failed:', settlementResult.errorReason || 'Unknown error');
+          fastify.log.error(`Settlement failed: ${settlementResult.errorReason || 'Unknown error'}`);
           reply.code(402);
           reply.header('Content-Type', 'application/json');
           requestPaymentInfo.delete(request);
@@ -111,7 +111,7 @@ const prismPluginCore: FastifyPluginAsync<PrismFastifyOptions> = async (fastify,
           });
         }
       } catch (error: any) {
-        fastify.log.error('Settlement error:', error);
+        fastify.log.error(`Settlement error: ${error.message || error}`);
         // Settlement error - DO NOT send data, return 500 error
         reply.code(500);
         reply.header('Content-Type', 'application/json');
