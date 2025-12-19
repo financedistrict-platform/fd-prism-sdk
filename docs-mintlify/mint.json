@@ -7,14 +7,19 @@
   },
   "favicon": "/favicon.svg",
   "colors": {
-    "primary": "#0D9373",
-    "light": "#07C983",
-    "dark": "#0D9373",
+    "primary": "#7C3AED",
+    "light": "#A78BFA",
+    "dark": "#5B21B6",
     "anchors": {
-      "from": "#0D9373",
-      "to": "#07C983"
+      "from": "#7C3AED",
+      "to": "#06B6D4"
+    },
+    "background": {
+      "dark": "#0F0F1A",
+      "light": "#FAFAFA"
     }
   },
+  "layout": "topnav",
   "topbarLinks": [
     {
       "name": "Support",
@@ -59,38 +64,39 @@
       "group": "Core Concepts",
       "pages": [
         "concepts/system-overview",
-        "concepts/x402-protocol",
-        "concepts/eip3009-settlement",
-        "concepts/payment-flow",
-        "concepts/payment-modes",
-        "concepts/authentication",
-        "concepts/configuration-modes"
+        "concepts/settlement-validation",
+        "concepts/eip3009-settlement"
+      ]
+    },
+    {
+      "group": "TypeScript SDK",
+      "pages": [
+        "sdk/typescript/express",
+        "sdk/typescript/fastify",
+        "sdk/typescript/http",
+        "sdk/typescript/nestjs",
+        "sdk/typescript/nextjs"
+      ]
+    },
+    {
+      "group": "Python SDK",
+      "pages": [
+        "sdk/python/flask",
+        "sdk/python/fastapi",
+        "sdk/python/django"
+      ]
+    },
+    {
+      "group": "Java SDK",
+      "pages": [
+        "sdk/java/servlet"
       ]
     },
     {
       "group": "Guides",
       "pages": [
         "guides/testing",
-        "guides/production-deployment",
-        "guides/security-best-practices"
-      ]
-    },
-    {
-      "group": "SDK Documentation",
-      "pages": [
-        "sdk/typescript",
-        "sdk/csharp",
-        "sdk/python"
-      ]
-    },
-    {
-      "group": "API Documentation",
-      "pages": [
-        "api-reference/introduction",
-        "api-reference/auth-info",
-        "api-reference/payment-requirements",
-        "api-reference/verify-payment",
-        "api-reference/settle-payment"
+        "guides/production-deployment"
       ]
     }
   ],

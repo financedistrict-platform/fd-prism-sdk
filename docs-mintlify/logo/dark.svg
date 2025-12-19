@@ -1,0 +1,14 @@
+<svg width="120" height="32" viewBox="0 0 120 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- FD Logo Mark -->
+  <g>
+    <path d="M4 8h12v3H8v3h7v3H8v7H4V8z" fill="#A78BFA"/>
+    <path d="M18 8h8c3.3 0 6 2.7 6 6v2c0 3.3-2.7 6-6 6h-8V8zm4 11h4c1.1 0 2-.9 2-2v-2c0-1.1-.9-2-2-2h-4v6z" fill="#06B6D4"/>
+  </g>
+  
+  <!-- PRISM Text -->
+  <g transform="translate(40, 0)">
+    <text x="0" y="20" font-family="Arial, sans-serif" font-weight="700" font-size="18" fill="#FFFFFF" letter-spacing="1">
+      PRISM
+    </text>
+  </g>
+</svg>
