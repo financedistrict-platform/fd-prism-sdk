@@ -9,7 +9,9 @@ from django.conf import settings
 from prism_sdk_core import (
     PrismMiddlewareCore,
     PrismMiddlewareConfig,
-    RoutePaymentConfig
+    RoutePaymentConfig,
+    HeaderAdapter,
+    detect_protocol_version
 )
 
 
@@ -66,14 +68,25 @@ class PrismPaymentMiddleware:
         # Construct resource URL
         resource_url = request.build_absolute_uri()
         
-        # Get payment header
-        payment_header = request.META.get('HTTP_X_PAYMENT')
+        # Get payment header (supports both v1 X-PAYMENT and v2 PAYMENT-SIGNATURE)
+        # Django converts headers: PAYMENT-SIGNATURE -> HTTP_PAYMENT_SIGNATURE
+        payment_header = HeaderAdapter.get_payment_payload(
+            lambda name: request.META.get(f'HTTP_{name.replace("-", "_").upper()}')
+        )
+        
+        # Detect protocol version
+        protocol_version = self.config.x402_version  # Default from config
+        if payment_header:
+            detected = detect_protocol_version(payment_header)
+            if detected:
+                protocol_version = detected
         
         # Process through middleware core
         result = self.core.handle_request(
             path=request.path,
             resource_url=resource_url,
-            payment_header=payment_header
+            payment_header=payment_header,
+            protocol_version=protocol_version
         )
         
         # If middleware handled (returned 402 or error)
@@ -101,6 +114,8 @@ class PrismPaymentMiddleware:
         
         # Settlement callback after successful response
         if result.payment_info and response.status_code < 400:
+            protocol_version = result.payment_info.get('protocol_version', self.config.x402_version)
+            
             try:
                 settlement_result = self.core.settlement_callback(
                     result.payment_info['payment'],
@@ -109,13 +124,23 @@ class PrismPaymentMiddleware:
                 )
                 
                 if settlement_result.get('success') and settlement_result.get('transaction'):
-                    response['X-Payment-Response'] = settlement_result['transaction']
+                    # Use HeaderAdapter to set correct header based on protocol version
+                    import json
+                    import base64
+                    settlement_response = json.dumps(settlement_result)
+                    settlement_base64 = base64.b64encode(settlement_response.encode()).decode()
+                    
+                    # Set header using Django's response object
+                    if protocol_version == 2:
+                        response['PAYMENT-RESPONSE'] = settlement_base64
+                    else:
+                        response['X-PAYMENT-RESPONSE'] = settlement_base64
                 elif settlement_result and not settlement_result.get('success'):
                     # Settlement failed - DO NOT send data, return 402 Payment Required
                     error_reason = settlement_result.get('errorReason', 'Unknown error')
                     print(f"[Prism] Settlement failed: {error_reason}")
                     return JsonResponse({
-                        'x402Version': 1,
+                        'x402Version': protocol_version,
                         'error': 'Payment settlement failed',
                         'details': error_reason or 'Payment could not be settled. Please try again.'
                     }, status=402)
@@ -124,7 +149,7 @@ class PrismPaymentMiddleware:
                     print(f"[Prism] Settlement error: {e}")
                 # Settlement error - DO NOT send data, return 500 error
                 return JsonResponse({
-                    'x402Version': 1,
+                    'x402Version': protocol_version,
                     'error': 'Settlement processing error',
                     'details': 'An error occurred while settling the payment. Please try again.'
                 }, status=500)

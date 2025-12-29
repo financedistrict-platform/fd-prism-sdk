@@ -9,6 +9,8 @@ import {
   PrismMiddlewareCore,
   type PrismMiddlewareConfig,
   type RoutesConfig,
+  HeaderAdapter,
+  detectProtocolVersion,
 } from '@1stdigital/prism-core';
 
 export interface PrismFastifyOptions extends PrismMiddlewareConfig {
@@ -41,6 +43,7 @@ const prismPluginCore: FastifyPluginAsync<PrismFastifyOptions> = async (fastify,
 
   // Store payment info per request
   const requestPaymentInfo = new WeakMap<FastifyRequest, any>();
+  const requestProtocolVersion = new WeakMap<FastifyRequest, 1 | 2>();
 
   // Add onRequest hook for payment verification
   fastify.addHook('onRequest', async (request: FastifyRequest, reply: FastifyReply) => {
@@ -49,14 +52,27 @@ const prismPluginCore: FastifyPluginAsync<PrismFastifyOptions> = async (fastify,
     const host = request.hostname;
     const resourceUrl = `${protocol}://${host}${request.url}`;
 
-    // Get payment header
-    const paymentHeader = request.headers['x-payment'] as string | undefined;
+    // Get payment header (supports both v1 X-PAYMENT and v2 PAYMENT-SIGNATURE)
+    const paymentHeader = HeaderAdapter.getPaymentPayload((name) => request.headers[name.toLowerCase()] as string | undefined || null);
+
+    // Detect protocol version from header name or payload
+    let protocolVersion: 1 | 2 = config.x402Version || 2; // Default to v2
+    if (paymentHeader) {
+      const detected = detectProtocolVersion(paymentHeader);
+      if (detected) {
+        protocolVersion = detected;
+      }
+    }
+
+    // Store protocol version for onSend hook
+    requestProtocolVersion.set(request, protocolVersion);
 
     // Process request through middleware core
     const result = await core.handleRequest({
       path: request.routerPath || request.url.split('?')[0],
-      paymentHeader,
+      paymentHeader: paymentHeader || undefined,
       resourceUrl,
+      protocolVersion,
     });
 
     // If middleware handled the request (returned error or 402)
@@ -86,6 +102,7 @@ const prismPluginCore: FastifyPluginAsync<PrismFastifyOptions> = async (fastify,
   // Add onSend hook for settlement after successful response
   fastify.addHook('onSend', async (request: FastifyRequest, reply: FastifyReply, payload) => {
     const paymentInfo = requestPaymentInfo.get(request);
+    const protocolVersion = requestProtocolVersion.get(request) || config.x402Version || 2;
 
     // Perform settlement BEFORE sending response (if status < 400)
     if (paymentInfo && reply.statusCode < 400) {
@@ -97,7 +114,14 @@ const prismPluginCore: FastifyPluginAsync<PrismFastifyOptions> = async (fastify,
         );
 
         if (settlementResult && settlementResult.success && settlementResult.transaction) {
-          reply.header('X-PAYMENT-RESPONSE', settlementResult.transaction);
+          // Set settlement response header (v1 or v2 format)
+          const settlementResponse = JSON.stringify(settlementResult);
+          const settlementBase64 = Buffer.from(settlementResponse).toString('base64');
+          HeaderAdapter.setSettlementResponse(
+            (name, value) => reply.header(name, value),
+            settlementBase64,
+            protocolVersion
+          );
         } else if (!settlementResult || (settlementResult && !settlementResult.success)) {
           // Settlement failed or returned null - DO NOT send data, return 402 Payment Required
           const errorReason = settlementResult?.errorReason || 'Settlement processing failed';
@@ -105,8 +129,9 @@ const prismPluginCore: FastifyPluginAsync<PrismFastifyOptions> = async (fastify,
           reply.code(402);
           reply.header('Content-Type', 'application/json');
           requestPaymentInfo.delete(request);
+          requestProtocolVersion.delete(request);
           return JSON.stringify({
-            x402Version: 1,
+            x402Version: protocolVersion,
             error: 'Payment settlement failed',
             details: errorReason,
           });
@@ -117,8 +142,9 @@ const prismPluginCore: FastifyPluginAsync<PrismFastifyOptions> = async (fastify,
         reply.code(500);
         reply.header('Content-Type', 'application/json');
         requestPaymentInfo.delete(request);
+        requestProtocolVersion.delete(request);
         return JSON.stringify({
-          x402Version: 1,
+          x402Version: protocolVersion,
           error: 'Settlement processing error',
           details: 'An error occurred while settling the payment. Please try again.',
         });
@@ -126,6 +152,7 @@ const prismPluginCore: FastifyPluginAsync<PrismFastifyOptions> = async (fastify,
 
       // Clean up
       requestPaymentInfo.delete(request);
+      requestProtocolVersion.delete(request);
     }
 
     return payload;

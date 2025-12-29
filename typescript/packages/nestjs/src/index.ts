@@ -21,6 +21,8 @@ import {
   type PrismMiddlewareConfig,
   type RoutesConfig,
   type RoutePaymentConfig,
+  HeaderAdapter,
+  detectProtocolVersion,
 } from '@1stdigital/prism-core';
 
 /**
@@ -109,8 +111,17 @@ export class PrismPaymentGuard implements CanActivate {
     // Construct resource URL
     const resourceUrl = `${request.protocol}://${request.get('host')}${request.originalUrl}`;
 
-    // Get payment header
-    const paymentHeader = request.header('X-PAYMENT');
+    // Get payment header (supports both v1 X-PAYMENT and v2 PAYMENT-SIGNATURE)
+    const paymentHeader = HeaderAdapter.getPaymentPayload((name) => request.header(name) || null);
+
+    // Detect protocol version from header name or payload
+    let protocolVersion: 1 | 2 = (this.core as any).config.x402Version || 2; // Default to v2
+    if (paymentHeader) {
+      const detected = detectProtocolVersion(paymentHeader);
+      if (detected) {
+        protocolVersion = detected;
+      }
+    }
 
     // Build routes config for this endpoint
     const routes: RoutesConfig = {
@@ -126,8 +137,9 @@ export class PrismPaymentGuard implements CanActivate {
     // Process request
     const result = await tempCore.handleRequest({
       path: request.path,
-      paymentHeader,
+      paymentHeader: paymentHeader || undefined,
       resourceUrl,
+      protocolVersion,
     });
 
     // If middleware handled the request (returned error or 402)
@@ -169,7 +181,13 @@ export class PrismPaymentGuard implements CanActivate {
 
             if (settlementResult && settlementResult.success && settlementResult.transaction) {
               if (!response.headersSent) {
-                response.setHeader('X-PAYMENT-RESPONSE', settlementResult.transaction);
+                const settlementResponse = JSON.stringify(settlementResult);
+                const settlementBase64 = Buffer.from(settlementResponse).toString('base64');
+                HeaderAdapter.setSettlementResponse(
+                  (name, value) => response.setHeader(name, value),
+                  settlementBase64,
+                  protocolVersion
+                );
               }
             } else if (!settlementResult || (settlementResult && !settlementResult.success)) {
               // Settlement failed or returned null - DO NOT send data, return 402 Payment Required
@@ -180,7 +198,7 @@ export class PrismPaymentGuard implements CanActivate {
                 response.setHeader('Content-Type', 'application/json');
               }
               return originalEnd(JSON.stringify({
-                x402Version: 1,
+                x402Version: protocolVersion,
                 error: 'Payment settlement failed',
                 details: errorReason,
               }));
@@ -193,7 +211,7 @@ export class PrismPaymentGuard implements CanActivate {
               response.setHeader('Content-Type', 'application/json');
             }
             return originalEnd(JSON.stringify({
-              x402Version: 1,
+              x402Version: protocolVersion,
               error: 'Settlement processing error',
               details: 'An error occurred while settling the payment. Please try again.',
             }));
@@ -217,12 +235,22 @@ export class PrismPaymentMiddleware implements NestMiddleware {
 
   async use(req: Request, res: Response, next: NextFunction) {
     const resourceUrl = `${req.protocol}://${req.get('host')}${req.originalUrl}`;
-    const paymentHeader = req.header('X-PAYMENT');
+    const paymentHeader = HeaderAdapter.getPaymentPayload((name) => req.header(name) || null);
+
+    // Detect protocol version
+    let protocolVersion: 1 | 2 = (this.core as any).config.x402Version || 2;
+    if (paymentHeader) {
+      const detected = detectProtocolVersion(paymentHeader);
+      if (detected) {
+        protocolVersion = detected;
+      }
+    }
 
     const result = await this.core.handleRequest({
       path: req.path,
-      paymentHeader,
+      paymentHeader: paymentHeader || undefined,
       resourceUrl,
+      protocolVersion,
     });
 
     if (result.handled) {
@@ -257,7 +285,13 @@ export class PrismPaymentMiddleware implements NestMiddleware {
 
             if (settlementResult && settlementResult.success && settlementResult.transaction) {
               if (!res.headersSent) {
-                res.setHeader('X-PAYMENT-RESPONSE', settlementResult.transaction);
+                const settlementResponse = JSON.stringify(settlementResult);
+                const settlementBase64 = Buffer.from(settlementResponse).toString('base64');
+                HeaderAdapter.setSettlementResponse(
+                  (name, value) => res.setHeader(name, value),
+                  settlementBase64,
+                  protocolVersion
+                );
               }
             } else if (!settlementResult || (settlementResult && !settlementResult.success)) {
               // Settlement failed or returned null - DO NOT send data, return 402 Payment Required
@@ -268,7 +302,7 @@ export class PrismPaymentMiddleware implements NestMiddleware {
                 res.setHeader('Content-Type', 'application/json');
               }
               return originalEnd(JSON.stringify({
-                x402Version: 1,
+                x402Version: protocolVersion,
                 error: 'Payment settlement failed',
                 details: errorReason,
               }));
@@ -281,7 +315,7 @@ export class PrismPaymentMiddleware implements NestMiddleware {
               res.setHeader('Content-Type', 'application/json');
             }
             return originalEnd(JSON.stringify({
-              x402Version: 1,
+              x402Version: protocolVersion,
               error: 'Settlement processing error',
               details: 'An error occurred while settling the payment. Please try again.',
             }));

@@ -9,6 +9,8 @@ import {
   PrismMiddlewareConfig,
   RoutePaymentConfig,
   MiddlewareResult,
+  HeaderAdapter,
+  detectProtocolVersion,
 } from '@1stdigital/prism-core';
 
 /**
@@ -48,14 +50,24 @@ export function createPrismMiddleware(config: PrismNextConfig) {
     const pathname = request.nextUrl.pathname;
     const resourceUrl = request.url;
 
-    // Get payment header
-    const paymentHeader = request.headers.get('X-PAYMENT') || undefined;
+    // Get payment header (supports both v1 X-PAYMENT and v2 PAYMENT-SIGNATURE)
+    const paymentHeader = HeaderAdapter.getPaymentPayload((name) => request.headers.get(name) || null);
+
+    // Detect protocol version from header name or payload
+    let protocolVersion: 1 | 2 = middlewareConfig.x402Version || 2; // Default to v2
+    if (paymentHeader) {
+      const detected = detectProtocolVersion(paymentHeader);
+      if (detected) {
+        protocolVersion = detected;
+      }
+    }
 
     // Process request through middleware core
     const result: MiddlewareResult = await core.handleRequest({
       path: pathname,
-      paymentHeader,
+      paymentHeader: paymentHeader || undefined,
       resourceUrl,
+      protocolVersion,
     });
 
     // If middleware handled the request (returned error or 402)
@@ -128,13 +140,23 @@ export function withPrismPayment(
   return async function wrappedHandler(request: Request, context?: any): Promise<Response> {
     // Get payment header
     const url = new URL(request.url);
-    const paymentHeader = request.headers.get('X-PAYMENT') || undefined;
+    const paymentHeader = HeaderAdapter.getPaymentPayload((name) => request.headers.get(name) || null);
+
+    // Detect protocol version
+    let protocolVersion: 1 | 2 = middlewareConfig.x402Version || 2;
+    if (paymentHeader) {
+      const detected = detectProtocolVersion(paymentHeader);
+      if (detected) {
+        protocolVersion = detected;
+      }
+    }
 
     // Process request through middleware core
     const result: MiddlewareResult = await core.handleRequest({
       path: url.pathname,
-      paymentHeader,
+      paymentHeader: paymentHeader || undefined,
       resourceUrl: request.url,
+      protocolVersion,
     });
 
     // If middleware handled the request (returned error or 402)
@@ -169,7 +191,7 @@ export function withPrismPayment(
           console.error('Settlement failed:', errorReason);
           return new Response(
             JSON.stringify({
-              x402Version: 1,
+              x402Version: protocolVersion,
               error: 'Payment settlement failed',
               details: errorReason,
             }),
@@ -185,7 +207,7 @@ export function withPrismPayment(
           console.error('Settlement error: returned null');
           return new Response(
             JSON.stringify({
-              x402Version: 1,
+              x402Version: protocolVersion,
               error: 'Settlement processing error',
               details: 'An error occurred while settling the payment. Please try again.',
             }),
@@ -200,7 +222,7 @@ export function withPrismPayment(
         // Settlement error - DO NOT return data, return 500 error
         return new Response(
           JSON.stringify({
-            x402Version: 1,
+            x402Version: protocolVersion,
             error: 'Settlement processing error',
             details: 'An error occurred while settling the payment. Please try again.',
           }),

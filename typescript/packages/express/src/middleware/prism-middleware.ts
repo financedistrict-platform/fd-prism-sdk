@@ -3,6 +3,8 @@ import {
   PrismMiddlewareCore,
   PrismMiddlewareConfig,
   RoutesConfig,
+  HeaderAdapter,
+  detectProtocolVersion,
 } from '@1stdigital/prism-core';
 
 /**
@@ -42,14 +44,24 @@ export function prismPaymentMiddleware(
     // Construct resource URL
     const resourceUrl = `${req.protocol}://${req.get('host')}${req.originalUrl}`;
 
-    // Get payment header
-    const paymentHeader = req.header('X-PAYMENT');
+    // Get payment header (supports both v1 X-PAYMENT and v2 PAYMENT-SIGNATURE)
+    const paymentHeader = HeaderAdapter.getPaymentPayload((name) => req.header(name) || null);
+
+    // Detect protocol version from header name or payload
+    let protocolVersion: 1 | 2 = config.x402Version || 2; // Default to v2
+    if (paymentHeader) {
+      const detected = detectProtocolVersion(paymentHeader);
+      if (detected) {
+        protocolVersion = detected;
+      }
+    }
 
     // Process request through middleware core
     const result = await core.handleRequest({
       path: req.path,
-      paymentHeader,
+      paymentHeader: paymentHeader || undefined,
       resourceUrl,
+      protocolVersion,
     });
 
     // If middleware handled the request (returned error or 402)
@@ -90,9 +102,15 @@ export function prismPaymentMiddleware(
             );
 
             if (settlementResult && settlementResult.success && settlementResult.transaction) {
-              // Set header before sending response
+              // Set settlement response header (v1 or v2 format)
               if (!res.headersSent) {
-                res.setHeader('X-PAYMENT-RESPONSE', settlementResult.transaction);
+                const settlementResponse = JSON.stringify(settlementResult);
+                const settlementBase64 = Buffer.from(settlementResponse).toString('base64');
+                HeaderAdapter.setSettlementResponse(
+                  (name, value) => res.setHeader(name, value),
+                  settlementBase64,
+                  protocolVersion
+                );
               }
             } else if (!settlementResult || (settlementResult && !settlementResult.success)) {
               // Settlement failed or returned null - DO NOT send data, return 402 Payment Required
@@ -103,14 +121,14 @@ export function prismPaymentMiddleware(
                 res.setHeader('Content-Type', 'application/json');
               }
               return originalEnd(JSON.stringify({
-                x402Version: 1,
+                x402Version: protocolVersion,
                 error: 'Payment settlement failed',
                 details: errorReason,
               }));
             }
           } catch (error: any) {
             console.error('Settlement error:', error);
-            // Settlement error - DO NOT send data, return 500 error
+            // Settlement eprotocolVersionror - DO NOT send data, return 500 error
             if (!res.headersSent) {
               res.status(500);
               res.setHeader('Content-Type', 'application/json');

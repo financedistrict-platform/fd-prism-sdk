@@ -5,6 +5,8 @@ import {
   RoutesConfig,
   PaymentPayload,
   PrismMiddlewareCore,
+  HeaderAdapter,
+  detectProtocolVersion,
 } from '@1stdigital/prism-core';
 
 /**
@@ -89,14 +91,24 @@ export function prismPaymentMiddleware(
     const host = req.headers.host || 'localhost';
     const resourceUrl = `${protocol}://${host}${req.url}`;
 
-    // Get payment header
-    const paymentHeader = req.headers['x-payment'] as string | undefined;
+    // Get payment header (supports both v1 X-PAYMENT and v2 PAYMENT-SIGNATURE)
+    const paymentHeader = HeaderAdapter.getPaymentPayload((name) => req.headers[name.toLowerCase()] as string | undefined || null);
+
+    // Detect protocol version from header name or payload
+    let protocolVersion: 1 | 2 = config.x402Version || 2; // Default to v2
+    if (paymentHeader) {
+      const detected = detectProtocolVersion(paymentHeader);
+      if (detected) {
+        protocolVersion = detected;
+      }
+    }
 
     // Process request through middleware core
     const result = await core.handleRequest({
       path: pathname,
-      paymentHeader,
+      paymentHeader: paymentHeader || undefined,
       resourceUrl,
+      protocolVersion,
     });
 
     // If middleware handled the request (returned error or 402)
@@ -131,7 +143,9 @@ export function prismPaymentMiddleware(
           if (!finalHeaders) {
             finalHeaders = {};
           }
-          finalHeaders['X-PAYMENT-RESPONSE'] = transactionHash;
+          // Determine which header to use based on protocol version
+          const headerName = protocolVersion === 1 ? 'X-PAYMENT-RESPONSE' : 'PAYMENT-RESPONSE';
+          finalHeaders[headerName] = transactionHash;
         }
 
         if (typeof statusMessage === 'string') {
@@ -157,12 +171,17 @@ export function prismPaymentMiddleware(
             );
 
             if (settlementResult && settlementResult.success && settlementResult.transaction) {
-              transactionHash = settlementResult.transaction;
+              const settlementResponse = JSON.stringify(settlementResult);
+              transactionHash = Buffer.from(settlementResponse).toString('base64');
               settlementDone = true;
 
               // If writeHead wasn't called yet, add header now
               if (!res.headersSent) {
-                res.setHeader('X-PAYMENT-RESPONSE', transactionHash);
+                HeaderAdapter.setSettlementResponse(
+                  (name, value) => res.setHeader(name, value),
+                  transactionHash,
+                  protocolVersion
+                );
               }
             } else if (!settlementResult || (settlementResult && !settlementResult.success)) {
               // Settlement failed or returned null - DO NOT send data, return 402 Payment Required
@@ -173,7 +192,7 @@ export function prismPaymentMiddleware(
                 res.setHeader('Content-Type', 'application/json');
               }
               return originalEnd(JSON.stringify({
-                x402Version: 1,
+                x402Version: protocolVersion,
                 error: 'Payment settlement failed',
                 details: errorReason,
               }), encodingOrCallback, callback);
@@ -186,7 +205,7 @@ export function prismPaymentMiddleware(
               res.setHeader('Content-Type', 'application/json');
             }
             return originalEnd(JSON.stringify({
-              x402Version: 1,
+              x402Version: protocolVersion,
               error: 'Settlement processing error',
               details: 'An error occurred while settling the payment. Please try again.',
             }), encodingOrCallback, callback);

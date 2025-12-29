@@ -3,10 +3,20 @@ Prism SDK Core - Python
 Payment verification middleware core logic
 """
 
-from typing import Optional, Dict, Any, List, TypedDict
+from typing import Optional, Dict, Any, List, TypedDict, Literal
 from dataclasses import dataclass
 import requests
+import json
+import base64
 from enum import Enum
+
+# Import compatibility layer components
+from .types_v1 import PaymentPayloadV1, PaymentRequirementsV1, SettlementResponseV1
+from .types_v2 import PaymentPayloadV2, PaymentRequirementsV2, SettlementResponseV2, ResourceInfoV2
+from .header_adapter import HeaderAdapter
+from .version_detector import detect_protocol_version, get_default_protocol_version
+from .schema_transformer import SchemaTransformer
+from .network_mapper import normalize_network
 
 
 class ConfigurationMode(str, Enum):
@@ -32,6 +42,7 @@ class PrismMiddlewareConfig:
     mode: ConfigurationMode = ConfigurationMode.ON_DEMAND
     debug: bool = False
     timeout: int = 30
+    x402_version: Literal[1, 2] = 2  # Default to v2
 
 
 class PaymentPayload(TypedDict, total=False):
@@ -176,11 +187,18 @@ class PrismMiddlewareCore:
         self,
         path: str,
         resource_url: str,
-        payment_header: Optional[str] = None
+        payment_header: Optional[str] = None,
+        protocol_version: Optional[Literal[1, 2]] = None
     ) -> MiddlewareResult:
         """
         Handle payment verification for a request
         Returns MiddlewareResult indicating whether to return 402 or continue
+        
+        Args:
+            path: Request path
+            resource_url: Full resource URL
+            payment_header: Payment header value (base64 encoded)
+            protocol_version: Protocol version (auto-detected if not provided)
         """
         # Check if route requires payment
         route_config = self.find_matching_route(path)
@@ -189,7 +207,15 @@ class PrismMiddlewareCore:
             # Route not protected, pass through
             return MiddlewareResult(handled=False)
         
-        # Get payment requirements
+        # Detect protocol version if not provided
+        if protocol_version is None:
+            if payment_header:
+                detected = detect_protocol_version(payment_header)
+                protocol_version = detected if detected else self.config.x402_version
+            else:
+                protocol_version = self.config.x402_version
+        
+        # Get payment requirements (always in v2 internally)
         try:
             requirements = self.client.get_payment_requirements(
                 resource_url=resource_url,
@@ -204,6 +230,12 @@ class PrismMiddlewareCore:
                 body={'error': 'Failed to get payment requirements', 'details': str(e)}
             )
         
+        # Transform requirements to target protocol version for response
+        requirements_for_client = SchemaTransformer.transform_payment_required_response(
+            requirements,
+            protocol_version
+        )
+        
         # If no payment provided, return 402
         if not payment_header:
             return MiddlewareResult(
@@ -212,13 +244,28 @@ class PrismMiddlewareCore:
                 headers={
                     'Content-Type': 'application/json',
                     'WWW-Authenticate': 'Payment',
-                    **requirements.get('headers', {})
+                    **requirements_for_client.get('headers', {})
                 },
                 body={
                     'error': 'Payment Required',
                     'message': f'Payment required: {route_config.description}',
-                    'payment': requirements
+                    'payment': requirements_for_client
                 }
+            )
+        
+        # Decode and normalize payment payload (v1 -> v2 if needed)
+        try:
+            payment_data = self._decode_payment_header(payment_header)
+            payload_version = payment_data.get('x402Version', protocol_version)
+            
+            # Normalize to v2 for internal processing
+            if payload_version == 1:
+                payment_data = SchemaTransformer.upgrade_payment_payload(payment_data)
+        except Exception as e:
+            return MiddlewareResult(
+                handled=True,
+                status_code=400,
+                body={'error': 'Invalid payment header', 'details': str(e)}
             )
         
         # Verify payment
@@ -234,7 +281,7 @@ class PrismMiddlewareCore:
                     body={
                         'error': 'Invalid Payment',
                         'message': verification.get('error', 'Payment verification failed'),
-                        'payment': requirements
+                        'payment': requirements_for_client
                     }
                 )
             
@@ -244,7 +291,8 @@ class PrismMiddlewareCore:
                 payment_info={
                     'payment': verification.get('payment'),
                     'payer': verification.get('payer'),
-                    'payment_requirements': requirements
+                    'payment_requirements': requirements,
+                    'protocol_version': protocol_version
                 }
             )
             
@@ -255,6 +303,21 @@ class PrismMiddlewareCore:
                 status_code=500,
                 body={'error': 'Payment verification failed', 'details': str(e)}
             )
+    
+    def _decode_payment_header(self, payment_header: str) -> Dict[str, Any]:
+        """Decode payment header (base64 JSON)"""
+        try:
+            # Try direct JSON parse
+            return json.loads(payment_header)
+        except (json.JSONDecodeError, ValueError):
+            pass
+        
+        try:
+            # Try base64 decode then JSON parse
+            decoded = base64.b64decode(payment_header).decode('utf-8')
+            return json.loads(decoded)
+        except Exception as e:
+            raise ValueError(f"Failed to decode payment header: {e}")
     
     def settlement_callback(
         self,
@@ -279,5 +342,20 @@ __all__ = [
     'RoutePaymentConfig',
     'ConfigurationMode',
     'MiddlewareResult',
-    'PaymentPayload'
+    'PaymentPayload',
+    # v1 types
+    'PaymentPayloadV1',
+    'PaymentRequirementsV1',
+    'SettlementResponseV1',
+    # v2 types
+    'PaymentPayloadV2',
+    'PaymentRequirementsV2',
+    'SettlementResponseV2',
+    'ResourceInfoV2',
+    # Compatibility layer
+    'HeaderAdapter',
+    'SchemaTransformer',
+    'detect_protocol_version',
+    'get_default_protocol_version',
+    'normalize_network',
 ]

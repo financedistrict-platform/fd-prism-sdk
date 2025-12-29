@@ -16,6 +16,17 @@ import {
   buildInvalidPaymentResponse,
   type MiddlewareResponse,
 } from '../utils';
+import {
+  detectProtocolVersion,
+  HeaderAdapter,
+  SchemaTransformer,
+  normalizeNetwork,
+} from '../compatibility';
+import type { PaymentPayloadV1 } from '../types/v1';
+import type {
+  PaymentPayload as PaymentPayloadV2,
+  PaymentRequiredResponse as PaymentRequiredResponseV2
+} from '../types/v2';
 
 /**
  * Result of middleware processing
@@ -43,10 +54,12 @@ export interface MiddlewareResult {
 export interface MiddlewareRequestData {
   /** Request path (e.g., "/api/premium") */
   path: string;
-  /** X-PAYMENT header value (if present) */
+  /** Payment header value (supports both X-PAYMENT and PAYMENT-SIGNATURE) */
   paymentHeader?: string;
   /** Full resource URL */
   resourceUrl: string;
+  /** Protocol version (1 or 2, auto-detected if not provided) */
+  protocolVersion?: 1 | 2;
 }
 
 /**
@@ -79,6 +92,7 @@ export class PrismMiddlewareCore {
   private readonly mode: ConfigurationMode = 'on-demand';
   private readonly client: PrismClient;
   private readonly debug: boolean;
+  private readonly defaultProtocolVersion: 1 | 2 = 2; // v2 is default
 
   constructor(
     private readonly config: PrismMiddlewareConfig,
@@ -87,6 +101,10 @@ export class PrismMiddlewareCore {
     this.debug = config.debug || false;
     // Use injected client if provided (for testing), otherwise create new one
     this.client = config.client || new PrismClient(config);
+    // Allow configuration to override default protocol version
+    if (config.x402Version === 1 || config.x402Version === 2) {
+      this.defaultProtocolVersion = config.x402Version;
+    }
   }
 
   /**
@@ -98,11 +116,22 @@ export class PrismMiddlewareCore {
   async handleRequest(requestData: MiddlewareRequestData): Promise<MiddlewareResult> {
     const { path, paymentHeader, resourceUrl } = requestData;
 
+    // Detect protocol version from payment header or use default
+    let protocolVersion = requestData.protocolVersion || this.defaultProtocolVersion;
+
+    if (paymentHeader && !requestData.protocolVersion) {
+      const detected = detectProtocolVersion(paymentHeader);
+      if (detected) {
+        protocolVersion = detected;
+      }
+    }
+
     if (this.debug) {
       console.log('[PrismMiddlewareCore] handleRequest:', {
         path,
         hasPaymentHeader: !!paymentHeader,
-        resourceUrl
+        resourceUrl,
+        protocolVersion
       });
     }
 
@@ -128,14 +157,14 @@ export class PrismMiddlewareCore {
       if (this.debug) {
         console.log('[PrismMiddlewareCore] No payment header, returning 402');
       }
-      return this.handleNoPayment(routeConfig, resourceUrl);
+      return this.handleNoPayment(routeConfig, resourceUrl, protocolVersion);
     }
 
     // Payment header provided, verify it
     if (this.debug) {
       console.log('[PrismMiddlewareCore] Payment header present, verifying...');
     }
-    return this.handlePaymentVerification(paymentHeader, routeConfig, resourceUrl);
+    return this.handlePaymentVerification(paymentHeader, routeConfig, resourceUrl, protocolVersion);
   }
 
   /**
@@ -143,7 +172,8 @@ export class PrismMiddlewareCore {
    */
   private async handleNoPayment(
     routeConfig: any,
-    resourceUrl: string
+    resourceUrl: string,
+    protocolVersion: 1 | 2
   ): Promise<MiddlewareResult> {
     try {
       let paymentRequirements;
@@ -175,12 +205,26 @@ export class PrismMiddlewareCore {
         throw new Error('Failed to generate payment requirements');
       }
 
+      // Transform to target protocol version if needed
+      let responsePayload = paymentRequirements;
+      if (protocolVersion === 1 && paymentRequirements.x402Version === 2) {
+        responsePayload = SchemaTransformer.transformPaymentRequired(
+          paymentRequirements as PaymentRequiredResponseV2,
+          1
+        );
+      } else if (protocolVersion === 2 && paymentRequirements.x402Version === 1) {
+        responsePayload = SchemaTransformer.transformPaymentRequired(
+          paymentRequirements,
+          2
+        );
+      }
+
       if (this.debug) {
-        console.log('[PrismMiddlewareCore] Returning 402 with requirements');
+        console.log('[PrismMiddlewareCore] Returning 402 with requirements (v' + protocolVersion + ')');
       }
 
       // Return 402 Payment Required
-      const response = build402Response(paymentRequirements);
+      const response = build402Response(responsePayload);
       return {
         handled: true,
         ...response,
@@ -203,10 +247,11 @@ export class PrismMiddlewareCore {
   private async handlePaymentVerification(
     paymentHeader: string,
     routeConfig: any,
-    resourceUrl: string
+    resourceUrl: string,
+    protocolVersion: 1 | 2
   ): Promise<MiddlewareResult> {
     try {
-      // Decode and parse payment header
+      // Decode and parse payment header (supports both v1 and v2)
       const paymentPayload = this.decodePaymentHeader(paymentHeader);
       if (!paymentPayload) {
         const response = buildInvalidPaymentHeaderResponse();
@@ -216,8 +261,18 @@ export class PrismMiddlewareCore {
         };
       }
 
+      // Detect actual protocol version from payload
+      const payloadVersion = detectProtocolVersion(paymentPayload);
+      if (payloadVersion && payloadVersion !== protocolVersion) {
+        if (this.debug) {
+          console.log(`[PrismMiddlewareCore] Protocol version mismatch: expected ${protocolVersion}, got ${payloadVersion}`);
+        }
+        // Use payload version (client decides)
+        protocolVersion = payloadVersion;
+      }
+
       if (this.debug) {
-        console.log('[PrismMiddlewareCore] Parsed payment payload:', paymentPayload);
+        console.log('[PrismMiddlewareCore] Parsed payment payload (v' + protocolVersion + '):', paymentPayload);
       }
 
       // Reconstruct payment requirements for verification
@@ -240,7 +295,8 @@ export class PrismMiddlewareCore {
       // Find the payment requirement that matches the client's payment
       const paymentRequirements = this.findMatchingPaymentRequirement(
         paymentRequirementsResponse.accepts,
-        paymentPayload
+        paymentPayload,
+        protocolVersion
       );
 
       if (!paymentRequirements) {
@@ -254,8 +310,20 @@ export class PrismMiddlewareCore {
         };
       }
 
+      // Normalize payment payload to v2 for internal processing
+      let normalizedPayload: any = paymentPayload;
+      if (protocolVersion === 1) {
+        // For v1, we need to upgrade to v2 format for verification
+        const v1Payload = paymentPayload as PaymentPayloadV1;
+        normalizedPayload = SchemaTransformer.transformPaymentPayload(
+          v1Payload,
+          2,
+          { acceptedRequirements: paymentRequirements }
+        );
+      }
+
       // Verify payment with Gateway
-      const verificationResult = await this.client.verifyPayment(paymentPayload, paymentRequirements);
+      const verificationResult = await this.client.verifyPayment(normalizedPayload, paymentRequirements);
 
       if (!verificationResult.isValid) {
         if (this.debug) {
@@ -294,17 +362,17 @@ export class PrismMiddlewareCore {
   }
 
   /**
-   * Decode and parse X-PAYMENT header (base64 encoded JSON)
+   * Decode and parse payment header (supports both v1 and v2, base64 encoded JSON)
    * 
    * @param paymentHeader - Base64 encoded payment header
    * @returns Parsed PaymentPayload or null if invalid
    */
-  private decodePaymentHeader(paymentHeader: string): PaymentPayload | null {
+  private decodePaymentHeader(paymentHeader: string): PaymentPayload | PaymentPayloadV1 | null {
     try {
       // Decode base64 to string, then parse JSON
       const decodedString = Buffer.from(paymentHeader, 'base64').toString('utf-8');
       const paymentPayload = JSON.parse(decodedString);
-      return paymentPayload as PaymentPayload;
+      return paymentPayload;
     } catch (error: any) {
       if (this.debug) {
         console.log('[PrismMiddlewareCore] Failed to decode/parse payment header:', error.message);
@@ -317,16 +385,42 @@ export class PrismMiddlewareCore {
    * Find the payment requirement that matches the client's payment
    * 
    * @param paymentRequirements - Array of accepted payment requirements
-   * @param paymentPayload - Payment payload from client
+   * @param paymentPayload - Payment payload from client (v1 or v2)
+   * @param protocolVersion - Protocol version
    * @returns Matching payment requirement or undefined if no match
    */
   private findMatchingPaymentRequirement(
     paymentRequirements: PaymentRequirements[],
-    paymentPayload: PaymentPayload
+    paymentPayload: PaymentPayload | PaymentPayloadV1,
+    protocolVersion: 1 | 2
   ): PaymentRequirements | undefined {
-    return paymentRequirements.find(
-      (req) => req.scheme === paymentPayload.scheme && req.network === paymentPayload.network && paymentPayload.asset === req.asset
-    );
+    // Extract scheme, network, asset from payload based on version
+    let scheme: string;
+    let network: string;
+    let asset: string | undefined;
+
+    if (protocolVersion === 1) {
+      const v1Payload = paymentPayload as PaymentPayloadV1;
+      scheme = v1Payload.scheme;
+      network = normalizeNetwork(v1Payload.network, 2); // Normalize to v2 for comparison
+      asset = undefined; // v1 doesn't have asset in payload
+    } else {
+      const v2Payload = paymentPayload as PaymentPayloadV2;
+      scheme = v2Payload.accepted.scheme;
+      network = v2Payload.accepted.network;
+      asset = v2Payload.accepted.asset;
+    }
+
+    return paymentRequirements.find((req) => {
+      // Normalize requirement network to v2 for comparison
+      const reqNetwork = normalizeNetwork(req.network, 2);
+
+      const schemeMatch = req.scheme === scheme;
+      const networkMatch = reqNetwork === network;
+      const assetMatch = !asset || req.asset === asset;
+
+      return schemeMatch && networkMatch && assetMatch;
+    });
   }
 
   /**

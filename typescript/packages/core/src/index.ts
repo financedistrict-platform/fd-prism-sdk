@@ -6,8 +6,13 @@
 // Export client
 export { PrismClient } from './client/prism-client';
 
-// Export all types
+// Export all types (v2 by default, v1 for legacy)
 export * from './types';
+export * from './types/v1';
+export * from './types/v2';
+
+// Export compatibility layer for v1/v2 interop
+export * from './compatibility';
 
 // Export error classes for users who want to catch specific types
 export {

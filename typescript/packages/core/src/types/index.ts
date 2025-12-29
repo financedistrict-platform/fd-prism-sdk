@@ -1,11 +1,24 @@
 /**
  * Prism x402 Payment Protocol Types
+ * 
+ * NOTE: These types are being migrated to v2 protocol.
+ * - v2 types (new, default): ./v2.ts
+ * - v1 types (legacy, deprecated): ./v1.ts
+ * 
+ * Current types in this file follow v1 schema and will be updated to v2.
  */
 
+// Re-export v2 types as default
+export type * from './v2';
+
+// Export v1 types with V1 suffix for backward compatibility
+export type * from './v1';
+
 /**
- * Payment requirement configuration following x402 spec
+ * @deprecated Use PaymentRequirements from v2.ts instead
+ * Payment requirement configuration following x402 spec v1
  */
-export interface PaymentRequirements {
+export interface PaymentRequirementsLegacy {
   // Scheme of the payment protocol to use
   scheme: string;
 
@@ -88,6 +101,10 @@ export interface PrismMiddlewareConfig {
 
   // Enable debug logging (logs requests/responses to console)
   debug?: boolean;
+
+  // x402 protocol version to use (1 or 2, defaults to 2)
+  // v2 is the current standard, v1 is supported for backward compatibility
+  x402Version?: 1 | 2;
 
   // INTERNAL: Optional client instance for dependency injection (used in testing)
   // When provided, middleware will use this client instead of creating new one
