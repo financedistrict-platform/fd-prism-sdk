@@ -1,6 +1,6 @@
 {
   "name": "@1stdigital/prism-http",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "description": "Prism SDK - Node.js HTTP middleware",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
