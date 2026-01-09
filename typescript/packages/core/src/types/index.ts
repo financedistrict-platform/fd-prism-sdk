@@ -53,39 +53,7 @@ export interface PaymentRequirementsLegacy {
   extra: object | null;
 }
 
-/**
- * Payment Required Response (402 response)
- */
-export interface PaymentRequiredResponse {
-  // Version of the x402 payment protocol
-  x402Version: number;
-
-  // List of payment requirements that the resource server accepts
-  accepts: PaymentRequirements[];
-
-  // Message from the resource server to the client to communicate errors
-  error?: string;
-}
-
-/**
- * Payment Payload (from X-PAYMENT header)
- */
-export interface PaymentPayload {
-  // Version of the x402 payment protocol
-  x402Version: number;
-
-  // scheme is the scheme value of the accepted paymentRequirements
-  scheme: string;
-
-  // network is the network id of the accepted paymentRequirements
-  network: string;
-
-  // payload is scheme dependent
-  payload: any;
-
-  // Our custom extension: asset being used in format: 0x036cbd53842c5426634e7929541ec2318f3dcf7e (EIP-3009 compliant ERC20 contract)
-  asset: string;
-}
+// Note: PaymentRequiredResponse, PaymentRequirements, and PaymentPayload are exported from v2.ts above
 
 /**
  * Configuration options for Prism middleware

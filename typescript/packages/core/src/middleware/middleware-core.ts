@@ -22,7 +22,7 @@ import {
   SchemaTransformer,
   normalizeNetwork,
 } from '../compatibility';
-import type { PaymentPayloadV1 } from '../types/v1';
+import type { PaymentPayloadV1, PaymentRequiredResponseV1 } from '../types/v1';
 import type {
   PaymentPayload as PaymentPayloadV2,
   PaymentRequiredResponse as PaymentRequiredResponseV2
@@ -206,17 +206,19 @@ export class PrismMiddlewareCore {
       }
 
       // Transform to target protocol version if needed
-      let responsePayload = paymentRequirements;
-      if (protocolVersion === 1 && paymentRequirements.x402Version === 2) {
+      let responsePayload: PaymentRequiredResponseV2 | PaymentRequiredResponseV1 = paymentRequirements;
+      const requirementsVersion = (paymentRequirements as any).x402Version as 1 | 2;
+
+      if (protocolVersion === 1 && requirementsVersion === 2) {
         responsePayload = SchemaTransformer.transformPaymentRequired(
-          paymentRequirements as PaymentRequiredResponseV2,
+          paymentRequirements as unknown as PaymentRequiredResponseV2,
           1
-        );
-      } else if (protocolVersion === 2 && paymentRequirements.x402Version === 1) {
+        ) as PaymentRequiredResponseV1;
+      } else if (protocolVersion === 2 && requirementsVersion === 1) {
         responsePayload = SchemaTransformer.transformPaymentRequired(
-          paymentRequirements,
+          paymentRequirements as unknown as PaymentRequiredResponseV1,
           2
-        );
+        ) as PaymentRequiredResponseV2;
       }
 
       if (this.debug) {
@@ -224,7 +226,7 @@ export class PrismMiddlewareCore {
       }
 
       // Return 402 Payment Required
-      const response = build402Response(responsePayload);
+      const response = build402Response(responsePayload as any);
       return {
         handled: true,
         ...response,
@@ -344,7 +346,7 @@ export class PrismMiddlewareCore {
       return {
         handled: false,
         paymentInfo: {
-          payment: paymentPayload,
+          payment: paymentPayload as PaymentPayloadV2,
           payer: verificationResult.payer!,
           paymentRequirements,
         },
@@ -405,7 +407,7 @@ export class PrismMiddlewareCore {
       network = normalizeNetwork(v1Payload.network, 2); // Normalize to v2 for comparison
       asset = undefined; // v1 doesn't have asset in payload
     } else {
-      const v2Payload = paymentPayload as PaymentPayloadV2;
+      const v2Payload = paymentPayload as unknown as PaymentPayloadV2;
       scheme = v2Payload.accepted.scheme;
       network = v2Payload.accepted.network;
       asset = v2Payload.accepted.asset;

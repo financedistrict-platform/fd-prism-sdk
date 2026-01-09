@@ -32,7 +32,7 @@ export function upgradePaymentRequirements(v1: PaymentRequirementsV1): PaymentRe
     asset: v1.asset,
     payTo: v1.payTo,
     maxTimeoutSeconds: v1.maxTimeoutSeconds,
-    extra: v1.extra || undefined,
+    extra: (v1.extra as Record<string, unknown>) || undefined,
   };
 }
 
