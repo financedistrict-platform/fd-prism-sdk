@@ -1,6 +1,6 @@
 {
   "name": "@1stdigital/prism-nextjs",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Prism SDK - Next.js middleware",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
