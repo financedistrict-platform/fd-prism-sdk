@@ -10,6 +10,43 @@ describe('PrismClient', () => {
   const TEST_URL = 'https://prism-api.test.1stdigital.tech';
   const PRODUCTION_URL = 'https://prism-api.1stdigital.tech';
 
+  // V2 Mock Data Helpers
+  const createV2PaymentRequirements = () => ({
+    scheme: 'eip3009',
+    network: 'eip155:1',
+    amount: '10000',
+    asset: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
+    payTo: '0x1234567890abcdef',
+    maxTimeoutSeconds: 60,
+    extra: {
+      name: 'USDC',
+      version: '2'
+    },
+  });
+
+  const createV2PaymentPayload = (overrides?: any) => ({
+    x402Version: 2 as const,
+    resource: {
+      url: 'https://api.example.com/paid-content',
+      description: 'Premium article access',
+      mimeType: 'application/json',
+    },
+    accepted: createV2PaymentRequirements(),
+    payload: {
+      signature: '0x2d6a7588d6acca505cbf0d9a4a227e0c52c6c34008c8e8986a1283259764173608a2ce6496642e377d6da8dbbf5836e9bd15092f9ecab05ded3d6293af148b571c',
+      authorization: {
+        from: '0x857b06519E91e3A54538791bDbb0E22373e36b66',
+        to: '0x1234567890abcdef',
+        value: '10000',
+        validAfter: '1740672089',
+        validBefore: '1740672154',
+        nonce: '0xf3746613c2d920b5fdabc0856f2aeb2d4f88ee6037b8cc5d04a71a4462f13480',
+      }
+    },
+    extensions: {},
+    ...overrides,
+  });
+
   afterEach(() => {
     nock.cleanAll();
   });
@@ -55,6 +92,25 @@ describe('PrismClient', () => {
       const headers = client['client'].defaults.headers;
       expect(headers['X-API-Key']).toBe(API_KEY);
     });
+
+    it('should default to protocol version 2', () => {
+      const client = new PrismClient({
+        apiKey: API_KEY,
+      });
+
+      // @ts-ignore - accessing private property for test
+      expect(client['protocolVersion']).toBe(2);
+    });
+
+    it('should respect x402Version from config', () => {
+      const client = new PrismClient({
+        apiKey: API_KEY,
+        x402Version: 1,
+      });
+
+      // @ts-ignore - accessing private property for test
+      expect(client['protocolVersion']).toBe(1);
+    });
   });
 
   describe('getAuthInfo', () => {
@@ -70,7 +126,7 @@ describe('PrismClient', () => {
       };
 
       nock(TEST_URL)
-        .get('/api/v1/auth-info')
+        .get('/api/v2/auth-info')
         .reply(200, mockAuthInfo);
 
       const result = await client.getAuthInfo();
@@ -82,7 +138,7 @@ describe('PrismClient', () => {
       const traceId = '0HNGT483NH6I8:00000001';
       const timestamp = '2024-01-01T12:00:00Z';
 
-      nock(TEST_URL).get('/api/v1/auth-info').reply(401, {
+      nock(TEST_URL).get('/api/v2/auth-info').reply(401, {
         error: 'Invalid API key',
         traceId,
         timestamp,
@@ -99,7 +155,7 @@ describe('PrismClient', () => {
       const traceId = '0HNGT483NH6I8:00000002';
       const timestamp = '2024-01-01T12:05:00Z';
 
-      nock(TEST_URL).get('/api/v1/auth-info').reply(500, {
+      nock(TEST_URL).get('/api/v2/auth-info').reply(500, {
         error: 'Database connection failed',
         traceId,
         timestamp,
@@ -117,12 +173,12 @@ describe('PrismClient', () => {
 
     it('should throw PrismNetworkError on timeout', async () => {
       nock(TEST_URL)
-        .get('/api/v1/auth-info')
+        .get('/api/v2/auth-info')
         .delayConnection(2000)
         .reply(200, {});
 
       // Mock timeout error
-      nock(TEST_URL).get('/api/v1/auth-info').replyWithError({
+      nock(TEST_URL).get('/api/v2/auth-info').replyWithError({
         code: 'ECONNABORTED',
         message: 'timeout of 3000ms exceeded',
       });
@@ -137,7 +193,7 @@ describe('PrismClient', () => {
     });
 
     it('should throw PrismNetworkError on connection refused', async () => {
-      nock(TEST_URL).get('/api/v1/auth-info').replyWithError({
+      nock(TEST_URL).get('/api/v2/auth-info').replyWithError({
         code: 'ECONNREFUSED',
         message: 'connect ECONNREFUSED 127.0.0.1:443',
       });
@@ -165,20 +221,30 @@ describe('PrismClient', () => {
       };
 
       const mockRequirements = {
-        scheme: 'eip3009',
-        network: '1',
-        maxAmountRequired: '10000',
-        resource: request.resourceUrl,
-        description: request.description,
-        mimeType: request.mimeType,
-        payTo: '0x1234567890abcdef',
-        maxTimeoutSeconds: 60,
-        asset: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
-        extra: null,
+        x402Version: 2,
+        error: 'PAYMENT-SIGNATURE header is required',
+        resource: {
+          url: request.resourceUrl,
+          description: request.description,
+          mimeType: request.mimeType,
+        },
+        accepts: [{
+          scheme: 'eip3009',
+          network: 'eip155:1',
+          amount: '10000',
+          asset: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
+          payTo: '0x1234567890abcdef',
+          maxTimeoutSeconds: 60,
+          extra: {
+            name: 'USDC',
+            version: '2'
+          },
+        }],
+        extensions: {},
       };
 
       nock(TEST_URL)
-        .post('/api/v1/payment/requirements', request)
+        .post('/api/v2/payment/requirements', request)
         .reply(200, mockRequirements);
 
       const result = await client.getPaymentRequirements(request);
@@ -195,7 +261,7 @@ describe('PrismClient', () => {
       };
 
       nock(TEST_URL)
-        .post('/api/v1/payment/requirements')
+        .post('/api/v2/payment/requirements')
         .reply(400, {
           error: 'Invalid amount',
           details: { field: 'requestedAmount', reason: 'Must be positive' },
@@ -219,7 +285,7 @@ describe('PrismClient', () => {
       };
 
       nock(TEST_URL)
-        .post('/api/v1/payment/requirements')
+        .post('/api/v2/payment/requirements')
         .reply(401, {
           error: 'Invalid API key',
           traceId: '0HNGT483NH6I8:00000003',
@@ -245,7 +311,7 @@ describe('PrismClient', () => {
       const timestamp = '2024-01-01T12:10:00Z';
 
       nock(TEST_URL)
-        .post('/api/v1/payment/requirements')
+        .post('/api/v2/payment/requirements')
         .reply(500, {
           error: 'Database error',
           traceId,
@@ -271,7 +337,7 @@ describe('PrismClient', () => {
       };
 
       nock(TEST_URL)
-        .post('/api/v1/payment/requirements')
+        .post('/api/v2/payment/requirements')
         .replyWithError({
           code: 'ETIMEDOUT',
           message: 'Request timeout',
@@ -292,24 +358,39 @@ describe('PrismClient', () => {
     });
 
     it('should return valid payment verification', async () => {
-      const paymentPayload = {
-        x402Version: 1,
-        scheme: 'eip3009',
-        network: '1',
-        asset: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
-        payload: { authorization: '0xsignature123' },
-      };
       const paymentRequirements = {
         scheme: 'eip3009',
-        network: '1',
-        maxAmountRequired: '10000',
-        resource: 'https://api.example.com/paid-content',
-        description: 'Premium article access',
-        mimeType: 'application/json',
+        network: 'eip155:1',
+        amount: '10000',
+        asset: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
         payTo: '0x1234567890abcdef',
         maxTimeoutSeconds: 60,
-        asset: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
-        extra: null,
+        extra: {
+          name: 'USDC',
+          version: '2'
+        },
+      };
+
+      const paymentPayload = {
+        x402Version: 2 as const,
+        resource: {
+          url: 'https://api.example.com/paid-content',
+          description: 'Premium article access',
+          mimeType: 'application/json',
+        },
+        accepted: paymentRequirements,
+        payload: {
+          signature: '0xsignature123',
+          authorization: {
+            from: '0x857b06519E91e3A54538791bDbb0E22373e36b66',
+            to: '0x1234567890abcdef',
+            value: '10000',
+            validAfter: '0',
+            validBefore: '999999999',
+            nonce: '0xabc123',
+          }
+        },
+        extensions: {},
       };
 
       const mockVerifyResponse = {
@@ -318,7 +399,7 @@ describe('PrismClient', () => {
       };
 
       nock(TEST_URL)
-        .post('/api/v1/payment/verify', {
+        .post('/api/v2/payment/verify', {
           paymentPayload,
           paymentRequirements,
         })
@@ -335,25 +416,14 @@ describe('PrismClient', () => {
     });
 
     it('should return invalid payment verification', async () => {
-      const paymentPayload = {
-        x402Version: 1,
-        scheme: 'eip3009',
-        network: '1',
-        asset: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
-        payload: { authorization: 'invalid-signature' },
-      };
-      const paymentRequirements = {
-        scheme: 'eip3009',
-        network: '1',
-        maxAmountRequired: '10000',
-        resource: 'https://api.example.com/paid-content',
-        description: 'Premium article access',
-        mimeType: 'application/json',
-        payTo: '0x1234567890abcdef',
-        maxTimeoutSeconds: 60,
-        asset: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
-        extra: null,
-      };
+      const paymentRequirements = createV2PaymentRequirements();
+      const basePayload = createV2PaymentPayload();
+      const paymentPayload = createV2PaymentPayload({
+        payload: {
+          signature: 'invalid-signature',
+          authorization: basePayload.payload.authorization,
+        }
+      });
 
       const mockVerifyResponse = {
         isValid: false,
@@ -361,7 +431,7 @@ describe('PrismClient', () => {
       };
 
       nock(TEST_URL)
-        .post('/api/v1/payment/verify')
+        .post('/api/v2/payment/verify')
         .reply(200, mockVerifyResponse);
 
       const result = await client.verifyPayment(
@@ -374,17 +444,11 @@ describe('PrismClient', () => {
     });
 
     it('should throw PrismGatewayError on 400 Bad Request', async () => {
-      const paymentPayload = {
-        x402Version: 1,
-        scheme: 'eip3009',
-        network: '1',
-        asset: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
-        payload: {},
-      };
       const paymentRequirements = {} as any; // Incomplete requirements
+      const paymentPayload = createV2PaymentPayload({ payload: {} });
 
       nock(TEST_URL)
-        .post('/api/v1/payment/verify')
+        .post('/api/v2/payment/verify')
         .reply(400, {
           error: 'Missing required fields',
         });
@@ -398,29 +462,12 @@ describe('PrismClient', () => {
     });
 
     it('should throw PrismGatewayError on 500 Internal Error', async () => {
-      const paymentPayload = {
-        x402Version: 1,
-        scheme: 'eip3009',
-        network: '1',
-        asset: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
-        payload: { authorization: '0xsig' },
-      };
-      const paymentRequirements = {
-        scheme: 'eip3009',
-        network: '1',
-        maxAmountRequired: '10000',
-        resource: 'https://api.example.com/paid-content',
-        description: 'Premium article access',
-        mimeType: 'application/json',
-        payTo: '0x1234567890abcdef',
-        maxTimeoutSeconds: 60,
-        asset: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
-        extra: null,
-      };
+      const paymentRequirements = createV2PaymentRequirements();
+      const paymentPayload = createV2PaymentPayload();
 
       const traceId = '0HNGT483NH6I8:00000005';
 
-      nock(TEST_URL).post('/api/v1/payment/verify').reply(500, {
+      nock(TEST_URL).post('/api/v2/payment/verify').reply(500, {
         error: 'Internal server error',
         traceId,
       });
@@ -435,27 +482,10 @@ describe('PrismClient', () => {
     });
 
     it('should throw PrismNetworkError on network error', async () => {
-      const paymentPayload = {
-        x402Version: 1,
-        scheme: 'eip3009',
-        network: '1',
-        asset: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
-        payload: { authorization: '0xsig' },
-      };
-      const paymentRequirements = {
-        scheme: 'eip3009',
-        network: '1',
-        maxAmountRequired: '10000',
-        resource: 'https://api.example.com/paid-content',
-        description: 'Premium article access',
-        mimeType: 'application/json',
-        payTo: '0x1234567890abcdef',
-        maxTimeoutSeconds: 60,
-        asset: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
-        extra: null,
-      };
+      const paymentRequirements = createV2PaymentRequirements();
+      const paymentPayload = createV2PaymentPayload();
 
-      nock(TEST_URL).post('/api/v1/payment/verify').replyWithError({
+      nock(TEST_URL).post('/api/v2/payment/verify').replyWithError({
         code: 'ECONNRESET',
         message: 'Connection reset',
       });
@@ -475,30 +505,20 @@ describe('PrismClient', () => {
     });
 
     it('should return successful settlement', async () => {
-      const paymentPayload = {
-        x402Version: 1,
-        scheme: 'eip3009',
-        network: '1',
-        asset: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
+      const paymentPayload = createV2PaymentPayload({
         payload: {
-          authorization: '0xsignature123',
-          validAfter: 0,
-          validBefore: 999999999,
-        },
-      };
+          signature: '0xsignature123',
+          authorization: {
+            from: '0xabcdef1234567890',
+            to: '0x1234567890abcdef',
+            value: 10000,
+            validAfter: 0,
+            validBefore: 999999999,
+          }
+        }
+      });
 
-      const paymentRequirements = {
-        scheme: 'eip3009',
-        network: '1',
-        maxAmountRequired: '10000',
-        resource: 'https://api.example.com/paid-content',
-        description: 'Premium article access',
-        mimeType: 'application/json',
-        payTo: '0x1234567890abcdef',
-        maxTimeoutSeconds: 60,
-        asset: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
-        extra: null,
-      };
+      const paymentRequirements = createV2PaymentRequirements();
 
       const mockSettleResponse = {
         success: true,
@@ -508,7 +528,7 @@ describe('PrismClient', () => {
       };
 
       nock(TEST_URL)
-        .post('/api/v1/payment/settle', {
+        .post('/api/v2/payment/settle', {
           paymentPayload,
           paymentRequirements,
         })
@@ -525,30 +545,20 @@ describe('PrismClient', () => {
     });
 
     it('should return failed settlement', async () => {
-      const paymentPayload = {
-        x402Version: 1,
-        scheme: 'eip3009',
-        network: '1',
-        asset: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
+      const paymentPayload = createV2PaymentPayload({
         payload: {
-          authorization: '0xinvalidsignature',
-          validAfter: 0,
-          validBefore: 999999999,
-        },
-      };
+          signature: '0xinvalidsignature',
+          authorization: {
+            from: '0xabcdef1234567890',
+            to: '0x1234567890abcdef',
+            value: 10000,
+            validAfter: 0,
+            validBefore: 999999999,
+          }
+        }
+      });
 
-      const paymentRequirements = {
-        scheme: 'eip3009',
-        network: '1',
-        maxAmountRequired: '10000',
-        resource: 'https://api.example.com/paid-content',
-        description: 'Premium article access',
-        mimeType: 'application/json',
-        payTo: '0x1234567890abcdef',
-        maxTimeoutSeconds: 60,
-        asset: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
-        extra: null,
-      };
+      const paymentRequirements = createV2PaymentRequirements();
 
       const mockSettleResponse = {
         success: false,
@@ -556,7 +566,7 @@ describe('PrismClient', () => {
       };
 
       nock(TEST_URL)
-        .post('/api/v1/payment/settle')
+        .post('/api/v2/payment/settle')
         .reply(200, mockSettleResponse);
 
       const result = await client.settlePayment(
@@ -570,26 +580,15 @@ describe('PrismClient', () => {
 
     it('should throw PrismGatewayError on 400 Bad Request', async () => {
       const paymentPayload = {
-        x402Version: 1,
+        x402Version: 2,
         scheme: 'eip3009',
-        network: '1',
+        network: 'eip155:1',
         payload: {},
       } as any; // Incomplete payload
-      const paymentRequirements = {
-        scheme: 'eip3009',
-        network: '1',
-        maxAmountRequired: '10000',
-        resource: 'https://api.example.com/paid-content',
-        description: 'Premium article access',
-        mimeType: 'application/json',
-        payTo: '0x1234567890abcdef',
-        maxTimeoutSeconds: 60,
-        asset: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
-        extra: null,
-      };
+      const paymentRequirements = createV2PaymentRequirements();
 
       nock(TEST_URL)
-        .post('/api/v1/payment/settle')
+        .post('/api/v2/payment/settle')
         .reply(400, {
           error: 'Invalid payload',
         });
@@ -603,34 +602,24 @@ describe('PrismClient', () => {
     });
 
     it('should throw PrismGatewayError on 500 Internal Error', async () => {
-      const paymentPayload = {
-        x402Version: 1,
-        scheme: 'eip3009',
-        network: '1',
-        asset: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
+      const paymentPayload = createV2PaymentPayload({
         payload: {
-          authorization: '0xsignature123',
-          validAfter: 0,
-          validBefore: 999999999,
-        },
-      };
+          signature: '0xsignature123',
+          authorization: {
+            from: '0xabcdef1234567890',
+            to: '0x1234567890abcdef',
+            value: 10000,
+            validAfter: 0,
+            validBefore: 999999999,
+          }
+        }
+      });
 
-      const paymentRequirements = {
-        scheme: 'eip3009',
-        network: '1',
-        maxAmountRequired: '10000',
-        resource: 'https://api.example.com/paid-content',
-        description: 'Premium article access',
-        mimeType: 'application/json',
-        payTo: '0x1234567890abcdef',
-        maxTimeoutSeconds: 60,
-        asset: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
-        extra: null,
-      };
+      const paymentRequirements = createV2PaymentRequirements();
 
       const traceId = '0HNGT483NH6I8:00000006';
 
-      nock(TEST_URL).post('/api/v1/payment/settle').reply(500, {
+      nock(TEST_URL).post('/api/v2/payment/settle').reply(500, {
         error: 'Blockchain node unavailable',
         traceId,
       });
@@ -645,32 +634,22 @@ describe('PrismClient', () => {
     });
 
     it('should throw PrismNetworkError on network error', async () => {
-      const paymentPayload = {
-        x402Version: 1,
-        scheme: 'eip3009',
-        network: '1',
-        asset: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
+      const paymentPayload = createV2PaymentPayload({
         payload: {
-          authorization: '0xsignature123',
-          validAfter: 0,
-          validBefore: 999999999,
-        },
-      };
+          signature: '0xsignature123',
+          authorization: {
+            from: '0xabcdef1234567890',
+            to: '0x1234567890abcdef',
+            value: 10000,
+            validAfter: 0,
+            validBefore: 999999999,
+          }
+        }
+      });
 
-      const paymentRequirements = {
-        scheme: 'eip3009',
-        network: '1',
-        maxAmountRequired: '10000',
-        resource: 'https://api.example.com/paid-content',
-        description: 'Premium article access',
-        mimeType: 'application/json',
-        payTo: '0x1234567890abcdef',
-        maxTimeoutSeconds: 60,
-        asset: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
-        extra: null,
-      };
+      const paymentRequirements = createV2PaymentRequirements();
 
-      nock(TEST_URL).post('/api/v1/payment/settle').replyWithError({
+      nock(TEST_URL).post('/api/v2/payment/settle').replyWithError({
         code: 'EAI_AGAIN',
         message: 'DNS lookup failed',
       });

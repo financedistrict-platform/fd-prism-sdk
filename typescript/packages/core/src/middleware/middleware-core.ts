@@ -205,28 +205,14 @@ export class PrismMiddlewareCore {
         throw new Error('Failed to generate payment requirements');
       }
 
-      // Transform to target protocol version if needed
-      let responsePayload: PaymentRequiredResponseV2 | PaymentRequiredResponseV1 = paymentRequirements;
-      const requirementsVersion = (paymentRequirements as any).x402Version as 1 | 2;
-
-      if (protocolVersion === 1 && requirementsVersion === 2) {
-        responsePayload = SchemaTransformer.transformPaymentRequired(
-          paymentRequirements as unknown as PaymentRequiredResponseV2,
-          1
-        ) as PaymentRequiredResponseV1;
-      } else if (protocolVersion === 2 && requirementsVersion === 1) {
-        responsePayload = SchemaTransformer.transformPaymentRequired(
-          paymentRequirements as unknown as PaymentRequiredResponseV1,
-          2
-        ) as PaymentRequiredResponseV2;
-      }
-
+      // Gateway now returns data in the format matching the protocol version
+      // No transformation needed since PrismClient uses /api/v{version}/ endpoint
       if (this.debug) {
         console.log('[PrismMiddlewareCore] Returning 402 with requirements (v' + protocolVersion + ')');
       }
 
       // Return 402 Payment Required
-      const response = build402Response(responsePayload as any);
+      const response = build402Response(paymentRequirements as any);
       return {
         handled: true,
         ...response,

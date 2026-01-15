@@ -21,11 +21,13 @@ export class PrismClient {
   private client: AxiosInstance;
   private apiKey: string;
   private debug: boolean;
+  private protocolVersion: 1 | 2;
   private static readonly DEFAULT_BASE_URL = 'https://prism-api.test.1stdigital.tech';
 
   constructor(config: PrismMiddlewareConfig) {
     this.apiKey = config.apiKey;
     this.debug = config.debug || false;
+    this.protocolVersion = config.x402Version || 2; // Default to v2
 
     // Use provided baseUrl or default to test environment
     const baseUrl = config.baseUrl || PrismClient.DEFAULT_BASE_URL;
@@ -92,7 +94,7 @@ export class PrismClient {
    */
   async getAuthInfo(): Promise<AuthInfoResponse> {
     try {
-      const response = await this.client.get<AuthInfoResponse>('/api/v1/auth-info');
+      const response = await this.client.get<AuthInfoResponse>(`/api/v${this.protocolVersion}/auth-info`);
       return response.data;
     } catch (error: any) {
       return this.handleError(error, 'Get auth info');
@@ -111,7 +113,7 @@ export class PrismClient {
       }
 
       const response = await this.client.post<PaymentRequiredResponse>(
-        '/api/v1/payment/requirements',
+        `/api/v${this.protocolVersion}/payment/requirements`,
         request
       );
 
@@ -152,7 +154,7 @@ export class PrismClient {
         isValid: boolean;
         payer?: string;
         error?: string;
-      }>('/api/v1/payment/verify', {
+      }>(`/api/v${this.protocolVersion}/payment/verify`, {
         paymentPayload,
         paymentRequirements,
       });
@@ -198,7 +200,7 @@ export class PrismClient {
         transaction: string;
         network: string;
         errorReason?: string;
-      }>('/api/v1/payment/settle', {
+      }>(`/api/v${this.protocolVersion}/payment/settle`, {
         paymentPayload,
         paymentRequirements,
       });
