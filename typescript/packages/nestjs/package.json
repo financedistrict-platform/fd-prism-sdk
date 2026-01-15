@@ -1,6 +1,6 @@
 {
   "name": "@1stdigital/prism-nestjs",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Prism SDK - NestJS module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -20,7 +20,7 @@
     "test": "jest --passWithNoTests"
   },
   "dependencies": {
-    "@1stdigital/prism-core": "*"
+    "@1stdigital/prism-core": "^2.0.0"
   },
   "peerDependencies": {
     "@nestjs/common": "^10.0.0",

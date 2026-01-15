@@ -1,6 +1,6 @@
 {
   "name": "@1stdigital/prism-fastify",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Prism SDK - Fastify plugin",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -19,7 +19,7 @@
     "test": "jest --passWithNoTests"
   },
   "dependencies": {
-    "@1stdigital/prism-core": "*",
+    "@1stdigital/prism-core": "^2.0.0",
     "fastify-plugin": "^4.5.0"
   },
   "peerDependencies": {

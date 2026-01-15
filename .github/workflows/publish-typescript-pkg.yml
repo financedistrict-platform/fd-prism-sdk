@@ -47,7 +47,8 @@ jobs:
           registry-url: "https://npm.pkg.github.com"
           scope: "@1stdigital"
           token: ${{ secrets.GITHUB_TOKEN }}
-
+      - name: Set deployment token
+        run: npm config set '//npm.pkg.github.com/:_authToken' "${{ secrets.GITHUB_TOKEN }}"
       - name: Install dependencies
         run: npm install
         working-directory: typescript
@@ -65,6 +66,9 @@ jobs:
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
+
+      - name: Configure npm authentication (global)
+        run: npm config set '//npm.pkg.github.com/:_authToken' "${{ secrets.GITHUB_TOKEN }}"
 
       - name: Bump Core Version
         if: (github.event.inputs.package == 'all' || github.event.inputs.package == 'core') && github.event.inputs.version_bump != ''
