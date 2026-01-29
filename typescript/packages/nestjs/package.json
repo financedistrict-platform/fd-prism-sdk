@@ -20,7 +20,7 @@
     "test": "jest --passWithNoTests"
   },
   "dependencies": {
-    "@1stdigital/prism-core": "^2.0.1"
+    "@1stdigital/prism-core": "^2.0.2"
   },
   "peerDependencies": {
     "@nestjs/common": "^10.0.0",
