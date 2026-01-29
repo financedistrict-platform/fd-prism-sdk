@@ -1,6 +1,6 @@
 {
   "name": "@1stdigital/prism-express",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "Prism SDK - Express.js middleware",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
