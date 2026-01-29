@@ -176,7 +176,7 @@ See `TESTING.md` for detailed testing guide.
 ```typescript
 {
   apiKey: "your-api-key",
-  baseUrl: "https://prism-api.test.1stdigital.tech"  // Test (default)
+  baseUrl: "https://prism-gw.test.1stdigital.tech"  // Test (default)
   // baseUrl: "https://prism-api.1stdigital.tech"    // Production
 }
 ```

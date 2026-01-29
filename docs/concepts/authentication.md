@@ -8,7 +8,7 @@ Every request to Prism Gateway must include an API key in the `X-API-Key` header
 
 ```http
 GET /api/v1/auth-info
-Host: prism-api.test.1stdigital.tech
+Host: prism-gw.test.1stdigital.tech
 X-API-Key: your-api-key-here
 ```
 
@@ -24,7 +24,7 @@ Contact FD Technologies to obtain your API key for:
 You can retrieve information about your API key:
 
 ```bash
-curl https://prism-api.test.1stdigital.tech/api/v1/auth-info \
+curl https://prism-gw.test.1stdigital.tech/api/v1/auth-info \
   -H "X-API-Key: your-api-key"
 ```
 
@@ -62,11 +62,11 @@ The API key automatically configures:
 ```typescript
 {
   apiKey: "dev-key-123";
-  // Defaults to: https://prism-api.test.1stdigital.tech
+  // Defaults to: https://prism-gw.test.1stdigital.tech
 }
 ```
 
-Base URL: `https://prism-api.test.1stdigital.tech` (default)
+Base URL: `https://prism-gw.test.1stdigital.tech` (default)
 
 - Test tokens (no real value)
 - Testnet blockchains (Base Sepolia, etc.)

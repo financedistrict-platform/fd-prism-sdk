@@ -138,12 +138,12 @@ npm run example
 
 ```powershell
 # Health check
-Invoke-RestMethod -Uri "https://prism-api.test.1stdigital.tech/api/health" `
+Invoke-RestMethod -Uri "https://prism-gw.test.1stdigital.tech/api/health" `
   -Method GET
 
 # Get auth info
 $headers = @{ "X-API-Key" = "dev-key-123" }
-Invoke-RestMethod -Uri "https://prism-api.test.1stdigital.tech/api/auth-info" `
+Invoke-RestMethod -Uri "https://prism-gw.test.1stdigital.tech/api/auth-info" `
   -Method GET `
   -Headers $headers
 ```
@@ -210,7 +210,7 @@ Invoke-RestMethod -Uri "https://prism-api.test.1stdigital.tech/api/auth-info" `
 
 ### Sandbox Environment
 
-- **Gateway URL:** https://prism-api.test.1stdigital.tech
+- **Gateway URL:** https://prism-gw.test.1stdigital.tech
 - **API Key:** `dev-key-123`
 - **Test Networks:** base-sepolia, ethereum-sepolia
 

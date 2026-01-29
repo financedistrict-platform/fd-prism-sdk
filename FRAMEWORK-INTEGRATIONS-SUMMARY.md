@@ -94,7 +94,7 @@ fastify.get("/api/premium", async (request, reply) => {
   imports: [
     PrismModule.forRoot({
       apiKey: "dev-key-123",
-      baseUrl: "https://prism-api.test.1stdigital.tech",
+      baseUrl: "https://prism-gw.test.1stdigital.tech",
     }),
   ],
 })

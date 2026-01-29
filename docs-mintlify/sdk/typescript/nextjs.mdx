@@ -65,7 +65,7 @@ async function handler(request: NextRequest) {
 // Wrap handler with payment middleware
 export const GET = withPrismPayment(handler, {
   apiKey: process.env.PRISM_API_KEY || "dev-key-123",
-  baseUrl: "https://prism-api.test.1stdigital.tech",
+  baseUrl: "https://prism-gw.test.1stdigital.tech",
   price: 0.01, // $0.01 USD
   description: "Premium API",
 });
@@ -82,7 +82,7 @@ import { createPrismMiddleware } from "@1stdigital/prism-nextjs";
 
 const prismMiddleware = createPrismMiddleware({
   apiKey: process.env.PRISM_API_KEY || "dev-key-123",
-  baseUrl: "https://prism-api.test.1stdigital.tech",
+  baseUrl: "https://prism-gw.test.1stdigital.tech",
 });
 
 export default async function handler(

@@ -13,7 +13,7 @@ prism_payment_middleware(
     app,
     config=PrismMiddlewareConfig(
         api_key='dev-key-123',
-        base_url='https://prism-api.test.1stdigital.tech',
+        base_url='https://prism-gw.test.1stdigital.tech',
         debug=True
     ),
     routes={

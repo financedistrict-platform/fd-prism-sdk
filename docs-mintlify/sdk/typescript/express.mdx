@@ -59,7 +59,7 @@ app.use(
   prismPaymentMiddleware(
     {
       apiKey: process.env.PRISM_API_KEY || "dev-key-123",
-      baseUrl: "https://prism-api.test.1stdigital.tech",
+      baseUrl: "https://prism-gw.test.1stdigital.tech",
     },
     {
       "/api/premium": {
@@ -440,7 +440,7 @@ const app = require("./app"); // Your Express app
 const request = require("supertest");
 
 // Use real test gateway
-process.env.PRISM_BASE_URL = "https://prism-api.test.1stdigital.tech";
+process.env.PRISM_BASE_URL = "https://prism-gw.test.1stdigital.tech";
 process.env.PRISM_API_KEY = "your-test-key";
 
 test("full payment flow", async () => {
@@ -578,7 +578,7 @@ const app = express();
 
 const config: PrismMiddlewareConfig = {
   apiKey: process.env.PRISM_API_KEY!,
-  baseUrl: "https://prism-api.test.1stdigital.tech",
+  baseUrl: "https://prism-gw.test.1stdigital.tech",
   debug: false,
 };
 

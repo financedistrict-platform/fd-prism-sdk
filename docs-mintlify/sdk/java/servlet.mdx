@@ -63,7 +63,7 @@ The **prism-servlet** package provides a generic Servlet Filter for payment-prot
 
   <init-param>
     <param-name>baseUrl</param-name>
-    <param-value>https://prism-api.test.1stdigital.tech</param-value>
+    <param-value>https://prism-gw.test.1stdigital.tech</param-value>
   </init-param>
 
   <init-param>
@@ -120,7 +120,7 @@ import org.fdtech.prism.core.PrismConfig;
 
 PrismConfig config = new PrismConfig(
     "your-api-key",                                    // Required: API key
-    "https://prism-api.test.1stdigital.tech",         // Optional: Base URL
+    "https://prism-gw.test.1stdigital.tech",         // Optional: Base URL
     true                                               // Optional: Debug mode
 );
 ```
@@ -441,7 +441,7 @@ public class PrismConfig {
     public FilterRegistrationBean<PrismFilter> prismFilter() {
         PrismConfig config = new PrismConfig(
             "dev-key-123",
-            "https://prism-api.test.1stdigital.tech"
+            "https://prism-gw.test.1stdigital.tech"
         );
 
         PrismFilter filter = new PrismFilter(config);

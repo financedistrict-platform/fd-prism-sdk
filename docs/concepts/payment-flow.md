@@ -68,7 +68,7 @@ Server calls Prism Gateway to get payment options:
 
 ```http
 POST /api/v1/payment/requirements HTTP/1.1
-Host: prism-api.test.1stdigital.tech
+Host: prism-gw.test.1stdigital.tech
 X-API-Key: dev-key-123
 Content-Type: application/json
 

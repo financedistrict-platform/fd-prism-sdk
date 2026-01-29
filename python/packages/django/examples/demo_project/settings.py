@@ -34,7 +34,7 @@ TEMPLATES = [{
 # Prism Payment Configuration
 PRISM_CONFIG = {
     'api_key': 'dev-key-123',
-    'base_url': 'https://prism-api.test.1stdigital.tech',
+    'base_url': 'https://prism-gw.test.1stdigital.tech',
     'debug': True
 }
 

@@ -69,11 +69,11 @@ curl http://localhost:3000/api/weather \
 
 ```powershell
 # Test health endpoint
-Invoke-RestMethod -Uri "https://prism-api.test.1stdigital.tech/health"
+Invoke-RestMethod -Uri "https://prism-gw.test.1stdigital.tech/health"
 
 # Test auth-info
 $headers = @{"X-API-Key" = "dev-key-123"}
-Invoke-RestMethod -Uri "https://prism-api.test.1stdigital.tech/api/v1/auth-info" -Headers $headers
+Invoke-RestMethod -Uri "https://prism-gw.test.1stdigital.tech/api/v1/auth-info" -Headers $headers
 
 # Test payment requirements
 $headers = @{"X-API-Key" = "dev-key-123"; "Content-Type" = "application/json"}
@@ -84,7 +84,7 @@ $body = @{
   "mimeType" = "application/json"
 } | ConvertTo-Json
 
-Invoke-RestMethod -Uri "https://prism-api.test.1stdigital.tech/api/v1/payment/requirements" -Method POST -Headers $headers -Body $body
+Invoke-RestMethod -Uri "https://prism-gw.test.1stdigital.tech/api/v1/payment/requirements" -Method POST -Headers $headers -Body $body
 ```
 
 ## Current Implementation Status

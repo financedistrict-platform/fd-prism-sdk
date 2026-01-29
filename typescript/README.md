@@ -58,7 +58,7 @@ interface PrismMiddlewareConfig {
   apiKey: string;
 
   // Optional: Gateway URL (defaults to test environment)
-  // Test: https://prism-api.test.1stdigital.tech (default)
+  // Test: https://prism-gw.test.1stdigital.tech (default)
   // Production: https://prism-api.1stdigital.tech
   baseUrl?: string;
 }
@@ -157,7 +157,7 @@ app.get("/api/premium", (req, res) => {
 
 ## Environments
 
-- **Test (default)**: `https://prism-api.test.1stdigital.tech`
+- **Test (default)**: `https://prism-gw.test.1stdigital.tech`
 - **Production**: `https://prism-api.1stdigital.tech`
 
 The middleware defaults to the test environment. For production, specify the `baseUrl`:

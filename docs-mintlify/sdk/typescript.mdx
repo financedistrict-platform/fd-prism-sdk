@@ -239,7 +239,7 @@ interface PrismMiddlewareConfig {
 <ParamField path="baseUrl" type="string">
   Prism Gateway URL. Defaults to test environment.
   
-  - Test: `https://prism-api.test.1stdigital.tech` (default)
+  - Test: `https://prism-gw.test.1stdigital.tech` (default)
   - Production: `https://prism-api.1stdigital.tech`
   
   ```typescript
@@ -1125,7 +1125,7 @@ const config = {
     - Verify middleware is registered **before** route handlers
     - Check route paths match exactly (case-sensitive)
     - Ensure `apiKey` is valid
-    - Check Gateway connectivity (`curl https://prism-api.test.1stdigital.tech/health`)
+    - Check Gateway connectivity (`curl https://prism-gw.test.1stdigital.tech/health`)
   </Accordion>
   
   <Accordion icon="clock" title="Gateway timeout errors">
@@ -1133,7 +1133,7 @@ const config = {
     
     **Solutions:**
     - Check network connectivity to Gateway
-    - Verify no firewall blocking outbound HTTPS to `prism-api.test.1stdigital.tech`
+    - Verify no firewall blocking outbound HTTPS to `prism-gw.test.1stdigital.tech`
     - Check Gateway status page
     - Implement retry logic (see Error Handling section)
     

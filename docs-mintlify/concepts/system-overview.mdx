@@ -85,7 +85,7 @@ graph TB
 </Tab>
 
   <Tab title="Environments">
-    **Sandbox (Testnet)** - URL: `https://prism-api.test.1stdigital.tech` -
+    **Sandbox (Testnet)** - URL: `https://prism-gw.test.1stdigital.tech` -
     Networks: base-sepolia, ethereum-sepolia, bsc-testnet - Tokens: Test USDC,
     AITC, FDUSD - API Key: `dev-key-123` (shared test key) - Faucet: Available
     for free test tokens **Production (Mainnet)** - URL:
@@ -237,7 +237,7 @@ graph TB
       if (!authHeader) {
         // 3. Call Gateway for payment requirements
         const quote = await axios.post(
-          'https://prism-api.test.1stdigital.tech/api/v1/payment/requirements',
+          'https://prism-gw.test.1stdigital.tech/api/v1/payment/requirements',
           {
             amount: routeConfig.price,
             resource: req.path
@@ -285,7 +285,7 @@ graph TB
       
       // 8. Verify signature through Gateway
       const verification = await axios.post(
-        'https://prism-api.test.1stdigital.tech/api/v1/payment/verify',
+        'https://prism-gw.test.1stdigital.tech/api/v1/payment/verify',
         { signature, from, nonce },
         { headers: { 'x-api-key': process.env.PRISM_API_KEY } }
       );
@@ -296,7 +296,7 @@ graph TB
       
       // 9. Settle payment
       await axios.post(
-        'https://prism-api.test.1stdigital.tech/api/v1/payment/settle',
+        'https://prism-gw.test.1stdigital.tech/api/v1/payment/settle',
         { nonce },
         { headers: { 'x-api-key': process.env.PRISM_API_KEY } }
       );

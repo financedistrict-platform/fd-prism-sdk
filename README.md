@@ -153,7 +153,7 @@ MIT
 
 ## 🔗 Links
 
-- [Prism Gateway Documentation](https://prism-api.test.1stdigital.tech/health)
+- [Prism Gateway Documentation](https://prism-gw.test.1stdigital.tech/health)
 - [x402 Protocol Specification](https://github.com/coinbase/x402)
 
 ## 💬 Support

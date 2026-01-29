@@ -18,15 +18,9 @@ import {
 } from '../utils';
 import {
   detectProtocolVersion,
-  HeaderAdapter,
-  SchemaTransformer,
-  normalizeNetwork,
 } from '../compatibility';
-import type { PaymentPayloadV1, PaymentRequiredResponseV1 } from '../types/v1';
-import type {
-  PaymentPayload as PaymentPayloadV2,
-  PaymentRequiredResponse as PaymentRequiredResponseV2
-} from '../types/v2';
+import type { PaymentPayloadV1 } from '../types/v1';
+import type { PaymentPayload as PaymentPayloadV2 } from '../types/v2';
 
 /**
  * Result of middleware processing
@@ -298,20 +292,9 @@ export class PrismMiddlewareCore {
         };
       }
 
-      // Normalize payment payload to v2 for internal processing
-      let normalizedPayload: any = paymentPayload;
-      if (protocolVersion === 1) {
-        // For v1, we need to upgrade to v2 format for verification
-        const v1Payload = paymentPayload as PaymentPayloadV1;
-        normalizedPayload = SchemaTransformer.transformPaymentPayload(
-          v1Payload,
-          2,
-          { acceptedRequirements: paymentRequirements }
-        );
-      }
 
       // Verify payment with Gateway
-      const verificationResult = await this.client.verifyPayment(normalizedPayload, paymentRequirements);
+      const verificationResult = await this.client.verifyPayment(paymentPayload as any, paymentRequirements);
 
       if (!verificationResult.isValid) {
         if (this.debug) {
@@ -390,7 +373,7 @@ export class PrismMiddlewareCore {
     if (protocolVersion === 1) {
       const v1Payload = paymentPayload as PaymentPayloadV1;
       scheme = v1Payload.scheme;
-      network = normalizeNetwork(v1Payload.network, 2); // Normalize to v2 for comparison
+      network = v1Payload.network;
       asset = undefined; // v1 doesn't have asset in payload
     } else {
       const v2Payload = paymentPayload as unknown as PaymentPayloadV2;
@@ -400,11 +383,8 @@ export class PrismMiddlewareCore {
     }
 
     return paymentRequirements.find((req) => {
-      // Normalize requirement network to v2 for comparison
-      const reqNetwork = normalizeNetwork(req.network, 2);
-
       const schemeMatch = req.scheme === scheme;
-      const networkMatch = reqNetwork === network;
+      const networkMatch = req.network === network;
       const assetMatch = !asset || req.asset === asset;
 
       return schemeMatch && networkMatch && assetMatch;

@@ -14,7 +14,7 @@ const paymentMiddleware = prismPaymentMiddleware(
   {
     // API Configuration
     apiKey: process.env.PRISM_API_KEY || 'dev-key-123',
-    baseUrl: process.env.PRISM_BASE_URL || 'https://prism-api.test.1stdigital.tech',
+    baseUrl: process.env.PRISM_BASE_URL || 'https://prism-gw.test.1stdigital.tech',
     
     // Enable debug mode to see detailed logs
     debug: true  // Set to false in production

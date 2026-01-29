@@ -63,7 +63,7 @@ export interface PrismMiddlewareConfig {
   apiKey: string;
 
   // Base URL for Prism Gateway (defaults to test environment)
-  // Test: https://prism-api.test.1stdigital.tech
+  // Test: https://prism-gw.test.1stdigital.tech
   // Production: https://prism-api.1stdigital.tech
   baseUrl?: string;
 

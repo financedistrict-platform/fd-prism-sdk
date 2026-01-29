@@ -23,7 +23,7 @@ const config = {
 
 **Test environment characteristics:**
 
-- Base URL: `https://prism-api.test.1stdigital.tech` (default)
+- Base URL: `https://prism-gw.test.1stdigital.tech` (default)
 - Test API keys accepted
 - Test networks (e.g., `base-sepolia`, `ethereum-sepolia`)
 - No real payments processed

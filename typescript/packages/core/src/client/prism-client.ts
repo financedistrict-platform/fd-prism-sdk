@@ -22,7 +22,7 @@ export class PrismClient {
   private apiKey: string;
   private debug: boolean;
   private protocolVersion: 1 | 2;
-  private static readonly DEFAULT_BASE_URL = 'https://prism-api.test.1stdigital.tech';
+  private static readonly DEFAULT_BASE_URL = 'https://prism-gw.test.1stdigital.tech';
 
   constructor(config: PrismMiddlewareConfig) {
     this.apiKey = config.apiKey;

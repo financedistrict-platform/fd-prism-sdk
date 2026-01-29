@@ -7,7 +7,7 @@ import {
 
 describe('PrismClient', () => {
   const API_KEY = 'test-api-key-123';
-  const TEST_URL = 'https://prism-api.test.1stdigital.tech';
+  const TEST_URL = 'https://prism-gw.test.1stdigital.tech';
   const PRODUCTION_URL = 'https://prism-api.1stdigital.tech';
 
   // V2 Mock Data Helpers

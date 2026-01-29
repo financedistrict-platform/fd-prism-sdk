@@ -59,7 +59,7 @@ import { AppController } from "./app.controller";
   imports: [
     PrismModule.forRoot({
       apiKey: process.env.PRISM_API_KEY || "dev-key-123",
-      baseUrl: "https://prism-api.test.1stdigital.tech",
+      baseUrl: "https://prism-gw.test.1stdigital.tech",
       routes: {
         "/api/premium": {
           price: 0.01, // $0.01 USD
