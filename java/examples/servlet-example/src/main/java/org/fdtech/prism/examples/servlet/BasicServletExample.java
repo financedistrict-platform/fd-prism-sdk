@@ -23,7 +23,7 @@ public class BasicServletExample {
         // 1. Configure Prism
         PrismConfig config = new PrismConfig.Builder()
                 .apiKey("your-api-key-here")
-                .facilitatorUrl("https://facilitator.fdtech.org")
+                .baseUrl("https://prism-gw.test.1stdigital.tech")
                 .addRoute("/api/premium", 1000L, "Access to premium content")
                 .addRoute("/content/exclusive", 500L, "Exclusive articles and videos")
                 .build();

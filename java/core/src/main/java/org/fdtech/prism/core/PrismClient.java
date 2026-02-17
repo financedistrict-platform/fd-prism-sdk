@@ -8,16 +8,16 @@ import java.io.IOException;
 import java.util.concurrent.TimeUnit;
 
 /**
- * HTTP client for interacting with the Prism facilitator.
+ * HTTP client for interacting with the Prism Gateway.
  */
 public class PrismClient {
-    private final String facilitatorUrl;
+    private final String baseUrl;
     private final String apiKey;
     private final OkHttpClient httpClient;
     private final Gson gson;
 
-    public PrismClient(String facilitatorUrl, String apiKey) {
-        this.facilitatorUrl = facilitatorUrl;
+    public PrismClient(String baseUrl, String apiKey) {
+        this.baseUrl = baseUrl;
         this.apiKey = apiKey;
         this.httpClient = new OkHttpClient.Builder()
                 .connectTimeout(10, TimeUnit.SECONDS)
@@ -31,16 +31,13 @@ public class PrismClient {
      *
      * @param price The price in wei
      * @param description The payment description
-     * @return JSON response from facilitator
-     * @throws IOException if the request fails
-     */
-    public JsonObject getPaymentRequirements(long price, String description) throws IOException {
+     * @return JSON response from Gateway(long price, String description) throws IOException {
         JsonObject requestBody = new JsonObject();
         requestBody.addProperty("price", String.valueOf(price));
         requestBody.addProperty("description", description);
 
         Request request = new Request.Builder()
-                .url(facilitatorUrl + "/get-payment-requirements")
+                .url(baseUrl + "/v1/get-payment-requirements")
                 .header("Authorization", "Bearer " + apiKey)
                 .header("Content-Type", "application/json")
                 .post(RequestBody.create(
@@ -62,15 +59,12 @@ public class PrismClient {
      * Verify a payment proof.
      *
      * @param proof The payment proof from the client
-     * @return JSON response from facilitator
-     * @throws IOException if the request fails
-     */
-    public JsonObject verifyPayment(String proof) throws IOException {
+     * @return JSON response from Gateway(String proof) throws IOException {
         JsonObject requestBody = new JsonObject();
         requestBody.addProperty("proof", proof);
 
         Request request = new Request.Builder()
-                .url(facilitatorUrl + "/verify-payment")
+                .url(baseUrl + "/v1/verify-payment")
                 .header("Authorization", "Bearer " + apiKey)
                 .header("Content-Type", "application/json")
                 .post(RequestBody.create(
@@ -104,7 +98,7 @@ public class PrismClient {
             requestBody.addProperty("details", details);
 
             Request request = new Request.Builder()
-                    .url(facilitatorUrl + "/settlement-callback")
+                    .url(baseUrl + "/v1/settlement-callback")
                     .header("Authorization", "Bearer " + apiKey)
                     .header("Content-Type", "application/json")
                     .post(RequestBody.create(

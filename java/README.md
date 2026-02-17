@@ -19,7 +19,7 @@ import org.fdtech.prism.servlet.PrismFilter;
 // 1. Configure Prism
 PrismConfig config = new PrismConfig.Builder()
     .apiKey("your-api-key")
-    .facilitatorUrl("https://facilitator.fdtech.org")
+    .baseUrl("https://prism-gw.test.1stdigital.tech")
     .addRoute("/api/premium", 1000L, "Premium content")
     .build();
 
@@ -45,7 +45,7 @@ servletContext.addFilter("prismFilter", filter)
 
 ```properties
 prism.api-key=your-api-key
-prism.facilitator-url=https://facilitator.fdtech.org
+prism.base-url=https://prism-gw.test.1stdigital.tech
 
 prism.routes[0].path=/api/premium
 prism.routes[0].price=1000
@@ -118,7 +118,7 @@ mvn spring-boot:run
 ```java
 PrismConfig config = new PrismConfig.Builder()
     .apiKey("your-api-key")              // Required
-    .facilitatorUrl("https://...")       // Optional (has default)
+    .baseUrl("https://...")              // Optional (has default)
     .addRoute("/path", price, "desc")    // Add routes
     .build();
 ```

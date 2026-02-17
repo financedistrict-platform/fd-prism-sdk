@@ -17,7 +17,7 @@ public class PrismMiddleware {
 
     public PrismMiddleware(PrismConfig config) {
         this.config = config;
-        this.client = new PrismClient(config.getFacilitatorUrl(), config.getApiKey());
+        this.client = new PrismClient(config.getBaseUrl(), config.getApiKey());
         this.routeMap = new HashMap<>();
 
         // Build route map for fast lookup

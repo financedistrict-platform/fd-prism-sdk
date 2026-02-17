@@ -9,12 +9,12 @@ import java.util.List;
  */
 public class PrismConfig {
     private final String apiKey;
-    private final String facilitatorUrl;
+    private final String baseUrl;
     private final List<RoutePaymentConfig> routes;
 
     private PrismConfig(Builder builder) {
         this.apiKey = builder.apiKey;
-        this.facilitatorUrl = builder.facilitatorUrl;
+        this.baseUrl = builder.baseUrl;
         this.routes = Collections.unmodifiableList(new ArrayList<>(builder.routes));
     }
 
@@ -22,8 +22,8 @@ public class PrismConfig {
         return apiKey;
     }
 
-    public String getFacilitatorUrl() {
-        return facilitatorUrl;
+    public String getBaseUrl() {
+        return baseUrl;
     }
 
     public List<RoutePaymentConfig> getRoutes() {
@@ -35,7 +35,7 @@ public class PrismConfig {
      */
     public static class Builder {
         private String apiKey;
-        private String facilitatorUrl = "https://facilitator.fdtech.org";
+        private String baseUrl = "https://prism-gw.test.1stdigital.tech";
         private final List<RoutePaymentConfig> routes = new ArrayList<>();
 
         public Builder apiKey(String apiKey) {
@@ -43,8 +43,8 @@ public class PrismConfig {
             return this;
         }
 
-        public Builder facilitatorUrl(String facilitatorUrl) {
-            this.facilitatorUrl = facilitatorUrl;
+        public Builder baseUrl(String baseUrl) {
+            this.baseUrl = baseUrl;
             return this;
         }
 
@@ -61,8 +61,8 @@ public class PrismConfig {
             if (apiKey == null || apiKey.isEmpty()) {
                 throw new IllegalStateException("API key is required");
             }
-            if (facilitatorUrl == null || facilitatorUrl.isEmpty()) {
-                throw new IllegalStateException("Facilitator URL is required");
+            if (baseUrl == null || baseUrl.isEmpty()) {
+                throw new IllegalStateException("Base URL is required");
             }
             return new PrismConfig(this);
         }

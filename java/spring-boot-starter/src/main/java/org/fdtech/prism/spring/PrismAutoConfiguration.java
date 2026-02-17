@@ -27,7 +27,7 @@ public class PrismAutoConfiguration {
     public PrismConfig prismConfig(PrismProperties properties) {
         PrismConfig.Builder builder = new PrismConfig.Builder()
                 .apiKey(properties.getApiKey())
-                .facilitatorUrl(properties.getFacilitatorUrl());
+                .baseUrl(properties.getBaseUrl());
 
         // Add routes from properties
         for (PrismProperties.RouteConfig routeConfig : properties.getRoutes()) {

@@ -43,7 +43,7 @@ public class PrismFilter implements Filter {
         if (middleware == null) {
             // Try to get config from init parameters
             String apiKey = filterConfig.getInitParameter("apiKey");
-            String facilitatorUrl = filterConfig.getInitParameter("facilitatorUrl");
+            String baseUrl = filterConfig.getInitParameter("baseUrl");
 
             if (apiKey == null || apiKey.isEmpty()) {
                 throw new ServletException("Prism API key not configured");
@@ -52,8 +52,8 @@ public class PrismFilter implements Filter {
             PrismConfig.Builder builder = new PrismConfig.Builder()
                     .apiKey(apiKey);
 
-            if (facilitatorUrl != null && !facilitatorUrl.isEmpty()) {
-                builder.facilitatorUrl(facilitatorUrl);
+            if (baseUrl != null && !baseUrl.isEmpty()) {
+                builder.baseUrl(baseUrl);
             }
 
             // TODO: Parse route configurations from init parameters

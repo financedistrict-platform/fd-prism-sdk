@@ -13,14 +13,14 @@ import java.util.List;
 public class PrismProperties {
     
     /**
-     * API key for authenticating with the facilitator.
+     * API key for authenticating with the Prism Gateway.
      */
     private String apiKey;
 
     /**
-     * Facilitator URL (defaults to https://facilitator.fdtech.org).
+     * Gateway base URL (defaults to https://prism-gw.test.1stdigital.tech).
      */
-    private String facilitatorUrl = "https://facilitator.fdtech.org";
+    private String baseUrl = "https://prism-gw.test.1stdigital.tech";
 
     /**
      * List of routes that require payment.
@@ -35,12 +35,12 @@ public class PrismProperties {
         this.apiKey = apiKey;
     }
 
-    public String getFacilitatorUrl() {
-        return facilitatorUrl;
+    public String getBaseUrl() {
+        return baseUrl;
     }
 
-    public void setFacilitatorUrl(String facilitatorUrl) {
-        this.facilitatorUrl = facilitatorUrl;
+    public void setBaseUrl(String baseUrl) {
+        this.baseUrl = baseUrl;
     }
 
     public List<RouteConfig> getRoutes() {
