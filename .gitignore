@@ -6,3 +6,17 @@ dist/
 coverage/
 *.tsbuildinfo
 .tmp
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.eggs/
+*.egg
+.venv/
+venv/
+
+# Java
+target/
+*.class
