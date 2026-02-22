@@ -1,0 +1,903 @@
+---
+title: "EIP-3009 Settlement"
+description: "Gasless token transfers with off-chain signatures and on-chain execution"
+icon: "ethereum"
+---
+
+## What is EIP-3009?
+
+**EIP-3009** is an Ethereum Improvement Proposal that enables **gasless token transfers** - users sign an off-chain authorization, and someone else (Facilitator) pays the gas to execute it on-chain.
+
+<CardGroup cols={2}>
+  <Card title="User Experience" icon="user">
+    Sign transaction, no ETH/BNB needed for gas
+  </Card>
+
+  <Card title="Facilitator Pays Gas" icon="gas-pump">
+    Prism Facilitator submits transaction and pays gas fees
+  </Card>
+
+  <Card title="EIP-712 Signatures" icon="signature">
+    Type-safe structured data signing standard
+  </Card>
+
+  <Card title="Replay Protection" icon="shield">
+    Nonce tracking prevents double-spending
+  </Card>
+</CardGroup>
+
+## The Problem EIP-3009 Solves
+
+### Traditional ERC-20 Transfer
+
+```solidity
+// User must have ETH for gas
+function transfer(address to, uint256 amount) external {
+    _transfer(msg.sender, to, amount);
+}
+```
+
+**Requirements:**
+
+- User needs USDC (or token being transferred)
+- User needs ETH (or native gas token)
+- User submits transaction and pays gas
+
+**Problems:**
+
+- **Onboarding friction** - New users need two tokens
+- **UX complexity** - Must explain gas concept
+- **Cost** - User pays gas even for small payments
+
+### EIP-3009 Solution
+
+```solidity
+// User only needs to sign, Facilitator pays gas
+function transferWithAuthorization(
+    address from,
+    address to,
+    uint256 value,
+    uint256 validAfter,
+    uint256 validBefore,
+    bytes32 nonce,
+    uint8 v,
+    bytes32 r,
+    bytes32 s
+) external {
+    // Verify signature
+    bytes32 hash = keccak256(abi.encode(...));
+    address signer = ecrecover(hash, v, r, s);
+    require(signer == from, "Invalid signature");
+
+    // Execute transfer
+    _transfer(from, to, value);
+}
+```
+
+**Advantages:**
+
+- **No gas required** - User only signs message
+- **Better UX** - Single token needed
+- **Lower cost** - Facilitator can batch transactions
+- **Flexibility** - Authorization can be used later
+
+## How It Works (Step-by-Step)
+
+<Steps>
+  <Step title="Payment Quote Request">
+    **Client requests protected resource**
+    
+    ```http
+    GET /api/premium HTTP/1.1
+    Host: api.example.com
+    ```
+    
+    **SDK calls Prism Gateway for payment requirements**
+    
+    ```http
+    POST /api/v1/payment/requirements HTTP/1.1
+    Host: prism-gw.test.1stdigital.tech
+    x-api-key: dev-key-123
+    Content-Type: application/json
+    
+    {
+      "resource": "/api/premium",
+      "amount": "1000000",
+      "currency": "USDC"
+    }
+    ```
+  </Step>
+  
+  <Step title="Gateway Generates Quote">
+    **Prism Gateway returns payment requirements**
+    
+    ```json
+    {
+      "success": true,
+      "data": {
+        "from": "0xClient...",
+        "to": "0xProvider...",
+        "value": "1000000",
+        "validAfter": "0",
+        "validBefore": "1735689600",
+        "nonce": "0x7d2c3a1e4f5b6c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2",
+        "tokenAddress": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+        "network": "base-sepolia",
+        "chainId": 84532
+      }
+    }
+    ```
+  </Step>
+  
+  <Step title="SDK Returns 402 Response">
+    **SDK builds EIP-712 typed data and returns 402**
+    
+    ```http
+    HTTP/1.1 402 Payment Required
+    X-PAYMENT: {
+      "version": 1,
+      "type": "eip3009",
+      "networks": ["base-sepolia"],
+      "typedData": {
+        "types": {
+          "EIP712Domain": [...],
+          "TransferWithAuthorization": [...]
+        },
+        "domain": {...},
+        "primaryType": "TransferWithAuthorization",
+        "message": {
+          "from": "0xClient...",
+          "to": "0xProvider...",
+          "value": "1000000",
+          "validAfter": "0",
+          "validBefore": "1735689600",
+          "nonce": "0x7d2c..."
+        }
+      }
+    }
+    ```
+  </Step>
+  
+  <Step title="Client Signs Authorization">
+    **Client wallet (MetaMask, etc.) signs EIP-712 typed data**
+    
+    ```typescript
+    const signature = await wallet.signTypedData({
+      domain: typedData.domain,
+      types: typedData.types,
+      primaryType: typedData.primaryType,
+      message: typedData.message
+    });
+    
+    // signature = "0xabcdef..." (65 bytes: r + s + v)
+    ```
+    
+    **No gas required at this step - only signature!**
+  </Step>
+  
+  <Step title="Client Retries with Signature">
+    **Client retries request with X-PAYMENT-AUTHORIZATION header**
+    
+    ```http
+    GET /api/premium HTTP/1.1
+    Host: api.example.com
+    X-PAYMENT-AUTHORIZATION: {
+      "signature": "0xabcdef...",
+      "from": "0xClient...",
+      "to": "0xProvider...",
+      "value": "1000000",
+      "validAfter": "0",
+      "validBefore": "1735689600",
+      "nonce": "0x7d2c..."
+    }
+    ```
+  </Step>
+  
+  <Step title="SDK Verifies Signature">
+    **SDK calls Gateway to verify signature**
+    
+    ```http
+    POST /api/v1/payment/verify HTTP/1.1
+    Host: prism-gw.test.1stdigital.tech
+    x-api-key: dev-key-123
+    
+    {
+      "signature": "0xabcdef...",
+      "from": "0xClient...",
+      "to": "0xProvider...",
+      "value": "1000000",
+      "validAfter": "0",
+      "validBefore": "1735689600",
+      "nonce": "0x7d2c...",
+      "tokenAddress": "0x036CbD...",
+      "chainId": 84532
+    }
+    ```
+    
+    **Gateway verifies:**
+    - Signature is valid (ecrecover)
+    - Nonce not used yet
+    - Timestamp within valid window
+    - Amount matches quote
+  </Step>
+  
+  <Step title="Gateway Initiates Settlement">
+    **Gateway sends authorization to Facilitator**
+    
+    ```json
+    {
+      "from": "0xClient...",
+      "to": "0xProvider...",
+      "value": "1000000",
+      "validAfter": "0",
+      "validBefore": "1735689600",
+      "nonce": "0x7d2c...",
+      "v": 28,
+      "r": "0xabcd...",
+      "s": "0xef01..."
+    }
+    ```
+  </Step>
+  
+  <Step title="Facilitator Submits On-Chain">
+    **Facilitator wallet calls token contract (pays gas)**
+    
+    ```solidity
+    // Facilitator submits transaction
+    token.transferWithAuthorization(
+        from,      // 0xClient...
+        to,        // 0xProvider...
+        value,     // 1000000
+        validAfter,
+        validBefore,
+        nonce,
+        v, r, s
+    );
+    ```
+    
+    **Gas paid by:** Facilitator (not client!)
+  </Step>
+  
+  <Step title="On-Chain Execution">
+    **Token contract validates and executes**
+    
+    ```solidity
+    function transferWithAuthorization(...) external {
+        // 1. Build EIP-712 hash
+        bytes32 hash = _hashTypedDataV4(
+            keccak256(abi.encode(
+                TRANSFER_WITH_AUTHORIZATION_TYPEHASH,
+                from, to, value, validAfter, validBefore, nonce
+            ))
+        );
+        
+        // 2. Recover signer
+        address signer = ECDSA.recover(hash, v, r, s);
+        require(signer == from, "Invalid signature");
+        
+        // 3. Validate authorization
+        require(block.timestamp >= validAfter, "Not yet valid");
+        require(block.timestamp <= validBefore, "Expired");
+        require(!nonceUsed[from][nonce], "Nonce already used");
+        
+        // 4. Mark nonce as used
+        nonceUsed[from][nonce] = true;
+        
+        // 5. Execute transfer
+        _transfer(from, to, value);
+        
+        // 6. Emit event
+        emit TransferWithAuthorization(from, to, value, nonce);
+    }
+    ```
+  </Step>
+  
+  <Step title="Spectrum Distribution">
+    **Token contract triggers revenue split**
+    
+    ```solidity
+    // After transfer, call Spectrum Registry
+    ISpectrum(spectrumRegistry).distribute(
+        projectId,
+        tokenAddress,
+        value
+    );
+    
+    // Spectrum splits payment:
+    // - Provider: 85% (0.85 USDC)
+    // - Protocol: 10% (0.10 USDC)
+    // - Affiliate: 5% (0.05 USDC)
+    ```
+  </Step>
+  
+  <Step title="SDK Returns Resource">
+    **Payment confirmed, SDK forwards request**
+    
+    ```http
+    HTTP/1.1 200 OK
+    Content-Type: application/json
+    
+    {
+      "data": "Premium content",
+      "payment": {
+        "txHash": "0x123abc...",
+        "amount": "1000000",
+        "token": "USDC",
+        "network": "base-sepolia"
+      }
+    }
+    ```
+  </Step>
+</Steps>
+
+## EIP-712 Typed Data Structure
+
+### Domain Separator
+
+**Prevents cross-chain/cross-contract replay attacks**
+
+```typescript
+{
+  name: "USD Coin",
+  version: "2",
+  chainId: 84532,              // base-sepolia
+  verifyingContract: "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
+}
+```
+
+**Why needed:**
+
+- Same signature on Ethereum would be invalid on Base
+- Same signature for Token A would be invalid for Token B
+
+### TransferWithAuthorization Type
+
+```typescript
+{
+  TransferWithAuthorization: [
+    { name: "from", type: "address" },
+    { name: "to", type: "address" },
+    { name: "value", type: "uint256" },
+    { name: "validAfter", type: "uint256" },
+    { name: "validBefore", type: "uint256" },
+    { name: "nonce", type: "bytes32" },
+  ];
+}
+```
+
+### Complete Typed Data Example
+
+```json
+{
+  "types": {
+    "EIP712Domain": [
+      { "name": "name", "type": "string" },
+      { "name": "version", "type": "string" },
+      { "name": "chainId", "type": "uint256" },
+      { "name": "verifyingContract", "type": "address" }
+    ],
+    "TransferWithAuthorization": [
+      { "name": "from", "type": "address" },
+      { "name": "to", "type": "address" },
+      { "name": "value", "type": "uint256" },
+      { "name": "validAfter", "type": "uint256" },
+      { "name": "validBefore", "type": "uint256" },
+      { "name": "nonce", "type": "bytes32" }
+    ]
+  },
+  "domain": {
+    "name": "USD Coin",
+    "version": "2",
+    "chainId": 84532,
+    "verifyingContract": "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
+  },
+  "primaryType": "TransferWithAuthorization",
+  "message": {
+    "from": "0xAIAgent1234567890123456789012345678901234",
+    "to": "0xProvider1234567890123456789012345678901234",
+    "value": "1000000",
+    "validAfter": "0",
+    "validBefore": "1735689600",
+    "nonce": "0x7d2c3a1e4f5b6c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2"
+  }
+}
+```
+
+## Signature Format
+
+### ECDSA Signature Components
+
+```
+Signature = r + s + v
+- r: 32 bytes (x-coordinate of R)
+- s: 32 bytes (signature proof)
+- v: 1 byte (recovery id: 27 or 28)
+```
+
+**Example:**
+
+```
+0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890  // r (32 bytes)
+  1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef  // s (32 bytes)
+  1b                                                                // v (1 byte = 27)
+```
+
+### Signature Recovery (ecrecover)
+
+```solidity
+// On-chain signature verification
+function recoverSigner(
+    bytes32 hash,
+    uint8 v,
+    bytes32 r,
+    bytes32 s
+) internal pure returns (address) {
+    return ecrecover(hash, v, r, s);
+}
+```
+
+**Usage:**
+
+```solidity
+bytes32 hash = _hashTypedDataV4(structHash);
+address signer = ecrecover(hash, v, r, s);
+require(signer == from, "Invalid signature");
+```
+
+## Security Features
+
+<AccordionGroup>
+  <Accordion icon="fingerprint" title="Nonce Uniqueness">
+    **Purpose:** Prevent replay attacks and double-spending
+    
+    **Implementation:**
+    ```solidity
+    mapping(address => mapping(bytes32 => bool)) public nonceUsed;
+    
+    function transferWithAuthorization(...) external {
+        require(!nonceUsed[from][nonce], "Nonce already used");
+        nonceUsed[from][nonce] = true;
+        // ... rest of execution
+    }
+    ```
+    
+    **Nonce Generation:**
+    ```typescript
+    // Gateway generates cryptographically secure random bytes
+    const nonce = ethers.randomBytes(32);
+    // "0x7d2c3a1e4f5b6c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2"
+    ```
+    
+    **Why 32 bytes?**
+    - 2^256 possible values (astronomically large)
+    - Collision probability: negligible
+    - Same security as Ethereum addresses
+  </Accordion>
+  
+  <Accordion icon="clock" title="Time-Bound Authorizations">
+    **Purpose:** Prevent stale quotes and front-running
+    
+    **validAfter:**
+    - Earliest timestamp authorization can execute
+    - Usually `0` (immediate) or `block.timestamp`
+    - Prevents premature execution
+    
+    **validBefore:**
+    - Latest timestamp authorization can execute
+    - Typical: 5-15 minutes from quote generation
+    - Prevents indefinite validity
+    
+    **Example:**
+    ```typescript
+    const now = Math.floor(Date.now() / 1000);
+    const quote = {
+      validAfter: now,
+      validBefore: now + 900  // 15 minutes
+    };
+    ```
+    
+    **On-Chain Validation:**
+    ```solidity
+    require(
+        block.timestamp >= validAfter,
+        "Authorization not yet valid"
+    );
+    require(
+        block.timestamp <= validBefore,
+        "Authorization expired"
+    );
+    ```
+  </Accordion>
+  
+  <Accordion icon="shield" title="Domain Separation">
+    **Purpose:** Prevent cross-chain and cross-contract replay
+    
+    **Domain Hash:**
+    ```solidity
+    bytes32 domainSeparator = keccak256(abi.encode(
+        keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
+        keccak256(bytes("USD Coin")),
+        keccak256(bytes("2")),
+        84532,  // base-sepolia
+        address(this)
+    ));
+    ```
+    
+    **Why Different Chains Can't Replay:**
+    1. Signature on Ethereum has `chainId: 1`
+    2. Signature on Base has `chainId: 84532`
+    3. Domain hashes are different
+    4. Signature verification fails on wrong chain
+    
+    **Why Different Contracts Can't Replay:**
+    1. Contract A has `verifyingContract: 0xAAA...`
+    2. Contract B has `verifyingContract: 0xBBB...`
+    3. Domain hashes are different
+    4. Signature verification fails on wrong contract
+  </Accordion>
+  
+  <Accordion icon="user-check" title="Recipient Lock">
+    **Purpose:** Prevent payment redirection attacks
+    
+    **Signed Message Includes Recipient:**
+    ```json
+    {
+      "from": "0xClient...",
+      "to": "0xProvider...",    // ← Recipient locked in signature
+      "value": "1000000",
+      ...
+    }
+    ```
+    
+    **Attack Scenario (Without Recipient Lock):**
+    1. Attacker intercepts signed authorization
+    2. Changes `to` address to their own
+    3. Submits modified authorization
+    4. Steals payment
+    
+    **Defense (With Recipient Lock):**
+    1. Attacker intercepts authorization
+    2. Tries to change `to` address
+    3. Signature verification fails (hash mismatch)
+    4. Transaction reverts
+  </Accordion>
+  
+  <Accordion icon="bolt" title="Front-Running Mitigation">
+    **Problem:**
+    - Attacker monitors mempool
+    - Sees pending `transferWithAuthorization` transaction
+    - Submits same transaction with higher gas
+    - Gets mined first
+    
+    **Defense 1: Private Mempool**
+    - Facilitator uses Flashbots/Eden Network
+    - Transaction bypasses public mempool
+    - Directly included by block builder
+    
+    **Defense 2: Nonce Protection**
+    - Even if front-run, only first transaction succeeds
+    - Second transaction reverts (nonce already used)
+    - Original payer protected from double-charge
+    
+    **Defense 3: Recipient Lock**
+    - Front-runner can't change recipient
+    - Payment still goes to intended provider
+  </Accordion>
+</AccordionGroup>
+
+## Gas Cost Analysis
+
+<Tabs>
+  <Tab title="Traditional ERC-20 Transfer">
+    ```solidity
+    function transfer(address to, uint256 amount) external {
+        _transfer(msg.sender, to, amount);
+    }
+    ```
+    
+    **Gas Cost:** ~50,000 gas
+    
+    **At 50 gwei gas price + $3,000 ETH:**
+    - Cost: 50,000 × 50 × 10^-9 × $3,000 = **$7.50**
+    
+    **Paid by:** User (requires ETH)
+  </Tab>
+  
+  <Tab title="EIP-3009 Authorization">
+    ```solidity
+    function transferWithAuthorization(...) external {
+        // Signature recovery + validation + transfer
+    }
+    ```
+    
+    **Gas Cost:** ~80,000 gas (30k more for signature verification)
+    
+    **At 50 gwei gas price + $3,000 ETH:**
+    - Cost: 80,000 × 50 × 10^-9 × $3,000 = **$12.00**
+    
+    **Paid by:** Facilitator (not user!)
+    
+    **Facilitator Fee:** ~1-2% of payment amount
+    - For $1 payment: $0.01-$0.02 fee
+    - Still cheaper than requiring users to have ETH
+  </Tab>
+  
+  <Tab title="Batch Processing">
+    **Facilitator can batch multiple authorizations:**
+    
+    ```solidity
+    function batchTransferWithAuthorization(
+        Authorization[] calldata auths
+    ) external {
+        for (uint i = 0; i < auths.length; i++) {
+            _transferWithAuthorization(auths[i]);
+        }
+    }
+    ```
+    
+    **Gas Cost:**
+    - First authorization: 80,000 gas
+    - Each additional: ~60,000 gas (20k savings from warm storage)
+    
+    **10 authorizations:**
+    - Total: 80,000 + (9 × 60,000) = 620,000 gas
+    - Average: 62,000 gas per authorization
+    
+    **Cost per authorization:** $9.30 (vs $12.00 individual)
+    
+    **Savings:** 22.5% through batching
+  </Tab>
+</Tabs>
+
+## Code Examples
+
+<Tabs>
+  <Tab title="Client (TypeScript)">
+    ```typescript
+    import { ethers } from 'ethers';
+    
+    // 1. Request protected resource
+    const response = await fetch('https://api.example.com/api/premium');
+    
+    if (response.status === 402) {
+      // 2. Parse X-PAYMENT header
+      const payment = JSON.parse(response.headers.get('X-PAYMENT'));
+      const { typedData } = payment;
+      
+      // 3. Sign EIP-712 typed data
+      const wallet = new ethers.Wallet(privateKey);
+      const signature = await wallet.signTypedData(
+        typedData.domain,
+        { TransferWithAuthorization: typedData.types.TransferWithAuthorization },
+        typedData.message
+      );
+      
+      // 4. Retry with signature
+      const retryResponse = await fetch('https://api.example.com/api/premium', {
+        headers: {
+          'X-PAYMENT-AUTHORIZATION': JSON.stringify({
+            signature,
+            ...typedData.message
+          })
+        }
+      });
+      
+      // 5. Access granted
+      const data = await retryResponse.json();
+      console.log(data);
+    }
+    ```
+  </Tab>
+  
+  <Tab title="Smart Contract">
+    ```solidity
+    // SPDX-License-Identifier: MIT
+    pragma solidity ^0.8.0;
+    
+    import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+    import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+    import "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
+    
+    contract USDCWithAuthorization is ERC20, EIP712 {
+        using ECDSA for bytes32;
+        
+        bytes32 public constant TRANSFER_WITH_AUTHORIZATION_TYPEHASH =
+            keccak256(
+                "TransferWithAuthorization(address from,address to,uint256 value,uint256 validAfter,uint256 validBefore,bytes32 nonce)"
+            );
+        
+        mapping(address => mapping(bytes32 => bool)) public nonceUsed;
+        
+        constructor() ERC20("USD Coin", "USDC") EIP712("USD Coin", "2") {}
+        
+        function transferWithAuthorization(
+            address from,
+            address to,
+            uint256 value,
+            uint256 validAfter,
+            uint256 validBefore,
+            bytes32 nonce,
+            uint8 v,
+            bytes32 r,
+            bytes32 s
+        ) external {
+            // Build EIP-712 hash
+            bytes32 structHash = keccak256(
+                abi.encode(
+                    TRANSFER_WITH_AUTHORIZATION_TYPEHASH,
+                    from,
+                    to,
+                    value,
+                    validAfter,
+                    validBefore,
+                    nonce
+                )
+            );
+            bytes32 hash = _hashTypedDataV4(structHash);
+            
+            // Recover signer
+            address signer = hash.recover(v, r, s);
+            require(signer == from, "Invalid signature");
+            
+            // Validate authorization
+            require(block.timestamp >= validAfter, "Not yet valid");
+            require(block.timestamp <= validBefore, "Expired");
+            require(!nonceUsed[from][nonce], "Nonce already used");
+            
+            // Mark nonce as used
+            nonceUsed[from][nonce] = true;
+            
+            // Execute transfer
+            _transfer(from, to, value);
+            
+            emit TransferWithAuthorization(from, to, value, nonce);
+        }
+        
+        event TransferWithAuthorization(
+            address indexed from,
+            address indexed to,
+            uint256 value,
+            bytes32 indexed nonce
+        );
+    }
+    ```
+  </Tab>
+  
+  <Tab title="Facilitator (Node.js)">
+    ```typescript
+    import { ethers } from 'ethers';
+    
+    // Facilitator wallet (pays gas)
+    const facilitator = new ethers.Wallet(
+      process.env.FACILITATOR_PRIVATE_KEY,
+      provider
+    );
+    
+    // Token contract with EIP-3009 support
+    const token = new ethers.Contract(
+      tokenAddress,
+      ['function transferWithAuthorization(...)'],
+      facilitator
+    );
+    
+    // Process authorization from Gateway
+    async function settlePayment(authorization) {
+      const { from, to, value, validAfter, validBefore, nonce, v, r, s } = authorization;
+      
+      try {
+        // Submit transaction (Facilitator pays gas)
+        const tx = await token.transferWithAuthorization(
+          from,
+          to,
+          value,
+          validAfter,
+          validBefore,
+          nonce,
+          v,
+          r,
+          s,
+          {
+            gasLimit: 100000,
+            maxFeePerGas: ethers.parseUnits('50', 'gwei'),
+            maxPriorityFeePerGas: ethers.parseUnits('2', 'gwei')
+          }
+        );
+        
+        console.log('Transaction submitted:', tx.hash);
+        
+        // Wait for confirmation
+        const receipt = await tx.wait();
+        
+        console.log('Settlement confirmed:', receipt.transactionHash);
+        
+        return {
+          success: true,
+          txHash: receipt.transactionHash,
+          gasUsed: receipt.gasUsed.toString(),
+          effectiveGasPrice: receipt.effectiveGasPrice.toString()
+        };
+      } catch (error) {
+        console.error('Settlement failed:', error);
+        return { success: false, error: error.message };
+      }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Comparison with Other Standards
+
+| Feature            | EIP-3009               | EIP-2612 (Permit)   | EIP-4337 (Account Abstraction) |
+| ------------------ | ---------------------- | ------------------- | ------------------------------ |
+| **Gas sponsor**    | Yes (Facilitator)      | No (user pays)      | Yes (Paymaster)                |
+| **Token standard** | ERC-20 extension       | ERC-20 extension    | Works with any token           |
+| **Complexity**     | Low                    | Low                 | High                           |
+| **Adoption**       | USDC, USDT             | Many ERC-20s        | Growing                        |
+| **Use case**       | Payment gateways       | DeFi approvals      | General purpose                |
+| **Nonce tracking** | Per-authorization      | Per-address counter | Complex nonce schemes          |
+| **Expiry**         | validAfter/validBefore | deadline            | Flexible                       |
+
+<Info>
+  **Prism uses EIP-3009** because it's battle-tested (USDC, USDT), simple to
+  implement, and purpose-built for payment use cases.
+</Info>
+
+## Resources
+
+<CardGroup cols={2}>
+  <Card
+    title="EIP-3009 Specification"
+    icon="file-lines"
+    href="https://eips.ethereum.org/EIPS/eip-3009"
+  >
+    Official Ethereum Improvement Proposal
+  </Card>
+
+  <Card
+    title="EIP-712 Typed Data"
+    icon="signature"
+    href="https://eips.ethereum.org/EIPS/eip-712"
+  >
+    Structured data hashing and signing
+  </Card>
+
+  <Card
+    title="USDC Implementation"
+    icon="github"
+    href="https://github.com/circlefin/stablecoin-evm"
+  >
+    Circle's USDC with EIP-3009 support
+  </Card>
+
+  <Card title="x402 Protocol" icon="bolt" href="/concepts/x402-protocol">
+    HTTP 402 payment standard
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Payment Flow"
+    icon="arrow-right-arrow-left"
+    href="/concepts/payment-flow"
+  >
+    End-to-end payment lifecycle
+  </Card>
+
+  <Card title="Payment Modes" icon="credit-card" href="/concepts/payment-modes">
+    Single-call, batch, and subscription modes
+  </Card>
+
+  <Card
+    title="System Overview"
+    icon="diagram-project"
+    href="/concepts/system-overview"
+  >
+    Complete Prism architecture
+  </Card>
+
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Build your first integration
+  </Card>
+</CardGroup>

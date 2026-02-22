@@ -1,0 +1,372 @@
+---
+title: "FastAPI Integration"
+description: "Protect FastAPI endpoints with blockchain micropayments"
+icon: "bolt"
+---
+
+## Overview
+
+The **prism-fastapi** package provides async middleware for FastAPI applications, leveraging Python's modern async/await syntax for high-performance payment validation.
+
+<CardGroup cols={3}>
+  <Card title="Async/Await" icon="bolt">
+    Full async support with Python asyncio
+  </Card>
+  
+  <Card title="Dependency Injection" icon="puzzle-piece">
+    Works with FastAPI's Depends system
+  </Card>
+
+  <Card title="Type Hints" icon="code">
+    Full type hint support with Pydantic
+  </Card>
+</CardGroup>
+
+---
+
+## Installation
+
+<Tabs>
+  <Tab title="pip">
+    ```bash
+    pip install prism-fastapi fastapi uvicorn
+    ```
+  </Tab>
+
+{" "}
+<Tab title="poetry">```bash poetry add prism-fastapi fastapi uvicorn ```</Tab>
+
+  <Tab title="requirements.txt">
+    ```
+    prism-fastapi>=1.0.0
+    fastapi>=0.100.0
+    uvicorn[standard]>=0.23.0
+    ```
+  </Tab>
+</Tabs>
+
+---
+
+## Quick Start
+
+```python
+from fastapi import FastAPI, Request
+from prism_fastapi import prism_payment_middleware, PrismMiddlewareConfig
+
+app = FastAPI()
+
+# Configure Prism middleware
+prism_config = PrismMiddlewareConfig(
+    api_key="dev-key-123",
+    base_url="https://prism-gw.test.1stdigital.tech",
+    routes={
+        "/api/premium": {
+            "price": 0.01,  # $0.01 USD
+            "description": "Premium API"
+        }
+    }
+)
+
+# Add middleware
+app.middleware("http")(prism_payment_middleware(prism_config))
+
+# Protected endpoint
+@app.get("/api/premium")
+async def premium_endpoint(request: Request):
+    payer = request.state.prism_payer  # Wallet address
+
+    return {
+        "message": "Premium content",
+        "payer": payer
+    }
+
+# Run: uvicorn main:app --reload
+```
+
+---
+
+## Configuration
+
+```python
+from dataclasses import dataclass
+from typing import Dict, Union
+
+@dataclass
+class RoutePaymentConfig:
+    price: Union[float, str]  # USD price
+    description: str
+    mime_type: str = "application/json"
+
+@dataclass
+class PrismMiddlewareConfig:
+    api_key: str
+    base_url: str = "https://prism-gateway.com"
+    debug: bool = False
+    routes: Dict[str, RoutePaymentConfig] = None
+```
+
+---
+
+## Route Protection
+
+### Multiple Routes
+
+```python
+from prism_fastapi import PrismMiddlewareConfig, RoutePaymentConfig
+
+config = PrismMiddlewareConfig(
+    api_key="your-api-key",
+    routes={
+        "/api/premium": RoutePaymentConfig(
+            price=0.01,
+            description="Premium API"
+        ),
+        "/api/weather": RoutePaymentConfig(
+            price=0.001,
+            description="Weather data"
+        ),
+        "/api/data/*": RoutePaymentConfig(
+            price=0.005,
+            description="Data API (wildcard)"
+        )
+    }
+)
+
+app.middleware("http")(prism_payment_middleware(config))
+```
+
+---
+
+## Accessing Payment Info
+
+```python
+from fastapi import FastAPI, Request
+
+@app.get("/api/premium")
+async def premium_endpoint(request: Request):
+    # Access payer address
+    payer = request.state.prism_payer
+    # '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb'
+
+    # Access payment object
+    payment = getattr(request.state, 'prism_payment', None)
+
+    if payment:
+        return {
+            "message": "Premium data",
+            "payer": payer,
+            "network": payment.get("network"),
+            "asset": payment.get("asset")
+        }
+
+    return {"message": "No payment info"}
+```
+
+---
+
+## Settlement Validation
+
+FastAPI middleware intercepts responses to validate settlement:
+
+```python
+# Internal implementation (automatic!)
+@app.middleware("http")
+async def prism_payment_middleware(request: Request, call_next):
+    # ... payment validation ...
+
+    # Call endpoint
+    response = await call_next(request)
+
+    # Validate settlement
+    settlement_result = await core.settlement_callback(...)
+
+    if not settlement_result or not settlement_result.get("success"):
+        # ❌ Settlement failed
+        return JSONResponse(
+            status_code=402,
+            content={
+                "error": "Payment settlement failed",
+                "details": settlement_result.get("errorReason")
+            }
+        )
+
+    # ✅ Settlement succeeded
+    response.headers["X-PAYMENT-RESPONSE"] = settlement_result["transaction"]
+    return response
+```
+
+---
+
+## Dependency Injection
+
+### Payer Dependency
+
+```python
+from fastapi import Depends, Request
+
+def get_payer(request: Request) -> str:
+    return getattr(request.state, 'prism_payer', None)
+
+@app.get("/api/premium")
+async def premium_endpoint(payer: str = Depends(get_payer)):
+    return {
+        "message": "Premium content",
+        "payer": payer
+    }
+```
+
+---
+
+## Testing
+
+```python
+import pytest
+from fastapi.testclient import TestClient
+from main import app
+
+client = TestClient(app)
+
+def test_payment_required_without_header():
+    response = client.get("/api/premium")
+
+    assert response.status_code == 402
+    assert response.json()["paymentRequired"] is True
+
+def test_access_granted_with_valid_payment():
+    payment = {
+        "scheme": "eip3009",
+        "signature": "0x" + "0" * 130
+    }
+
+    response = client.get(
+        "/api/premium",
+        headers={"X-PAYMENT": str(payment)}
+    )
+
+    assert response.status_code == 200
+    assert "payer" in response.json()
+
+@pytest.mark.asyncio
+async def test_async_endpoint():
+    async with AsyncClient(app=app, base_url="http://test") as ac:
+        response = await ac.get("/api/premium")
+        assert response.status_code == 402
+```
+
+---
+
+## Production Deployment
+
+```python
+# main.py
+from fastapi import FastAPI
+from prism_fastapi import prism_payment_middleware, PrismMiddlewareConfig
+import os
+
+app = FastAPI(
+    title="Prism Payment API",
+    docs_url="/docs" if os.getenv("ENV") != "production" else None
+)
+
+# Configure Prism
+config = PrismMiddlewareConfig(
+    api_key=os.environ["PRISM_API_KEY"],
+    base_url=os.getenv("PRISM_BASE_URL", "https://prism-gateway.com"),
+    debug=os.getenv("DEBUG", "false").lower() == "true",
+    routes={
+        "/api/premium": {
+            "price": 0.01,
+            "description": "Premium API"
+        }
+    }
+)
+
+app.middleware("http")(prism_payment_middleware(config))
+
+# CORS (if needed)
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=os.getenv("ALLOWED_ORIGINS", "*").split(","),
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"]
+)
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(
+        "main:app",
+        host="0.0.0.0",
+        port=int(os.getenv("PORT", 8000)),
+        reload=os.getenv("ENV") != "production"
+    )
+```
+
+### Docker Deployment
+
+```dockerfile
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+EXPOSE 8000
+
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+```
+
+---
+
+## Type Hints
+
+```python
+from typing import Optional, Dict, Any
+from fastapi import Request
+
+@app.get("/api/premium")
+async def premium_endpoint(request: Request) -> Dict[str, Any]:
+    payer: Optional[str] = getattr(request.state, 'prism_payer', None)
+    payment: Optional[Dict[str, Any]] = getattr(request.state, 'prism_payment', None)
+
+    return {
+        "message": "Premium content",
+        "payer": payer,
+        "network": payment.get("network") if payment else None
+    }
+```
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Settlement Validation"
+    icon="shield-check"
+    href="/concepts/settlement-validation"
+  >
+    How FastAPI prevents data leakage
+  </Card>
+
+  <Card title="Flask Integration" icon="flask" href="/sdk/python/flask">
+    Compare with Flask implementation
+  </Card>
+
+  <Card title="Testing Guide" icon="flask" href="/guides/testing">
+    Test FastAPI + Prism with pytest
+  </Card>
+
+  <Card
+    title="Production Deployment"
+    icon="rocket"
+    href="/guides/production-deployment"
+  >
+    Deploy FastAPI + Prism to production
+  </Card>
+</CardGroup>

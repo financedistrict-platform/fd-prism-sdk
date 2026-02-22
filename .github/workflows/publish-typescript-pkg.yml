@@ -1,0 +1,241 @@
+name: Publish TypeScript Packages
+
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: "Package to publish"
+        required: true
+        type: choice
+        options:
+          - all
+          - core
+          - express
+          - http
+          - fastify
+          - nestjs
+          - nextjs
+      version_bump:
+        description: "Version bump type"
+        required: false
+        default: "patch"
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  publish:
+    runs-on: [self-hosted, linux, arm64]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://npm.pkg.github.com"
+          scope: "@financedistrict"
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set deployment token
+        run: npm config set '//npm.pkg.github.com/:_authToken' "${{ secrets.GITHUB_TOKEN }}"
+      - name: Install dependencies
+        run: npm install
+        working-directory: typescript
+
+      - name: Build packages (Turborepo)
+        run: npm run build
+        working-directory: typescript
+
+      - name: Run tests
+        run: npm run test
+        working-directory: typescript
+        continue-on-error: true
+
+      - name: Configure Git
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+
+      - name: Configure npm authentication (global)
+        run: npm config set '//npm.pkg.github.com/:_authToken' "${{ secrets.GITHUB_TOKEN }}"
+
+      - name: Bump Core Version
+        if: (github.event.inputs.package == 'all' || github.event.inputs.package == 'core') && github.event.inputs.version_bump != ''
+        run: |
+          cd packages/core
+          npm version ${{ github.event.inputs.version_bump }} --no-git-tag-version
+        working-directory: typescript
+
+      - name: Bump Express Version
+        if: (github.event.inputs.package == 'all' || github.event.inputs.package == 'express') && github.event.inputs.version_bump != ''
+        run: |
+          cd packages/express
+          npm version ${{ github.event.inputs.version_bump }} --no-git-tag-version
+        working-directory: typescript
+
+      - name: Bump HTTP Version
+        if: (github.event.inputs.package == 'all' || github.event.inputs.package == 'http') && github.event.inputs.version_bump != ''
+        run: |
+          cd packages/http
+          npm version ${{ github.event.inputs.version_bump }} --no-git-tag-version
+        working-directory: typescript
+
+      - name: Bump Fastify Version
+        if: (github.event.inputs.package == 'all' || github.event.inputs.package == 'fastify') && github.event.inputs.version_bump != ''
+        run: |
+          cd packages/fastify
+          npm version ${{ github.event.inputs.version_bump }} --no-git-tag-version
+        working-directory: typescript
+
+      - name: Bump NestJS Version
+        if: (github.event.inputs.package == 'all' || github.event.inputs.package == 'nestjs') && github.event.inputs.version_bump != ''
+        run: |
+          cd packages/nestjs
+          npm version ${{ github.event.inputs.version_bump }} --no-git-tag-version
+        working-directory: typescript
+
+      - name: Bump Next.js Version
+        if: (github.event.inputs.package == 'all' || github.event.inputs.package == 'nextjs') && github.event.inputs.version_bump != ''
+        run: |
+          cd packages/nextjs
+          npm version ${{ github.event.inputs.version_bump }} --no-git-tag-version
+        working-directory: typescript
+
+      - name: Commit version changes
+        if: github.event.inputs.version_bump != ''
+        run: |
+          git add -A
+          git commit -m "chore: bump ${{ github.event.inputs.package }} package(s) to ${{ github.event.inputs.version_bump }}" || echo "No changes to commit"
+          git push origin HEAD:${{ github.ref_name }}
+
+      - name: Publish Core Package
+        if: github.event.inputs.package == 'all' || github.event.inputs.package == 'core'
+        run: npm publish
+        working-directory: typescript/packages/core
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish Express Package
+        if: github.event.inputs.package == 'all' || github.event.inputs.package == 'express'
+        run: npm publish
+        working-directory: typescript/packages/express
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish HTTP Package
+        if: github.event.inputs.package == 'all' || github.event.inputs.package == 'http'
+        run: npm publish
+        working-directory: typescript/packages/http
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish Fastify Package
+        if: github.event.inputs.package == 'all' || github.event.inputs.package == 'fastify'
+        run: npm publish
+        working-directory: typescript/packages/fastify
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish NestJS Package
+        if: github.event.inputs.package == 'all' || github.event.inputs.package == 'nestjs'
+        run: npm publish
+        working-directory: typescript/packages/nestjs
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish Next.js Package
+        if: github.event.inputs.package == 'all' || github.event.inputs.package == 'nextjs'
+        run: npm publish
+        working-directory: typescript/packages/nextjs
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get Package Version
+        if: github.event.inputs.version_bump != ''
+        id: package_version
+        run: |
+          PACKAGE="${{ github.event.inputs.package }}"
+          if [ "$PACKAGE" = "all" ]; then
+            PACKAGE="core"
+          fi
+          VERSION=$(node -p "require('./packages/$PACKAGE/package.json').version")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "package_name=$PACKAGE" >> $GITHUB_OUTPUT
+        working-directory: typescript
+
+      - name: Create Git Tag
+        if: github.event.inputs.version_bump != ''
+        run: |
+          TAG="ts-${{ steps.package_version.outputs.package_name }}-v${{ steps.package_version.outputs.version }}"
+          git tag $TAG
+          git push origin $TAG
+
+      - name: Create Release
+        if: github.event.inputs.version_bump != ''
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ts-${{ steps.package_version.outputs.package_name }}-v${{ steps.package_version.outputs.version }}
+          release_name: Prism SDK - @financedistrict/prism-x402-sdk-${{ steps.package_version.outputs.package_name }} v${{ steps.package_version.outputs.version }}
+          body: |
+            ## @financedistrict/prism-x402-sdk-${{ steps.package_version.outputs.package_name }} Release
+
+            ### Version: **v${{ steps.package_version.outputs.version }}**
+            ### Scope: **${{ github.event.inputs.package }}**
+
+            ${{ github.event.inputs.package == 'all' && '#### All Packages Published:
+            - **@financedistrict/prism-x402-sdk** - Core client library
+            - **@financedistrict/prism-x402-sdk-express** - Express.js middleware
+            - **@financedistrict/prism-x402-sdk-http** - Node.js HTTP middleware
+            - **@financedistrict/prism-x402-sdk-fastify** - Fastify plugin (placeholder)
+            - **@financedistrict/prism-x402-sdk-nestjs** - NestJS module (placeholder)
+            - **@financedistrict/prism-x402-sdk-nextjs** - Next.js middleware (placeholder)' || '' }}
+
+            ${{ github.event.inputs.package == 'core' && '#### Core Package:
+            - **@financedistrict/prism-x402-sdk** - Core client library with PrismClient and TypeScript types
+
+            This is the foundational package that all framework packages depend on.' || '' }}
+
+            ${{ github.event.inputs.package == 'express' && '#### Express.js Middleware:
+            - **@financedistrict/prism-x402-sdk-express** - Express.js middleware for Prism payment protocol
+
+            Easily integrate Prism payments into your Express.js applications.' || '' }}
+
+            ${{ github.event.inputs.package == 'http' && '#### Node.js HTTP Middleware:
+            - **@financedistrict/prism-x402-sdk-http** - Node.js HTTP server middleware for Prism payment protocol
+
+            Integrate Prism payments into your raw Node.js HTTP servers.' || '' }}
+
+            ${{ github.event.inputs.package == 'fastify' && '#### Fastify Plugin:
+            - **@financedistrict/prism-x402-sdk-fastify** - Fastify plugin for Prism payment protocol (Q1 2025)' || '' }}
+
+            ${{ github.event.inputs.package == 'nestjs' && '#### NestJS Module:
+            - **@financedistrict/prism-x402-sdk-nestjs** - NestJS module with decorators and guards (Q1 2025)' || '' }}
+
+            ${{ github.event.inputs.package == 'nextjs' && '#### Next.js Middleware:
+            - **@financedistrict/prism-x402-sdk-nextjs** - Next.js middleware for App Router (Q1 2025)' || '' }}
+
+            ### Installation
+            ```bash
+            npm install @financedistrict/prism-x402-sdk-${{ steps.package_version.outputs.package_name }}
+            ```
+
+            ### What's Changed
+            - Version bump: **${{ github.event.inputs.version_bump }}**
+            - Branch: **${{ github.ref_name }}**
+
+            See [documentation](https://github.com/1stdigital/fd-prism-sdk/tree/master/typescript) for usage details.
+          draft: false
+          prerelease: false

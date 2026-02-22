@@ -1,0 +1,366 @@
+---
+title: "Next.js Integration"
+description: "Protect Next.js API routes with blockchain micropayments"
+icon: "n"
+---
+
+## Overview
+
+The **@financedistrict/prism-x402-sdk-nextjs** package provides middleware for Next.js API routes and App Router route handlers. Supports both Pages Router and App Router architectures.
+
+<CardGroup cols={3}>
+  <Card title="App Router" icon="layer-group">
+    Support for Next.js 13+ App Router
+  </Card>
+  
+  <Card title="Pages Router" icon="file">
+    Works with traditional API routes
+  </Card>
+
+  <Card title="Edge Runtime" icon="bolt">
+    Compatible with Edge Runtime
+  </Card>
+</CardGroup>
+
+---
+
+## Installation
+
+<Tabs>
+  <Tab title="npm">
+    ```bash
+    npm install @financedistrict/prism-x402-sdk-nextjs next
+    ```
+  </Tab>
+
+{" "}
+<Tab title="yarn">```bash yarn add @financedistrict/prism-x402-sdk-nextjs next ```</Tab>
+
+  <Tab title="pnpm">
+    ```bash
+    pnpm add @financedistrict/prism-x402-sdk-nextjs next
+    ```
+  </Tab>
+</Tabs>
+
+---
+
+## Quick Start (App Router)
+
+```typescript
+// app/api/premium/route.ts
+import { NextRequest, NextResponse } from "next/server";
+import { withPrismPayment } from "@financedistrict/prism-x402-sdk-nextjs";
+
+async function handler(request: NextRequest) {
+  // Access payer from request
+  const payer = (request as any).payer;
+
+  return NextResponse.json({
+    message: "Premium content",
+    payer,
+  });
+}
+
+// Wrap handler with payment middleware
+export const GET = withPrismPayment(handler, {
+  apiKey: process.env.PRISM_API_KEY || "dev-key-123",
+  baseUrl: "https://prism-gw.test.1stdigital.tech",
+  price: 0.01, // $0.01 USD
+  description: "Premium API",
+});
+```
+
+---
+
+## Quick Start (Pages Router)
+
+```typescript
+// pages/api/premium.ts
+import { NextApiRequest, NextApiResponse } from "next";
+import { createPrismMiddleware } from "@financedistrict/prism-x402-sdk-nextjs";
+
+const prismMiddleware = createPrismMiddleware({
+  apiKey: process.env.PRISM_API_KEY || "dev-key-123",
+  baseUrl: "https://prism-gw.test.1stdigital.tech",
+});
+
+export default async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse
+) {
+  // Apply middleware
+  const paymentResult = await prismMiddleware(req, res, {
+    price: 0.01, // $0.01 USD
+    description: "Premium API",
+  });
+
+  if (!paymentResult) return; // Middleware handled response
+
+  // Payment verified
+  res.status(200).json({
+    message: "Premium content",
+    payer: (req as any).payer,
+  });
+}
+```
+
+---
+
+## Configuration
+
+### App Router Options
+
+```typescript
+interface PrismRouteConfig {
+  apiKey: string;
+  baseUrl?: string;
+  debug?: boolean;
+  price: number | string; // USD price
+  description: string;
+  mimeType?: string;
+}
+```
+
+### Pages Router Options
+
+```typescript
+interface PrismMiddlewareConfig {
+  apiKey: string;
+  baseUrl?: string;
+  debug?: boolean;
+}
+
+interface RoutePaymentConfig {
+  price: number | string;
+  description: string;
+  mimeType?: string;
+}
+```
+
+---
+
+## App Router Routes
+
+### Single Route
+
+```typescript
+// app/api/premium/route.ts
+import { withPrismPayment } from "@financedistrict/prism-x402-sdk-nextjs";
+
+async function handler(request: NextRequest) {
+  return NextResponse.json({ data: "Premium" });
+}
+
+export const GET = withPrismPayment(handler, {
+  apiKey: process.env.PRISM_API_KEY!,
+  price: 0.01,
+  description: "Premium API",
+});
+```
+
+### Multiple Methods
+
+```typescript
+// app/api/data/route.ts
+import { withPrismPayment } from "@financedistrict/prism-x402-sdk-nextjs";
+
+async function getHandler(request: NextRequest) {
+  return NextResponse.json({ data: "GET data" });
+}
+
+async function postHandler(request: NextRequest) {
+  const body = await request.json();
+  return NextResponse.json({ received: body });
+}
+
+export const GET = withPrismPayment(getHandler, {
+  apiKey: process.env.PRISM_API_KEY!,
+  price: 0.01,
+  description: "Get data",
+});
+
+export const POST = withPrismPayment(postHandler, {
+  apiKey: process.env.PRISM_API_KEY!,
+  price: 0.02,
+  description: "Post data",
+});
+```
+
+---
+
+## Accessing Payment Info
+
+### App Router
+
+```typescript
+async function handler(request: NextRequest) {
+  // Payer address attached to request
+  const payer = (request as any).payer;
+  // '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb'
+
+  // Payment object in custom property
+  const payment = (request as any).prismPayment;
+
+  return NextResponse.json({
+    message: "Data",
+    payer,
+    network: payment?.network,
+  });
+}
+```
+
+### Pages Router
+
+```typescript
+export default async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse
+) {
+  const paymentResult = await prismMiddleware(req, res, {
+    price: 0.01,
+    description: "Premium",
+  });
+
+  if (!paymentResult) return;
+
+  // Access payer
+  const payer = (req as any).payer;
+  const payment = (res as any).locals?.payment;
+
+  res.json({ payer, network: payment?.network });
+}
+```
+
+---
+
+## Settlement Validation
+
+Next.js wraps the Response object to validate settlement:
+
+```typescript
+// Internal implementation (automatic!)
+async function withPrismPayment(handler, config) {
+  return async (request: NextRequest) => {
+    // ... payment validation ...
+
+    // Execute handler
+    const response = await handler(request);
+
+    // Validate settlement before returning
+    const settlementResult = await core.settlementCallback(...);
+
+    if (!settlementResult || !settlementResult.success) {
+      // ❌ Settlement failed
+      return NextResponse.json(
+        { error: 'Payment settlement failed' },
+        { status: 402 }
+      );
+    }
+
+    // ✅ Settlement succeeded
+    response.headers.set('X-PAYMENT-RESPONSE', settlementResult.transaction);
+    return response;
+  };
+}
+```
+
+---
+
+## Testing
+
+```typescript
+import { NextRequest } from "next/server";
+import { GET } from "./app/api/premium/route";
+
+describe("Next.js Payment Routes", () => {
+  it("returns 402 without payment", async () => {
+    const request = new NextRequest("http://localhost:3000/api/premium");
+    const response = await GET(request);
+
+    expect(response.status).toBe(402);
+
+    const body = await response.json();
+    expect(body.paymentRequired).toBe(true);
+  });
+
+  it("returns 200 with valid payment", async () => {
+    const payment = JSON.stringify({
+      scheme: "eip3009",
+      signature: "0x" + "0".repeat(130),
+    });
+
+    const request = new NextRequest("http://localhost:3000/api/premium", {
+      headers: { "X-PAYMENT": payment },
+    });
+
+    const response = await GET(request);
+    expect(response.status).toBe(200);
+
+    const body = await response.json();
+    expect(body.message).toBe("Premium content");
+  });
+});
+```
+
+---
+
+## Production Deployment
+
+```typescript
+// next.config.js
+module.exports = {
+  env: {
+    PRISM_API_KEY: process.env.PRISM_API_KEY,
+    PRISM_BASE_URL: process.env.PRISM_BASE_URL
+  },
+
+  // Enable edge runtime (optional)
+  experimental: {
+    runtime: 'edge'
+  }
+};
+
+// Vercel deployment
+// vercel.json
+{
+  "env": {
+    "PRISM_API_KEY": "@prism-api-key",
+    "PRISM_BASE_URL": "@prism-base-url"
+  }
+}
+```
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Settlement Validation"
+    icon="shield-check"
+    href="/concepts/settlement-validation"
+  >
+    How Next.js prevents data leakage
+  </Card>
+
+  <Card
+    title="Express Integration"
+    icon="node-js"
+    href="/sdk/typescript/express"
+  >
+    Compare with Express.js implementation
+  </Card>
+
+  <Card title="Testing Guide" icon="flask" href="/guides/testing">
+    Test Next.js + Prism routes
+  </Card>
+
+  <Card
+    title="Production Deployment"
+    icon="rocket"
+    href="/guides/production-deployment"
+  >
+    Deploy Next.js + Prism to Vercel/AWS
+  </Card>
+</CardGroup>

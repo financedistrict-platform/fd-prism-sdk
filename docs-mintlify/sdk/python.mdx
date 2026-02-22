@@ -1,0 +1,739 @@
+---
+title: "Python SDK"
+description: "Flask & FastAPI middleware for x402 payment protocol"
+icon: "python"
+---
+
+<Info>
+  **Status:** 🔜 Coming Q1 2026 The Python SDK is currently in development. This
+  page shows the planned API and features.
+</Info>
+
+## Planned Features
+
+<CardGroup cols={3}>
+  <Card title="Flask Support" icon="flask">
+    Decorator-based middleware for Flask
+  </Card>
+
+  <Card title="FastAPI Support" icon="bolt">
+    Dependency injection for FastAPI
+  </Card>
+
+  <Card title="Async/Await" icon="arrows-rotate">
+    Full async support with asyncio
+  </Card>
+
+  <Card title="Type Hints" icon="code">
+    Complete type annotations
+  </Card>
+
+  <Card title="Pydantic Models" icon="shield-check">
+    Data validation with Pydantic
+  </Card>
+
+  <Card title="CLI Tools" icon="terminal">
+    Command-line tools for testing
+  </Card>
+</CardGroup>
+
+## Installation (Planned)
+
+<Tabs>
+  <Tab title="pip">
+    ```bash pip install prism-flask # or pip install prism-fastapi ```
+  </Tab>
+
+  <Tab title="Poetry">
+    ```bash poetry add prism-flask # or poetry add prism-fastapi ```
+  </Tab>
+
+  <Tab title="requirements.txt">
+    ```txt prism-flask==1.0.0 # or prism-fastapi==1.0.0 ```
+  </Tab>
+</Tabs>
+
+## Planned API
+
+### Flask Example
+
+```python
+from flask import Flask, jsonify
+from prism_flask import require_payment, init_prism
+
+app = Flask(__name__)
+
+# Initialize Prism
+init_prism(
+    app,
+    api_key='your-api-key',
+    use_sandbox=True
+)
+
+# Public endpoint (no payment)
+@app.route('/')
+def home():
+    return jsonify({'message': 'Welcome to Prism API'})
+
+# Protected endpoint (requires payment)
+@app.route('/api/weather')
+@require_payment(price=0.001, description='Weather data')
+def weather():
+    # Access payment info
+    from flask import g
+    payment = g.payment
+
+    return jsonify({
+        'location': 'San Francisco',
+        'temperature': 72,
+        'condition': 'Sunny',
+        'payment': {
+            'network': payment.network,
+            'tx_hash': payment.tx_hash
+        }
+    })
+
+# Premium endpoint (higher price)
+@app.route('/api/premium')
+@require_payment(price=0.01, description='Premium data')
+def premium():
+    return jsonify({
+        'premium': True,
+        'data': 'Premium content'
+    })
+
+if __name__ == '__main__':
+    app.run(debug=True)
+```
+
+### FastAPI Example
+
+```python
+from fastapi import FastAPI, Depends
+from prism_fastapi import PrismMiddleware, require_payment, PaymentInfo
+
+app = FastAPI()
+
+# Add Prism middleware
+app.add_middleware(
+    PrismMiddleware,
+    api_key='your-api-key',
+    use_sandbox=True
+)
+
+# Public endpoint (no payment)
+@app.get('/')
+async def home():
+    return {'message': 'Welcome to Prism API'}
+
+# Protected endpoint (requires payment)
+@app.get('/api/weather')
+async def weather(
+    payment: PaymentInfo = Depends(require_payment(0.001, 'Weather data'))
+):
+    return {
+        'location': 'San Francisco',
+        'temperature': 72,
+        'condition': 'Sunny',
+        'payment': {
+            'network': payment.network,
+            'tx_hash': payment.tx_hash
+        }
+    }
+
+# Premium endpoint (higher price)
+@app.get('/api/premium')
+async def premium(
+    payment: PaymentInfo = Depends(require_payment(0.01, 'Premium data'))
+):
+    return {
+        'premium': True,
+        'data': 'Premium content',
+        'paid_on': payment.network
+    }
+```
+
+### Configuration
+
+```python
+# Flask
+from prism_flask import PrismConfig
+
+config = PrismConfig(
+    api_key='your-api-key',
+    use_sandbox=True,
+    base_url=None,  # Optional custom URL
+    timeout=10.0,   # Request timeout in seconds
+    retries=3       # Failed request retries
+)
+
+init_prism(app, config)
+```
+
+```python
+# FastAPI
+from prism_fastapi import PrismMiddleware, PrismConfig
+
+app.add_middleware(
+    PrismMiddleware,
+    config=PrismConfig(
+        api_key='your-api-key',
+        use_sandbox=True,
+        timeout=10.0,
+        retries=3
+    )
+)
+```
+
+### Payment Info Model
+
+```python
+from pydantic import BaseModel
+from typing import Optional
+
+class PaymentInfo(BaseModel):
+    scheme: str
+    network: str
+    asset: str
+    amount: str
+    pay_to: str
+    tx_hash: Optional[str] = None
+    valid_after: int
+    valid_before: int
+    nonce: str
+
+    class Config:
+        # Allow snake_case field names
+        alias_generator = lambda s: s
+```
+
+### Error Handling (Flask)
+
+```python
+from flask import Flask, jsonify
+from prism_flask import PrismError, require_payment
+
+app = Flask(__name__)
+
+@app.errorhandler(PrismError)
+def handle_prism_error(error):
+    return jsonify({
+        'error': error.code,
+        'message': error.message,
+        'details': error.details
+    }), error.status_code
+
+@app.route('/api/data')
+@require_payment(price=0.01)
+def get_data():
+    return jsonify({'data': 'content'})
+```
+
+### Error Handling (FastAPI)
+
+```python
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+from prism_fastapi import PrismException
+
+app = FastAPI()
+
+@app.exception_handler(PrismException)
+async def prism_exception_handler(
+    request: Request,
+    exc: PrismException
+):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            'error': exc.code,
+            'message': exc.message,
+            'details': exc.details
+        }
+    )
+```
+
+### Advanced Flask Patterns
+
+#### Blueprint Support
+
+```python
+from flask import Blueprint
+from prism_flask import require_payment
+
+api_bp = Blueprint('api', __name__, url_prefix='/api')
+
+@api_bp.route('/data')
+@require_payment(price=0.001, description='API data')
+def get_data():
+    return {'data': 'content'}
+
+app.register_blueprint(api_bp)
+```
+
+#### Dynamic Pricing
+
+```python
+from flask import request
+from prism_flask import require_payment, get_payment_price
+
+@app.route('/api/search')
+@require_payment(price=lambda: calculate_search_price(request.args))
+def search():
+    query = request.args.get('q')
+    results = perform_search(query)
+    return {'results': results}
+
+def calculate_search_price(args):
+    # Simple query: $0.001
+    # Complex query: $0.01
+    if len(args.get('q', '')) > 50:
+        return 0.01
+    return 0.001
+```
+
+#### Custom Middleware
+
+```python
+from flask import Flask, g, request
+from prism_flask import PrismClient
+
+app = Flask(__name__)
+prism = PrismClient(api_key='key', use_sandbox=True)
+
+@app.before_request
+def check_payment():
+    # Custom payment logic
+    if request.path.startswith('/api/paid'):
+        auth_header = request.headers.get('X-PAYMENT-AUTHORIZATION')
+
+        if not auth_header:
+            requirements = prism.get_payment_requirements(
+                resource=request.path,
+                amount='1000000'
+            )
+            return requirements.to_402_response()
+
+        payment = prism.verify_payment(auth_header)
+        if payment.valid:
+            g.payment = payment
+        else:
+            return {'error': 'Invalid payment'}, 401
+```
+
+### Advanced FastAPI Patterns
+
+#### Dependency Injection
+
+```python
+from fastapi import FastAPI, Depends
+from prism_fastapi import PrismClient, PaymentInfo
+
+app = FastAPI()
+
+# Inject Prism client
+def get_prism_client():
+    return PrismClient(
+        api_key='your-api-key',
+        use_sandbox=True
+    )
+
+@app.get('/api/data')
+async def get_data(
+    prism: PrismClient = Depends(get_prism_client),
+    payment: PaymentInfo = Depends(require_payment(0.001))
+):
+    # Manually settle payment if needed
+    await prism.settle_payment(payment.nonce)
+
+    return {'data': 'content'}
+```
+
+#### Background Tasks
+
+```python
+from fastapi import BackgroundTasks
+from prism_fastapi import require_payment, PaymentInfo
+
+@app.get('/api/process')
+async def process_data(
+    background_tasks: BackgroundTasks,
+    payment: PaymentInfo = Depends(require_payment(0.01))
+):
+    # Add settlement to background tasks
+    background_tasks.add_task(
+        settle_and_log,
+        payment.nonce,
+        payment.network
+    )
+
+    return {'status': 'processing'}
+
+async def settle_and_log(nonce: str, network: str):
+    # Settle payment in background
+    await prism.settle_payment(nonce)
+    logger.info(f'Payment settled: {nonce} on {network}')
+```
+
+#### WebSocket Support
+
+```python
+from fastapi import WebSocket
+from prism_fastapi import verify_payment_ws
+
+@app.websocket('/ws/stream')
+async def websocket_stream(websocket: WebSocket):
+    await websocket.accept()
+
+    # Wait for payment
+    payment = await verify_payment_ws(
+        websocket,
+        price=0.001,
+        description='Real-time stream'
+    )
+
+    if payment.valid:
+        # Stream data
+        while True:
+            data = await get_real_time_data()
+            await websocket.send_json(data)
+            await asyncio.sleep(1)
+    else:
+        await websocket.close(code=1008, reason='Payment required')
+```
+
+### Testing Support
+
+#### Flask Testing
+
+```python
+import pytest
+from prism_flask.testing import MockPrismClient
+
+@pytest.fixture
+def client(app):
+    app.config['TESTING'] = True
+    with app.test_client() as client:
+        yield client
+
+@pytest.fixture
+def mock_prism(app):
+    # Mock Prism client for testing
+    mock = MockPrismClient()
+    mock.setup_valid_payment(
+        nonce='0x123...',
+        tx_hash='0xabc...'
+    )
+    app.prism_client = mock
+    return mock
+
+def test_payment_required(client):
+    response = client.get('/api/weather')
+    assert response.status_code == 402
+    assert 'X-PAYMENT' in response.headers
+
+def test_valid_payment(client, mock_prism):
+    response = client.get(
+        '/api/weather',
+        headers={'X-PAYMENT-AUTHORIZATION': 'valid-token'}
+    )
+    assert response.status_code == 200
+    assert response.json['temperature'] == 72
+```
+
+#### FastAPI Testing
+
+```python
+import pytest
+from fastapi.testclient import TestClient
+from prism_fastapi.testing import MockPrismMiddleware
+
+@pytest.fixture
+def client(app):
+    # Replace middleware with mock
+    app.user_middleware = [
+        m for m in app.user_middleware
+        if not isinstance(m, PrismMiddleware)
+    ]
+    app.add_middleware(MockPrismMiddleware)
+
+    return TestClient(app)
+
+def test_payment_required(client):
+    response = client.get('/api/weather')
+    assert response.status_code == 402
+    assert 'x-payment' in response.headers
+
+def test_valid_payment(client):
+    response = client.get(
+        '/api/weather',
+        headers={'x-payment-authorization': 'mock-valid-token'}
+    )
+    assert response.status_code == 200
+    assert response.json()['temperature'] == 72
+```
+
+### CLI Tools (Planned)
+
+```bash
+# Initialize new Prism project
+prism init --framework flask
+
+# Test payment flow
+prism test --endpoint http://localhost:5000/api/weather
+
+# Generate payment signature
+prism sign \
+  --from 0xAIAgent... \
+  --to 0xProvider... \
+  --amount 1000000 \
+  --nonce 0x123... \
+  --private-key /path/to/key
+
+# Verify payment
+prism verify \
+  --signature 0xabc... \
+  --nonce 0x123... \
+  --network base-sepolia
+
+# Monitor payments
+prism monitor --api-key your-key --follow
+```
+
+## Planned Features Roadmap
+
+<Steps>
+  <Step title="Q1 2026 - Core Libraries">
+    - Flask decorator support - FastAPI dependency injection - Basic payment
+    verification - Type hints and Pydantic models
+  </Step>
+
+  <Step title="Q2 2026 - Advanced Features">
+    - WebSocket support - Background task integration - Advanced caching - CLI
+    tools
+  </Step>
+
+  <Step title="Q3 2026 - Frameworks">
+    - Django middleware - Starlette support - Sanic integration - Tornado
+    handlers
+  </Step>
+
+  <Step title="Q4 2026 - Ecosystem">
+    - Celery integration - Redis caching - PostgreSQL tracking - Prometheus
+    metrics
+  </Step>
+</Steps>
+
+## Why Python SDK?
+
+<CardGroup cols={2}>
+  <Card title="Data Science" icon="chart-line">
+    Python dominates ML/AI applications
+  </Card>
+
+  <Card title="Simplicity" icon="code">
+    Clean, readable decorator syntax
+  </Card>
+
+  <Card title="Async Support" icon="bolt">
+    Native async/await with FastAPI
+  </Card>
+
+  <Card title="Ecosystem" icon="puzzle-piece">
+    Rich ecosystem of libraries
+  </Card>
+</CardGroup>
+
+## Expected Use Cases
+
+### AI/ML APIs
+
+```python
+from fastapi import FastAPI
+from prism_fastapi import require_payment, PaymentInfo
+
+app = FastAPI()
+
+@app.post('/api/inference')
+async def run_inference(
+    model_input: ModelInput,
+    payment: PaymentInfo = Depends(require_payment(0.01, 'AI inference'))
+):
+    # Run expensive ML model
+    result = await ml_model.predict(model_input)
+
+    # Track usage
+    await track_usage(
+        model='gpt-4',
+        payment_network=payment.network,
+        amount=payment.amount
+    )
+
+    return {'result': result}
+```
+
+### Data APIs
+
+```python
+from flask import Flask
+from prism_flask import require_payment
+
+app = Flask(__name__)
+
+@app.route('/api/stock/<symbol>')
+@require_payment(price=0.005, description='Real-time stock data')
+def get_stock(symbol):
+    quote = fetch_stock_quote(symbol)
+    return {
+        'symbol': symbol,
+        'price': quote.price,
+        'change': quote.change
+    }
+
+@app.route('/api/historical/<symbol>')
+@require_payment(price=0.05, description='Historical stock data')
+def get_historical(symbol):
+    data = fetch_historical_data(symbol)
+    return {'symbol': symbol, 'data': data}
+```
+
+### Content APIs
+
+```python
+from fastapi import FastAPI
+from fastapi.responses import StreamingResponse
+from prism_fastapi import require_payment
+
+@app.get('/api/video/{video_id}')
+async def stream_video(
+    video_id: str,
+    payment: PaymentInfo = Depends(require_payment(0.05, 'Video streaming'))
+):
+    async def video_stream():
+        async for chunk in get_video_chunks(video_id):
+            yield chunk
+
+    return StreamingResponse(
+        video_stream(),
+        media_type='video/mp4'
+    )
+```
+
+## Get Notified
+
+Want to be notified when the Python SDK is released?
+
+<Card
+  title="Join Waitlist"
+  icon="bell"
+  href="https://prism.1stdigital.tech/waitlist/python-sdk"
+>
+  Get email notifications for Python SDK updates
+</Card>
+
+## Contribute
+
+Interested in contributing to the Python SDK development?
+
+<CardGroup cols={2}>
+  <Card
+    title="GitHub Discussions"
+    icon="github"
+    href="https://github.com/1stdigital/fd-prism-sdk/discussions"
+  >
+    Share ideas and feedback
+  </Card>
+
+  <Card
+    title="Discord Community"
+    icon="discord"
+    href="https://discord.gg/your-discord"
+  >
+    Join developer community
+  </Card>
+</CardGroup>
+
+## Alternative Solutions
+
+While waiting for the Python SDK, you can:
+
+<Tabs>
+  <Tab title="REST API">
+    Use Prism Gateway REST API with `requests` or `httpx`
+    
+    ```python
+    import requests
+    
+    gateway_url = 'https://prism-gw.test.1stdigital.tech'
+    headers = {'x-api-key': api_key}
+    
+    # Get payment requirements
+    response = requests.post(
+        f'{gateway_url}/api/v1/payment/requirements',
+        headers=headers,
+        json={
+            'resource': '/api/premium',
+            'amount': '1000000'
+        }
+    )
+    
+    requirements = response.json()
+    ```
+    
+    <Card
+      title="API Reference"
+      icon="book"
+      href="/api-reference/introduction"
+    >
+      Complete REST API documentation
+    </Card>
+  </Tab>
+  
+  <Tab title="TypeScript SDK">
+    Use TypeScript SDK with Node.js backend
+    
+    ```typescript
+    import express from 'express';
+    import { prismPaymentMiddleware } from '@financedistrict/prism-x402-sdk-express';
+    
+    const app = express();
+    
+    app.use(prismPaymentMiddleware(
+      { apiKey: 'key', useSandbox: true },
+      { '/api/data': { price: 0.01 } }
+    ));
+    ```
+    
+    <Card
+      title="TypeScript SDK"
+      icon="js"
+      href="/sdk/typescript"
+    >
+      Full TypeScript documentation
+    </Card>
+  </Tab>
+</Tabs>
+
+## Related Resources
+
+<CardGroup cols={2}>
+  <Card
+    title="System Overview"
+    icon="diagram-project"
+    href="/concepts/system-overview"
+  >
+    Understand Prism architecture
+  </Card>
+
+  <Card title="x402 Protocol" icon="bolt" href="/concepts/x402-protocol">
+    HTTP 402 payment standard
+  </Card>
+
+  <Card title="EIP-3009" icon="ethereum" href="/concepts/eip3009-settlement">
+    Gasless token transfers
+  </Card>
+
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Get started with TypeScript
+  </Card>
+</CardGroup>

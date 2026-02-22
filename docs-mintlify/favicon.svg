@@ -1,0 +1,6 @@
+<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Simplified FD mark from Finance District logo -->
+  <rect width="32" height="32" rx="6" fill="#101010"/>
+  <path d="M8 5V10.25V10.6H14.5C14.6 10.6 15 10.55 15 11.1V20H17V11.7L15 10.6L13 5H8Z" fill="white"/>
+  <path d="M12.5 20V16.4H19.5C19.55 16.4 20 16.4 20 15.75V12.6H22V16.3L20 17.4L18 20H12.5Z" fill="white"/>
+</svg>

@@ -1,0 +1,339 @@
+---
+title: "NestJS Integration"
+description: "Protect NestJS APIs with blockchain micropayments using decorators"
+icon: "n"
+---
+
+## Overview
+
+The **@financedistrict/prism-x402-sdk-nestjs** package provides a full-featured NestJS module with decorators, guards, and interceptors for payment-protecting your API routes.
+
+<CardGroup cols={3}>
+  <Card title="Decorator-Based" icon="at">
+    @Payment() and @Payer() decorators
+  </Card>
+  
+  <Card title="Module System" icon="boxes-stacked">
+    PrismModule.forRoot() configuration
+  </Card>
+
+  <Card title="Dependency Injection" icon="puzzle-piece">
+    Works with NestJS DI system
+  </Card>
+</CardGroup>
+
+---
+
+## Installation
+
+<Tabs>
+  <Tab title="npm">
+    ```bash
+    npm install @financedistrict/prism-x402-sdk-nestjs @nestjs/core @nestjs/common
+    ```
+  </Tab>
+
+{" "}
+<Tab title="yarn">
+  ```bash yarn add @financedistrict/prism-x402-sdk-nestjs @nestjs/core @nestjs/common ```
+</Tab>
+
+  <Tab title="pnpm">
+    ```bash
+    pnpm add @financedistrict/prism-x402-sdk-nestjs @nestjs/core @nestjs/common
+    ```
+  </Tab>
+</Tabs>
+
+---
+
+## Quick Start
+
+```typescript
+// app.module.ts
+import { Module } from "@nestjs/common";
+import { PrismModule } from "@financedistrict/prism-x402-sdk-nestjs";
+import { AppController } from "./app.controller";
+
+@Module({
+  imports: [
+    PrismModule.forRoot({
+      apiKey: process.env.PRISM_API_KEY || "dev-key-123",
+      baseUrl: "https://prism-gw.test.1stdigital.tech",
+      routes: {
+        "/api/premium": {
+          price: 0.01, // $0.01 USD
+          description: "Premium API",
+        },
+      },
+    }),
+  ],
+  controllers: [AppController],
+})
+export class AppModule {}
+
+// app.controller.ts
+import { Controller, Get } from "@nestjs/common";
+import { Payment, Payer } from "@financedistrict/prism-x402-sdk-nestjs";
+
+@Controller("api")
+export class AppController {
+  @Get("premium")
+  @Payment() // Requires payment!
+  getPremiumData(@Payer() payer: string) {
+    return {
+      message: "Premium content",
+      payer,
+    };
+  }
+}
+```
+
+---
+
+## Configuration
+
+### Module Options
+
+```typescript
+PrismModule.forRoot({
+  apiKey: "your-api-key",
+  baseUrl: "https://prism-gateway.com",
+  debug: true,
+  routes: {
+    "/api/premium": {
+      price: 0.01,
+      description: "Premium API",
+    },
+    "/api/data/*": {
+      price: 0.005,
+      description: "Data API (wildcard)",
+    },
+  },
+});
+```
+
+---
+
+## Decorators
+
+### @Payment() Decorator
+
+```typescript
+import { Controller, Get } from "@nestjs/common";
+import { Payment } from "@financedistrict/prism-x402-sdk-nestjs";
+
+@Controller("api")
+export class DataController {
+  // Payment required
+  @Get("premium")
+  @Payment()
+  getPremium() {
+    return { data: "Premium content" };
+  }
+
+  // No payment required
+  @Get("free")
+  getFree() {
+    return { data: "Free content" };
+  }
+}
+```
+
+### @Payer() Decorator
+
+```typescript
+import { Controller, Get } from "@nestjs/common";
+import { Payment, Payer } from "@financedistrict/prism-x402-sdk-nestjs";
+
+@Controller("api")
+export class DataController {
+  @Get("premium")
+  @Payment()
+  getPremium(@Payer() payer: string) {
+    // payer = '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb'
+    return {
+      message: "Premium data",
+      payer,
+    };
+  }
+}
+```
+
+---
+
+## Accessing Payment Info
+
+### Request Context
+
+```typescript
+import { Controller, Get, Req } from "@nestjs/common";
+import { Payment } from "@financedistrict/prism-x402-sdk-nestjs";
+import { Request } from "express";
+
+@Controller("api")
+export class DataController {
+  @Get("premium")
+  @Payment()
+  getPremium(@Req() request: Request) {
+    // Access via request object
+    const payer = request.payer;
+    const payment = request.locals?.payment;
+
+    return {
+      message: "Premium data",
+      payer,
+      network: payment?.network,
+    };
+  }
+}
+```
+
+---
+
+## Settlement Validation
+
+NestJS uses an **Interceptor** to validate settlement:
+
+```typescript
+// Internal implementation (automatic!)
+@Injectable()
+export class PrismSettlementInterceptor implements NestInterceptor {
+  async intercept(context: ExecutionContext, next: CallHandler) {
+    return next.handle().pipe(
+      mergeMap(async (data) => {
+        const response = context.switchToHttp().getResponse();
+        const settlementResult = await this.settlementCallback(...);
+
+        if (!settlementResult || !settlementResult.success) {
+          // ❌ Settlement failed
+          response.status(402);
+          return {
+            error: 'Payment settlement failed',
+            details: settlementResult?.errorReason
+          };
+        }
+
+        // ✅ Settlement succeeded
+        response.header('X-PAYMENT-RESPONSE', settlementResult.transaction);
+        return data;
+      })
+    );
+  }
+}
+```
+
+---
+
+## Testing
+
+```typescript
+import { Test, TestingModule } from "@nestjs/testing";
+import { INestApplication } from "@nestjs/common";
+import * as request from "supertest";
+import { AppModule } from "./app.module";
+
+describe("PrismModule (e2e)", () => {
+  let app: INestApplication;
+
+  beforeAll(async () => {
+    const moduleFixture: TestingModule = await Test.createTestingModule({
+      imports: [AppModule],
+    }).compile();
+
+    app = moduleFixture.createNestApplication();
+    await app.init();
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  it("returns 402 without payment", () => {
+    return request(app.getHttpServer())
+      .get("/api/premium")
+      .expect(402)
+      .expect((res) => {
+        expect(res.body.paymentRequired).toBe(true);
+      });
+  });
+
+  it("returns 200 with valid payment", () => {
+    const payment = JSON.stringify({
+      scheme: "eip3009",
+      signature: "0x" + "0".repeat(130),
+    });
+
+    return request(app.getHttpServer())
+      .get("/api/premium")
+      .set("X-PAYMENT", payment)
+      .expect(200)
+      .expect((res) => {
+        expect(res.body.message).toBe("Premium content");
+      });
+  });
+});
+```
+
+---
+
+## Production Deployment
+
+```typescript
+// main.ts
+import { NestFactory } from "@nestjs/core";
+import { AppModule } from "./app.module";
+
+async function bootstrap() {
+  const app = await NestFactory.create(AppModule, {
+    logger: ["error", "warn", "log"],
+  });
+
+  // Enable CORS if needed
+  app.enableCors({
+    origin: process.env.ALLOWED_ORIGINS?.split(","),
+    credentials: true,
+  });
+
+  const port = parseInt(process.env.PORT || "3000");
+  await app.listen(port);
+
+  console.log(`NestJS + Prism running on port ${port}`);
+}
+
+bootstrap();
+```
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Settlement Validation"
+    icon="shield-check"
+    href="/concepts/settlement-validation"
+  >
+    How NestJS interceptors prevent data leakage
+  </Card>
+
+  <Card
+    title="Express Integration"
+    icon="node-js"
+    href="/sdk/typescript/express"
+  >
+    Compare with Express.js implementation
+  </Card>
+
+  <Card title="Testing Guide" icon="flask" href="/guides/testing">
+    Test NestJS + Prism with supertest
+  </Card>
+
+  <Card
+    title="Production Deployment"
+    icon="rocket"
+    href="/guides/production-deployment"
+  >
+    Deploy NestJS + Prism to production
+  </Card>
+</CardGroup>

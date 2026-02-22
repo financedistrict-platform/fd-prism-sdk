@@ -1,0 +1,855 @@
+---
+title: "Flask Integration"
+description: "Protect Flask APIs with blockchain micropayments"
+icon: "python"
+---
+
+## Overview
+
+The **prism-flask** package provides Flask middleware for payment-protecting your API routes using the x402 protocol. It uses Flask's decorator pattern and request context for seamless integration.
+
+<CardGroup cols={3}>
+  <Card title="Pythonic API" icon="python">
+    Flask decorators and context managers
+  </Card>
+  
+  <Card title="Request Context" icon="layer-group">
+    Payment info in `g.prism_payer`
+  </Card>
+
+  <Card title="Minimal Setup" icon="bolt">
+    Single function call to configure
+  </Card>
+</CardGroup>
+
+---
+
+## Installation
+
+<Tabs>
+  <Tab title="pip">
+    ```bash
+    pip install prism-flask
+    ```
+  </Tab>
+
+{" "}
+
+<Tab title="Poetry">```bash poetry add prism-flask ```</Tab>
+
+  <Tab title="requirements.txt">
+    ```txt
+    prism-flask==1.0.0
+    ```
+  </Tab>
+</Tabs>
+
+---
+
+## Quick Start
+
+```python
+from flask import Flask, g, jsonify
+from prism_flask import prism_payment_middleware
+from prism_sdk_core import PrismMiddlewareConfig, RoutePaymentConfig
+
+app = Flask(__name__)
+
+# Configure Prism middleware
+prism_payment_middleware(
+    app,
+    config=PrismMiddlewareConfig(
+        api_key='dev-key-123',
+        base_url='https://prism-gw.test.1stdigital.tech'
+    ),
+    routes={
+        '/api/premium': RoutePaymentConfig(
+            price=0.01,
+            description='Premium API access'
+        )
+    }
+)
+
+@app.route('/api/premium')
+def premium():
+    payer = getattr(g, 'prism_payer', None)
+    return jsonify({
+        'message': 'Premium content!',
+        'payer': payer
+    })
+
+if __name__ == '__main__':
+    app.run(port=5000)
+```
+
+---
+
+## Configuration
+
+### Middleware Configuration
+
+```python
+from prism_sdk_core import PrismMiddlewareConfig
+
+config = PrismMiddlewareConfig(
+    api_key='your-api-key',        # Required: Your Prism API key
+    base_url='https://...',        # Optional: Gateway URL
+    debug=True                     # Optional: Enable debug logging
+)
+```
+
+### Route Configuration
+
+```python
+from prism_sdk_core import RoutePaymentConfig
+
+routes = {
+    '/api/premium': RoutePaymentConfig(
+        price=0.01,                # Price in USD (0.01 = $0.01)
+        description='Premium API'  # Human-readable description
+    )
+}
+```
+
+---
+
+## Route Protection Patterns
+
+### Exact Path Matching
+
+```python
+prism_payment_middleware(
+    app,
+    config=config,
+    routes={
+        '/api/premium': RoutePaymentConfig(
+            price=0.01,
+            description='Premium API'
+        ),
+        '/api/weather': RoutePaymentConfig(
+            price='$0.001',
+            description='Weather data'
+        )
+    }
+)
+
+# ✅ Protected: GET /api/premium
+# ✅ Protected: GET /api/weather
+# ❌ Not protected: GET /api/public
+```
+
+---
+
+### Wildcard Matching
+
+```python
+prism_payment_middleware(
+    app,
+    config=config,
+    routes={
+        '/api/*': RoutePaymentConfig(
+            price=0.005,
+            description='API access'
+        )
+    }
+)
+
+# ✅ Protected: GET /api/users
+# ✅ Protected: GET /api/posts/123
+# ❌ Not protected: GET /public
+```
+
+---
+
+### Multiple Route Groups
+
+```python
+prism_payment_middleware(
+    app,
+    config=config,
+    routes={
+        # Free tier
+        '/api/basic/*': RoutePaymentConfig(
+            price='$0.0001',
+            description='Basic API'
+        ),
+
+        # Premium tier
+        '/api/premium/*': RoutePaymentConfig(
+            price='$0.01',
+            description='Premium API'
+        ),
+
+        # Specific expensive endpoint
+        '/api/ai/generate': RoutePaymentConfig(
+            price='$0.50',
+            description='AI content generation'
+        )
+    }
+)
+```
+
+---
+
+## Accessing Payment Information
+
+Payment info is stored in Flask's `g` context object:
+
+```python
+from flask import g
+
+@app.route('/api/premium')
+def premium():
+    # Access payer wallet address
+    payer = getattr(g, 'prism_payer', None)
+    # Returns: '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb' or None
+
+    # Access full payment object
+    payment = getattr(g, 'prism_payment', None)
+    """
+    {
+        'scheme': 'eip3009',
+        'network': 'eth-sepolia',
+        'asset': 'usdc',
+        'amount': '10000',
+        'recipient': '0x...',
+        'nonce': '0x...',
+        'validBefore': 1735430400,
+        'signature': '0x...'
+    }
+    """
+
+    return jsonify({
+        'message': 'Premium content',
+        'payer': payer,
+        'network': payment.get('network') if payment else None
+    })
+```
+
+---
+
+### Safe Access Helper
+
+```python
+def get_payer():
+    """Safely get payer address from request context"""
+    return getattr(g, 'prism_payer', None)
+
+def get_payment():
+    """Safely get full payment object from request context"""
+    return getattr(g, 'prism_payment', None)
+
+@app.route('/api/data')
+def data():
+    payer = get_payer()
+
+    if not payer:
+        return jsonify({'error': 'Payment required'}), 402
+
+    return jsonify({
+        'data': [1, 2, 3],
+        'payer': payer
+    })
+```
+
+---
+
+## Settlement Validation
+
+The Flask middleware uses **@app.after_request** decorator to validate settlement before sending data:
+
+```python
+# Internal implementation (automatic!)
+@app.after_request
+def settlement_validation(response):
+    """Validate settlement before sending response"""
+
+    settlement_result = g.get('prism_settlement_result')
+
+    if not settlement_result or not settlement_result.get('success'):
+        # ❌ Settlement failed - return error instead of data
+        error_reason = (settlement_result or {}).get('errorReason', 'Settlement processing failed')
+        return jsonify({
+            'x402Version': 1,
+            'error': 'Payment settlement failed',
+            'details': error_reason
+        }), 402
+
+    # ✅ Settlement succeeded - add header and return original response
+    response.headers['X-PAYMENT-RESPONSE'] = settlement_result['transaction']
+    return response
+```
+
+**Key Points:**
+
+- `@app.after_request` runs **after** view function but **before** sending to client
+- Can return a **different response** if settlement fails
+- Works with all Flask response types (`jsonify()`, `make_response()`, etc.)
+
+See [Settlement Validation](/concepts/settlement-validation) for details.
+
+---
+
+## Error Handling
+
+### Payment Errors
+
+When a request lacks valid payment:
+
+```json
+HTTP/1.1 402 Payment Required
+
+{
+  "x402Version": 1,
+  "paymentRequired": true,
+  "acceptedPayments": [
+    {
+      "scheme": "eip3009",
+      "network": "eth-sepolia",
+      "asset": "usdc",
+      "amount": "10000",
+      "recipient": "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb",
+      "nonce": "0xabc123...",
+      "validBefore": 1735430400
+    }
+  ],
+  "description": "Premium API access",
+  "priceUSD": "0.01"
+}
+```
+
+---
+
+### Gateway Errors
+
+```json
+HTTP/1.1 500 Internal Server Error
+
+{
+  "x402Version": 1,
+  "error": "Gateway Error",
+  "details": "Failed to contact payment gateway",
+  "gateway": {
+    "traceId": "0HNGT483NH6I8:00000001",
+    "timestamp": "2025-12-18T10:30:00Z"
+  }
+}
+```
+
+---
+
+### Custom Error Handlers
+
+```python
+from werkzeug.exceptions import HTTPException
+
+@app.errorhandler(402)
+def handle_payment_required(error):
+    """Custom handler for payment required errors"""
+    return jsonify({
+        'error': 'Payment required',
+        'message': 'Please provide payment to access this resource',
+        'documentation': 'https://docs.prism.1stdigital.tech'
+    }), 402
+
+@app.errorhandler(500)
+def handle_internal_error(error):
+    """Custom handler for internal errors"""
+    app.logger.error(f'Internal error: {error}')
+    return jsonify({
+        'error': 'Internal server error',
+        'message': 'Something went wrong'
+    }), 500
+```
+
+---
+
+## Testing
+
+### Unit Testing with pytest
+
+```python
+import pytest
+from flask import Flask
+from prism_flask import prism_payment_middleware
+from prism_sdk_core import PrismMiddlewareConfig, RoutePaymentConfig
+
+@pytest.fixture
+def app():
+    """Create test Flask app"""
+    app = Flask(__name__)
+
+    prism_payment_middleware(
+        app,
+        config=PrismMiddlewareConfig(
+            api_key='test-key',
+            base_url='http://test-gateway'
+        ),
+        routes={
+            '/api/premium': RoutePaymentConfig(
+                price=0.01,
+                description='Test'
+            )
+        }
+    )
+
+    @app.route('/api/premium')
+    def premium():
+        from flask import g, jsonify
+        payer = getattr(g, 'prism_payer', None)
+        return jsonify({'message': 'Premium', 'payer': payer})
+
+    return app
+
+@pytest.fixture
+def client(app):
+    """Create test client"""
+    return app.test_client()
+
+def test_payment_required(client):
+    """Test 402 response without payment"""
+    response = client.get('/api/premium')
+
+    assert response.status_code == 402
+    assert response.json['paymentRequired'] == True
+
+def test_valid_payment(client):
+    """Test access with valid payment"""
+    # Mock payment header
+    payment = {
+        'scheme': 'eip3009',
+        'network': 'eth-sepolia',
+        'asset': 'usdc',
+        'amount': '10000',
+        'signature': '0x' + '0' * 130
+    }
+
+    response = client.get(
+        '/api/premium',
+        headers={'X-PAYMENT': str(payment)}
+    )
+
+    # In test mode, mock signatures are accepted
+    assert response.status_code == 200
+    assert response.json['message'] == 'Premium'
+```
+
+---
+
+### Integration Testing
+
+```python
+import requests
+import json
+
+def test_full_payment_flow():
+    """Test complete payment flow with real Gateway"""
+    base_url = 'http://localhost:5000'
+
+    # 1. Request without payment
+    response = requests.get(f'{base_url}/api/premium')
+    assert response.status_code == 402
+
+    payment_req = response.json()['acceptedPayments'][0]
+
+    # 2. Sign payment with wallet (use web3.py)
+    from eth_account import Account
+    from eth_account.messages import encode_structured_data
+
+    private_key = 'your-test-private-key'
+    account = Account.from_key(private_key)
+
+    # EIP-712 structured data
+    structured_data = {
+        'types': {
+            'EIP712Domain': [...],
+            'TransferAuthorization': [...]
+        },
+        'domain': {...},
+        'message': payment_req
+    }
+
+    signed = account.sign_message(encode_structured_data(structured_data))
+
+    payment = {
+        **payment_req,
+        'signature': signed.signature.hex()
+    }
+
+    # 3. Send request with signed payment
+    response = requests.get(
+        f'{base_url}/api/premium',
+        headers={'X-PAYMENT': json.dumps(payment)}
+    )
+
+    assert response.status_code == 200
+    assert 'X-PAYMENT-RESPONSE' in response.headers  # Transaction hash
+```
+
+---
+
+## Production Deployment
+
+### Environment Variables
+
+```bash
+# .env
+PRISM_API_KEY=your-production-api-key
+PRISM_BASE_URL=https://prism-api.1stdigital.tech
+FLASK_ENV=production
+```
+
+### Production Configuration
+
+```python
+import os
+from flask import Flask
+from prism_flask import prism_payment_middleware
+from prism_sdk_core import PrismMiddlewareConfig, RoutePaymentConfig
+
+app = Flask(__name__)
+
+# Load config from environment
+prism_payment_middleware(
+    app,
+    config=PrismMiddlewareConfig(
+        api_key=os.getenv('PRISM_API_KEY'),
+        base_url=os.getenv('PRISM_BASE_URL'),
+        debug=os.getenv('FLASK_ENV') != 'production'
+    ),
+    routes={
+        '/api/premium': RoutePaymentConfig(
+            price=0.01,
+            description='Premium API'
+        )
+    }
+)
+```
+
+---
+
+### Logging & Monitoring
+
+```python
+import logging
+from flask import Flask, g
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+app = Flask(__name__)
+
+@app.before_request
+def log_request():
+    """Log incoming requests"""
+    logger.info(f'Request: {request.method} {request.path}')
+
+@app.after_request
+def log_response(response):
+    """Log payment events"""
+    if response.status_code == 402:
+        logger.info(f'Payment required: {request.path}')
+    elif response.status_code == 200 and hasattr(g, 'prism_payer'):
+        payer = getattr(g, 'prism_payer')
+        tx_hash = response.headers.get('X-PAYMENT-RESPONSE')
+        logger.info(f'Payment succeeded: {request.path} | Payer: {payer} | TX: {tx_hash}')
+
+    return response
+```
+
+---
+
+### WSGI Deployment (Gunicorn)
+
+```bash
+# Install Gunicorn
+pip install gunicorn
+
+# Run with multiple workers
+gunicorn -w 4 -b 0.0.0.0:5000 app:app
+```
+
+```python
+# gunicorn.conf.py
+bind = "0.0.0.0:5000"
+workers = 4
+worker_class = "sync"
+timeout = 30
+keepalive = 2
+
+# Logging
+accesslog = "/var/log/gunicorn/access.log"
+errorlog = "/var/log/gunicorn/error.log"
+loglevel = "info"
+```
+
+---
+
+## Type Hints
+
+Full type hint support with mypy:
+
+```python
+from typing import Optional, Dict, Any
+from flask import Flask, g, jsonify, Response
+from prism_flask import prism_payment_middleware
+from prism_sdk_core import PrismMiddlewareConfig, RoutePaymentConfig
+
+app: Flask = Flask(__name__)
+
+def get_payer() -> Optional[str]:
+    """Get payer address from request context"""
+    return getattr(g, 'prism_payer', None)
+
+def get_payment() -> Optional[Dict[str, Any]]:
+    """Get payment object from request context"""
+    return getattr(g, 'prism_payment', None)
+
+@app.route('/api/premium')
+def premium() -> Response:
+    """Payment-protected endpoint"""
+    payer: Optional[str] = get_payer()
+
+    return jsonify({
+        'message': 'Premium content',
+        'payer': payer
+    })
+```
+
+---
+
+## Examples
+
+### AI Agent API
+
+```python
+from flask import Flask, request, jsonify, g
+from prism_flask import prism_payment_middleware
+from prism_sdk_core import PrismMiddlewareConfig, RoutePaymentConfig
+
+app = Flask(__name__)
+
+prism_payment_middleware(
+    app,
+    config=PrismMiddlewareConfig(api_key='your-key'),
+    routes={
+        '/api/ai/chat': RoutePaymentConfig(
+            price='$0.01',
+            description='AI chat response'
+        ),
+        '/api/ai/image': RoutePaymentConfig(
+            price='$0.50',
+            description='AI image generation'
+        )
+    }
+)
+
+@app.route('/api/ai/chat', methods=['POST'])
+def ai_chat():
+    """AI chat endpoint"""
+    data = request.get_json()
+    message = data.get('message')
+    payer = getattr(g, 'prism_payer')
+
+    # Call AI service
+    response = call_ai_service(message)
+
+    return jsonify({
+        'response': response,
+        'payer': payer,
+        'credits_used': 1
+    })
+```
+
+---
+
+### Content Paywall
+
+```python
+@app.route('/articles/<int:article_id>')
+def get_article(article_id):
+    """Payment-protected article access"""
+    payer = getattr(g, 'prism_payer')
+
+    article = db.get_article(article_id)
+
+    return jsonify({
+        'id': article.id,
+        'title': article.title,
+        'content': article.content,
+        'author': article.author,
+        'payer': payer
+    })
+```
+
+---
+
+### Premium API with Rate Limiting
+
+```python
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+
+limiter = Limiter(
+    app=app,
+    key_func=get_remote_address,
+    default_limits=["100 per hour"]
+)
+
+@app.route('/api/premium')
+@limiter.limit("10 per minute")  # Additional rate limit for premium
+def premium():
+    """Rate-limited premium endpoint"""
+    payer = getattr(g, 'prism_payer')
+
+    return jsonify({
+        'message': 'Premium content',
+        'payer': payer
+    })
+```
+
+---
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="ImportError: cannot import name 'prism_payment_middleware'">
+    **Make sure you installed the correct package:**
+    ```bash
+    pip install prism-flask  # Not prism-sdk-core alone
+    ```
+    
+    **Check Python version:**
+    ```bash
+    python --version  # Requires Python 3.8+
+    ```
+  </Accordion>
+
+{" "}
+
+<Accordion title="g.prism_payer is None even with valid payment">
+  **Check:** 1. Payment header is properly formatted JSON string 2. Middleware
+  is configured BEFORE route definitions 3. Route path matches configured route
+  pattern 4. Payment signature is valid **Debug:** ```python @app.before_request
+  def debug_payment(): print(f'Path: {request.path}') print(f'Payment header:{" "}
+  {request.headers.get("X-PAYMENT")}') print(f'Payer:{" "}
+  {getattr(g, "prism_payer", "NOT SET")}') ```
+</Accordion>
+
+{" "}
+
+<Accordion title="Settlement fails but payment was valid">
+  **Common causes:** 1. Insufficient balance in sender's wallet 2. Token
+  allowance not set for USDC contract 3. Network congestion (transaction
+  timeout) 4. Nonce already used (replay attack prevention) **Check logs:**
+  ```python import logging logging.basicConfig(level=logging.DEBUG) ```
+</Accordion>
+
+  <Accordion title="Type hints not working in IDE">
+    **Install type stubs:**
+    ```bash
+    pip install types-Flask
+    ```
+    
+    **Configure mypy:**
+    ```ini
+    # mypy.ini
+    [mypy]
+    python_version = 3.8
+    plugins = sqlmypy
+    ```
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Flask-CORS Integration
+
+Enable CORS for browser-based clients:
+
+```python
+from flask import Flask
+from flask_cors import CORS
+from prism_flask import prism_payment_middleware
+
+app = Flask(__name__)
+
+# Configure CORS
+CORS(app, resources={
+    r"/api/*": {
+        "origins": ["https://yourapp.com"],
+        "methods": ["GET", "POST"],
+        "allow_headers": ["Content-Type", "X-PAYMENT"],
+        "expose_headers": ["X-PAYMENT-RESPONSE"]
+    }
+})
+
+# Then configure Prism
+prism_payment_middleware(app, config, routes)
+```
+
+---
+
+## Blueprint Support
+
+Works with Flask Blueprints:
+
+```python
+from flask import Blueprint, g, jsonify
+
+api_bp = Blueprint('api', __name__, url_prefix='/api')
+
+@api_bp.route('/premium')
+def premium():
+    """Blueprint route - payment still works!"""
+    payer = getattr(g, 'prism_payer')
+    return jsonify({'message': 'Premium', 'payer': payer})
+
+# Register blueprint
+app.register_blueprint(api_bp)
+
+# Configure Prism with blueprint routes
+prism_payment_middleware(
+    app,
+    config=config,
+    routes={
+        '/api/premium': RoutePaymentConfig(price=0.01, description='Premium')
+    }
+)
+```
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Settlement Validation"
+    icon="shield-check"
+    href="/concepts/settlement-validation"
+  >
+    Learn how Flask prevents data leakage on payment failures
+  </Card>
+
+{" "}
+<Card title="Testing Guide" icon="flask" href="/guides/testing">
+  Test payment flows with pytest and mock wallets
+</Card>
+
+{" "}
+<Card title="FastAPI Integration" icon="zap" href="/sdk/python/fastapi">
+  Use Prism with async FastAPI
+</Card>
+
+  <Card
+    title="Production Deployment"
+    icon="rocket"
+    href="/guides/production-deployment"
+  >
+    Deploy Flask + Prism to production with Gunicorn
+  </Card>
+</CardGroup>

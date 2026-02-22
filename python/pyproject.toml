@@ -1,0 +1,32 @@
+[tool.poetry]
+name = "prism-sdk-monorepo"
+version = "1.0.0"
+description = "Prism SDK - Python monorepo"
+authors = ["Finance District <engineering@1stdigital.tech>"]
+readme = "README.md"
+packages = []
+
+[tool.poetry.dependencies]
+python = "^3.8"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.4.0"
+pytest-asyncio = "^0.21.0"
+pytest-cov = "^4.1.0"
+black = "^23.7.0"
+mypy = "^1.5.0"
+ruff = "^0.0.285"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+# Poetry workspace configuration (like npm workspaces)
+[tool.poetry.group.workspace]
+optional = true
+
+[tool.poetry.group.workspace.dependencies]
+prism-sdk-core = {path = "packages/core", develop = true}
+prism-flask = {path = "packages/flask", develop = true}
+prism-fastapi = {path = "packages/fastapi", develop = true}
+prism-django = {path = "packages/django", develop = true}

@@ -1,0 +1,216 @@
+name: Publish Python Packages
+
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: "Package to publish"
+        required: true
+        type: choice
+        options:
+          - all
+          - core
+          - flask
+          - fastapi
+          - django
+      version_bump:
+        description: "Version bump type"
+        required: false
+        default: "patch"
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  publish:
+    runs-on: [self-hosted, linux, arm64]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Python
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3 python3-pip python3-venv
+          python3 --version
+
+      - name: Install Poetry
+        run: |
+          curl -sSL https://install.python-poetry.org | python3 -
+          export PATH="$HOME/.local/bin:$PATH"
+          poetry --version
+
+      - name: Install dependencies
+        run: |
+          cd python
+          export PATH="$HOME/.local/bin:$PATH"
+          poetry install
+
+      - name: Run tests
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          cd python/packages/core && poetry run pytest || true
+          cd ../flask && poetry run pytest || true
+          cd ../fastapi && poetry run pytest || true
+          cd ../django && poetry run pytest || true
+        continue-on-error: true
+
+      - name: Configure Git
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+
+      - name: Bump Core Version
+        if: (github.event.inputs.package == 'all' || github.event.inputs.package == 'core') && github.event.inputs.version_bump != ''
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          cd packages/core
+          poetry version ${{ github.event.inputs.version_bump }}
+        working-directory: python
+
+      - name: Bump Flask Version
+        if: (github.event.inputs.package == 'all' || github.event.inputs.package == 'flask') && github.event.inputs.version_bump != ''
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          cd packages/flask
+          poetry version ${{ github.event.inputs.version_bump }}
+        working-directory: python
+
+      - name: Bump FastAPI Version
+        if: (github.event.inputs.package == 'all' || github.event.inputs.package == 'fastapi') && github.event.inputs.version_bump != ''
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          cd packages/fastapi
+          poetry version ${{ github.event.inputs.version_bump }}
+        working-directory: python
+
+      - name: Bump Django Version
+        if: (github.event.inputs.package == 'all' || github.event.inputs.package == 'django') && github.event.inputs.version_bump != ''
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          cd packages/django
+          poetry version ${{ github.event.inputs.version_bump }}
+        working-directory: python
+
+      - name: Commit version changes
+        if: github.event.inputs.version_bump != ''
+        run: |
+          git add -A
+          git commit -m "chore: bump Python ${{ github.event.inputs.package }} package(s) to ${{ github.event.inputs.version_bump }}" || echo "No changes to commit"
+          git push origin HEAD:${{ github.ref_name }}
+
+      - name: Build & Publish Core Package
+        if: github.event.inputs.package == 'all' || github.event.inputs.package == 'core'
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          poetry build
+          poetry publish --username __token__ --password ${{ secrets.PYPI_TOKEN }}
+        working-directory: python/packages/core
+
+      - name: Build & Publish Flask Package
+        if: github.event.inputs.package == 'all' || github.event.inputs.package == 'flask'
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          poetry build
+          poetry publish --username __token__ --password ${{ secrets.PYPI_TOKEN }}
+        working-directory: python/packages/flask
+
+      - name: Build & Publish FastAPI Package
+        if: github.event.inputs.package == 'all' || github.event.inputs.package == 'fastapi'
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          poetry build
+          poetry publish --username __token__ --password ${{ secrets.PYPI_TOKEN }}
+        working-directory: python/packages/fastapi
+
+      - name: Build & Publish Django Package
+        if: github.event.inputs.package == 'all' || github.event.inputs.package == 'django'
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          poetry build
+          poetry publish --username __token__ --password ${{ secrets.PYPI_TOKEN }}
+        working-directory: python/packages/django
+
+      - name: Get Package Version
+        if: github.event.inputs.version_bump != ''
+        id: package_version
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          PACKAGE="${{ github.event.inputs.package }}"
+          if [ "$PACKAGE" = "all" ]; then
+            PACKAGE="core"
+          fi
+          VERSION=$(poetry version -s)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "package_name=$PACKAGE" >> $GITHUB_OUTPUT
+        working-directory: python/packages/${{ github.event.inputs.package == 'all' && 'core' || github.event.inputs.package }}
+
+      - name: Create Git Tag
+        if: github.event.inputs.version_bump != ''
+        run: |
+          TAG="py-${{ steps.package_version.outputs.package_name }}-v${{ steps.package_version.outputs.version }}"
+          git tag $TAG
+          git push origin $TAG
+
+      - name: Create Release
+        if: github.event.inputs.version_bump != ''
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: py-${{ steps.package_version.outputs.package_name }}-v${{ steps.package_version.outputs.version }}
+          release_name: Prism SDK - prism-${{ steps.package_version.outputs.package_name }} v${{ steps.package_version.outputs.version }} (Python)
+          body: |
+            ## Python Package Release: prism-${{ steps.package_version.outputs.package_name }}
+
+            ### Version: **v${{ steps.package_version.outputs.version }}**
+            ### Scope: **${{ github.event.inputs.package }}**
+
+            ${{ github.event.inputs.package == 'all' && '#### All Python Packages Published:
+            - **prism-sdk-core** - Core client library
+            - **prism-flask** - Flask middleware
+            - **prism-fastapi** - FastAPI middleware
+            - **prism-django** - Django middleware' || '' }}
+
+            ${{ github.event.inputs.package == 'core' && '#### Core Package:
+            - **prism-sdk-core** - Core client library with PrismClient and middleware logic
+
+            This is the foundational package that all framework packages depend on.' || '' }}
+
+            ${{ github.event.inputs.package == 'flask' && '#### Flask Middleware:
+            - **prism-flask** - Flask middleware for Prism payment protocol
+
+            Easily integrate Prism payments into your Flask applications.' || '' }}
+
+            ${{ github.event.inputs.package == 'fastapi' && '#### FastAPI Middleware:
+            - **prism-fastapi** - FastAPI middleware for Prism payment protocol
+
+            Integrate Prism payments into your FastAPI applications.' || '' }}
+
+            ${{ github.event.inputs.package == 'django' && '#### Django Middleware:
+            - **prism-django** - Django middleware for Prism payment protocol
+
+            Integrate Prism payments into your Django applications.' || '' }}
+
+            ### Installation
+            ```bash
+            pip install prism-${{ steps.package_version.outputs.package_name }}
+            ```
+
+            ### What's Changed
+            - Version bump: **${{ github.event.inputs.version_bump }}**
+            - Branch: **${{ github.ref_name }}**
+
+            See [documentation](https://github.com/1stdigital/fd-prism-sdk/tree/master/python) for usage details.
+          draft: false
+          prerelease: false

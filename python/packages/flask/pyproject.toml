@@ -1,0 +1,39 @@
+[tool.poetry]
+name = "prism-flask"
+version = "1.0.0"
+description = "Prism SDK - Flask middleware"
+authors = ["Finance District <engineering@1stdigital.tech>"]
+readme = "README.md"
+license = "MIT"
+homepage = "https://github.com/1stdigital/fd-prism-sdk"
+repository = "https://github.com/1stdigital/fd-prism-sdk"
+documentation = "https://github.com/1stdigital/fd-prism-sdk/tree/master/python"
+keywords = ["prism", "payment", "x402", "flask", "middleware"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Framework :: Flask",
+]
+packages = [{include = "prism_flask"}]
+
+[tool.poetry.urls]
+"Bug Tracker" = "https://github.com/1stdigital/fd-prism-sdk/issues"
+
+[tool.poetry.dependencies]
+python = "^3.8"
+prism-sdk-core = {path = "../core", develop = true}
+flask = "^2.3.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.4.0"
+pytest-flask = "^1.2.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

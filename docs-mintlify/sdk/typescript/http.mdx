@@ -1,0 +1,266 @@
+---
+title: "HTTP (Node.js) Integration"
+description: "Protect raw Node.js HTTP APIs with blockchain micropayments"
+icon: "server"
+---
+
+## Overview
+
+The **@financedistrict/prism-x402-sdk-http** package provides middleware for vanilla Node.js HTTP servers, without requiring any framework. Perfect for lightweight APIs or custom HTTP implementations.
+
+<CardGroup cols={3}>
+  <Card title="Zero Dependencies" icon="feather">
+    Works with raw http/https modules
+  </Card>
+  
+  <Card title="Framework-Free" icon="box">
+    No Express, Fastify, or other framework needed
+  </Card>
+
+  <Card title="Lightweight" icon="weight">
+    Minimal overhead, maximum performance
+  </Card>
+</CardGroup>
+
+---
+
+## Installation
+
+<Tabs>
+  <Tab title="npm">
+    ```bash
+    npm install @financedistrict/prism-x402-sdk-http
+    ```
+  </Tab>
+
+  <Tab title="yarn">
+    ```bash
+    yarn add @financedistrict/prism-x402-sdk-http
+    ```
+  </Tab>
+</Tabs>
+
+---
+
+## Quick Start
+
+```javascript
+const http = require("http");
+const { prismPaymentMiddleware } = require("@financedistrict/prism-x402-sdk-http");
+
+// Create middleware
+const middleware = prismPaymentMiddleware(
+  {
+    apiKey: "dev-key-123",
+    baseUrl: "https://prism-gw.test.1stdigital.tech",
+  },
+  {
+    "/api/premium": {
+      price: 0.01, // $0.01 USD
+      description: "Premium API",
+    },
+  }
+);
+
+// Create HTTP server
+const server = http.createServer((req, res) => {
+  // Apply middleware
+  middleware(req, res, () => {
+    // This runs only if payment verified
+    if (req.url === "/api/premium") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          message: "Premium content",
+          payer: req.payer, // Wallet address
+        })
+      );
+    } else {
+      res.writeHead(404);
+      res.end("Not Found");
+    }
+  });
+});
+
+server.listen(3000);
+```
+
+---
+
+## Configuration
+
+```typescript
+interface PrismMiddlewareConfig {
+  apiKey: string;
+  baseUrl?: string;
+  debug?: boolean;
+}
+
+interface RoutePaymentConfig {
+  price: number | string; // USD price
+  description: string;
+  mimeType?: string;
+}
+```
+
+---
+
+## Routing
+
+### URL-based Routing
+
+```javascript
+const server = http.createServer((req, res) => {
+  middleware(req, res, () => {
+    const url = new URL(req.url, `http://${req.headers.host}`);
+
+    if (url.pathname === "/api/premium") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          message: "Premium",
+          payer: req.payer,
+        })
+      );
+    } else if (url.pathname === "/api/weather") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          location: "SF",
+          temperature: 72,
+          payer: req.payer,
+        })
+      );
+    } else {
+      res.writeHead(404);
+      res.end("Not Found");
+    }
+  });
+});
+```
+
+---
+
+## Accessing Payment Info
+
+```javascript
+const server = http.createServer((req, res) => {
+  middleware(req, res, () => {
+    // Access payer address
+    const payer = req.payer;
+    // '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb'
+
+    // Access payment object (in res.locals)
+    const payment = res.locals?.payment;
+
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(
+      JSON.stringify({
+        message: "Data",
+        payer,
+        network: payment?.network,
+      })
+    );
+  });
+});
+```
+
+---
+
+## Settlement Validation
+
+HTTP middleware intercepts `res.end()` to validate settlement:
+
+```javascript
+// Internal implementation (automatic!)
+const originalEnd = res.end.bind(res);
+
+res.end = async function(chunk, encoding, callback) {
+  const settlementResult = await core.settlementCallback(...);
+
+  if (!settlementResult || !settlementResult.success) {
+    // ❌ Settlement failed
+    res.statusCode = 402;
+    res.setHeader('Content-Type', 'application/json');
+    return originalEnd(JSON.stringify({
+      error: 'Payment settlement failed'
+    }));
+  }
+
+  // ✅ Settlement succeeded
+  res.setHeader('X-PAYMENT-RESPONSE', settlementResult.transaction);
+  return originalEnd(chunk, encoding, callback);
+};
+```
+
+---
+
+## Testing
+
+```javascript
+const http = require("http");
+const { prismPaymentMiddleware } = require("@financedistrict/prism-x402-sdk-http");
+
+describe("HTTP Payment Middleware", () => {
+  let server;
+
+  beforeAll(() => {
+    const middleware = prismPaymentMiddleware(
+      { apiKey: "test-key" },
+      { "/api/premium": { price: 0.01, description: "Test" } }
+    );
+
+    server = http.createServer((req, res) => {
+      middleware(req, res, () => {
+        res.writeHead(200);
+        res.end(JSON.stringify({ message: "OK", payer: req.payer }));
+      });
+    });
+
+    server.listen(0); // Random port
+  });
+
+  afterAll(() => server.close());
+
+  test("returns 402 without payment", async () => {
+    const port = server.address().port;
+    const response = await fetch(`http://localhost:${port}/api/premium`);
+
+    expect(response.status).toBe(402);
+  });
+});
+```
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Settlement Validation"
+    icon="shield-check"
+    href="/concepts/settlement-validation"
+  >
+    How HTTP middleware prevents data leakage
+  </Card>
+
+  <Card
+    title="Express Integration"
+    icon="node-js"
+    href="/sdk/typescript/express"
+  >
+    Upgrade to Express for more features
+  </Card>
+
+  <Card title="Testing Guide" icon="flask" href="/guides/testing">
+    Test HTTP servers with Prism
+  </Card>
+
+  <Card
+    title="Production Deployment"
+    icon="rocket"
+    href="/guides/production-deployment"
+  >
+    Deploy HTTP + Prism to production
+  </Card>
+</CardGroup>

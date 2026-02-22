@@ -1,0 +1,608 @@
+---
+title: "Quick Start"
+description: "Get your API accepting payments in under 5 minutes"
+icon: "rocket"
+---
+
+## Choose Your Framework
+
+Get started with Prism in minutes. Pick your framework below and follow the 3-step setup:
+
+<CardGroup cols={2}>
+  <Card title="Express.js" icon="node-js" href="#expressjs">
+    Node.js / TypeScript
+  </Card>
+  <Card title="Fastify" icon="bolt" href="#fastify">
+    High-performance Node.js
+  </Card>
+  <Card title="NestJS" icon="n" href="#nestjs">
+    Enterprise TypeScript framework
+  </Card>
+  <Card title="Next.js" icon="react" href="#nextjs">
+    React framework with API routes
+  </Card>
+  <Card title="Flask" icon="python" href="#flask">
+    Python web framework
+  </Card>
+  <Card title="FastAPI" icon="zap" href="#fastapi">
+    Modern async Python
+  </Card>
+  <Card title="Django" icon="python" href="#django">
+    Full-featured Python framework
+  </Card>
+  <Card title="Java Servlet" icon="java" href="#java-servlet">
+    Java web applications
+  </Card>
+</CardGroup>
+
+---
+
+## Express.js
+
+<Steps>
+  <Step title="Install the package">
+    ```bash
+    npm install @financedistrict/prism-x402-sdk-express
+    # or
+    yarn add @financedistrict/prism-x402-sdk-express
+    ```
+  </Step>
+
+  <Step title="Add middleware to your app">
+    ```javascript
+    const express = require('express');
+    const { prismPaymentMiddleware } = require('@financedistrict/prism-x402-sdk-express');
+
+    const app = express();
+
+    // Configure Prism middleware
+    app.use(prismPaymentMiddleware(
+      {
+        apiKey: process.env.PRISM_API_KEY || 'dev-key-123',
+        baseUrl: 'https://prism-gw.test.1stdigital.tech'
+      },
+      {
+        '/api/premium': {
+          price: 0.01,  // $0.01 USD
+          description: 'Premium API access'
+        }
+      }
+    ));
+
+    // Protected route - payment verified automatically
+    app.get('/api/premium', (req, res) => {
+      res.json({
+        message: 'Premium content!',
+        payer: req.payer  // Wallet address of payer
+      });
+    });
+
+    app.listen(3000);
+    ```
+
+  </Step>
+
+  <Step title="Test it!">
+    ```bash
+    # Start your server
+    node server.js
+
+    # Try accessing without payment
+    curl http://localhost:3000/api/premium
+    # Returns 402 Payment Required with payment instructions
+    ```
+
+  </Step>
+</Steps>
+
+<Note>
+  **Next Steps:** See the [Express.js guide](/sdk/typescript/express) for
+  advanced configuration, error handling, and production deployment.
+</Note>
+
+---
+
+## Fastify
+
+<Steps>
+  <Step title="Install the package">
+    ```bash
+    npm install @financedistrict/prism-x402-sdk-fastify
+    ```
+  </Step>
+
+  <Step title="Register the plugin">
+    ```javascript
+    const fastify = require('fastify')();
+    const { prismPaymentPlugin } = require('@financedistrict/prism-x402-sdk-fastify');
+
+    // Register Prism plugin
+    await fastify.register(prismPaymentPlugin, {
+      apiKey: process.env.PRISM_API_KEY || 'dev-key-123',
+      baseUrl: 'https://prism-gw.test.1stdigital.tech',
+      routes: {
+        '/api/premium': {
+          price: 0.01,
+          description: 'Premium API access'
+        }
+      }
+    });
+
+    // Protected route
+    fastify.get('/api/premium', async (request, reply) => {
+      return {
+        message: 'Premium content!',
+        payer: request.prismPayer
+      };
+    });
+
+    await fastify.listen({ port: 3000 });
+    ```
+
+  </Step>
+
+  <Step title="Test it!">
+    ```bash
+    curl http://localhost:3000/api/premium
+    # Returns 402 Payment Required
+    ```
+  </Step>
+</Steps>
+
+---
+
+## NestJS
+
+<Steps>
+  <Step title="Install the package">
+    ```bash
+    npm install @financedistrict/prism-x402-sdk-nestjs
+    ```
+  </Step>
+
+  <Step title="Add module and use decorators">
+    ```typescript
+    // app.module.ts
+    import { Module } from '@nestjs/common';
+    import { PrismModule } from '@financedistrict/prism-x402-sdk-nestjs';
+
+    @Module({
+      imports: [
+        PrismModule.forRoot({
+          apiKey: process.env.PRISM_API_KEY || 'dev-key-123',
+          baseUrl: 'https://prism-gw.test.1stdigital.tech'
+        })
+      ],
+      controllers: [ApiController]
+    })
+    export class AppModule {}
+
+    // api.controller.ts
+    import { Controller, Get } from '@nestjs/common';
+    import { Payment, Payer } from '@financedistrict/prism-x402-sdk-nestjs';
+
+    @Controller('api')
+    export class ApiController {
+      @Get('premium')
+      @Payment({ price: 0.01, description: 'Premium API' })
+      getPremium(@Payer() payer: string) {
+        return {
+          message: 'Premium content!',
+          payer
+        };
+      }
+    }
+    ```
+
+  </Step>
+
+  <Step title="Test it!">
+    ```bash
+    npm run start
+    curl http://localhost:3000/api/premium
+    ```
+  </Step>
+</Steps>
+
+---
+
+## Next.js
+
+<Steps>
+  <Step title="Install the package">
+    ```bash
+    npm install @financedistrict/prism-x402-sdk-nextjs
+    ```
+  </Step>
+
+  <Step title="Wrap your API route handler">
+    ```typescript
+    // app/api/premium/route.ts
+    import { withPrismPayment } from '@financedistrict/prism-x402-sdk-nextjs';
+
+    export const GET = withPrismPayment(
+      async (request: Request) => {
+        const payer = request.headers.get('x-prism-payer');
+
+        return Response.json({
+          message: 'Premium content!',
+          payer
+        });
+      },
+      {
+        price: 0.01,
+        description: 'Premium API access'
+      },
+      {
+        apiKey: process.env.PRISM_API_KEY || 'dev-key-123',
+        baseUrl: 'https://prism-gw.test.1stdigital.tech'
+      }
+    );
+    ```
+
+  </Step>
+
+  <Step title="Test it!">
+    ```bash
+    npm run dev
+    curl http://localhost:3000/api/premium
+    ```
+  </Step>
+</Steps>
+
+---
+
+## Flask
+
+<Steps>
+  <Step title="Install the package">
+    ```bash
+    pip install prism-flask
+    # or
+    poetry add prism-flask
+    ```
+  </Step>
+
+  <Step title="Add middleware to your app">
+    ```python
+    from flask import Flask, g, jsonify
+    from prism_flask import prism_payment_middleware
+    from prism_sdk_core import PrismMiddlewareConfig, RoutePaymentConfig
+
+    app = Flask(__name__)
+
+    # Configure Prism middleware
+    prism_payment_middleware(
+        app,
+        config=PrismMiddlewareConfig(
+            api_key='dev-key-123',
+            base_url='https://prism-gw.test.1stdigital.tech'
+        ),
+        routes={
+            '/api/premium': RoutePaymentConfig(
+                price=0.01,
+                description='Premium API access'
+            )
+        }
+    )
+
+    @app.route('/api/premium')
+    def premium():
+        payer = getattr(g, 'prism_payer', None)
+        return jsonify({
+            'message': 'Premium content!',
+            'payer': payer
+        })
+
+    if __name__ == '__main__':
+        app.run(port=5000)
+    ```
+
+  </Step>
+
+  <Step title="Test it!">
+    ```bash
+    python app.py
+    curl http://localhost:5000/api/premium
+    ```
+  </Step>
+</Steps>
+
+---
+
+## FastAPI
+
+<Steps>
+  <Step title="Install the package">
+    ```bash
+    pip install prism-fastapi
+    ```
+  </Step>
+
+  <Step title="Add middleware">
+    ```python
+    from fastapi import FastAPI, Request
+    from prism_fastapi import prism_payment_middleware
+    from prism_sdk_core import PrismMiddlewareConfig, RoutePaymentConfig
+
+    app = FastAPI()
+
+    # Configure Prism middleware
+    prism_payment_middleware(
+        app,
+        config=PrismMiddlewareConfig(
+            api_key='dev-key-123',
+            base_url='https://prism-gw.test.1stdigital.tech'
+        ),
+        routes={
+            '/api/premium': RoutePaymentConfig(
+                price=0.01,
+                description='Premium API access'
+            )
+        }
+    )
+
+    @app.get('/api/premium')
+    async def premium(request: Request):
+        payer = getattr(request.state, 'prism_payer', None)
+        return {
+            'message': 'Premium content!',
+            'payer': payer
+        }
+    ```
+
+  </Step>
+
+  <Step title="Test it!">
+    ```bash
+    uvicorn main:app --reload
+    curl http://localhost:8000/api/premium
+    ```
+  </Step>
+</Steps>
+
+---
+
+## Django
+
+<Steps>
+  <Step title="Install the package">
+    ```bash
+    pip install prism-django
+    ```
+  </Step>
+
+  <Step title="Add middleware to settings">
+    ```python
+    # settings.py
+    MIDDLEWARE = [
+        # ... other middleware
+        'prism_django.PrismPaymentMiddleware',
+    ]
+
+    PRISM_CONFIG = {
+        'api_key': 'dev-key-123',
+        'base_url': 'https://prism-gw.test.1stdigital.tech',
+        'routes': {
+            '/api/premium': {
+                'price': 0.01,
+                'description': 'Premium API access'
+            }
+        }
+    }
+
+    # views.py
+    from django.http import JsonResponse
+
+    def premium(request):
+        payer = getattr(request, 'prism_payer', None)
+        return JsonResponse({
+            'message': 'Premium content!',
+            'payer': payer
+        })
+    ```
+
+  </Step>
+
+  <Step title="Test it!">
+    ```bash
+    python manage.py runserver
+    curl http://localhost:8000/api/premium
+    ```
+  </Step>
+</Steps>
+
+---
+
+## Java Servlet
+
+<Steps>
+  <Step title="Add Maven dependency">
+    ```xml
+    <dependency>
+      <groupId>org.fdtech.prism</groupId>
+      <artifactId>prism-servlet</artifactId>
+      <version>1.0.0</version>
+    </dependency>
+    ```
+  </Step>
+
+  <Step title="Configure filter in web.xml">
+    ```xml
+    <!-- web.xml -->
+    <filter>
+      <filter-name>PrismFilter</filter-name>
+      <filter-class>org.fdtech.prism.servlet.PrismFilter</filter-class>
+      <init-param>
+        <param-name>apiKey</param-name>
+        <param-value>dev-key-123</param-value>
+      </init-param>
+      <init-param>
+        <param-name>baseUrl</param-name>
+        <param-value>https://prism-gw.test.1stdigital.tech</param-value>
+      </init-param>
+      <init-param>
+        <param-name>routes</param-name>
+        <param-value>
+          /api/premium:0.01:Premium API access
+        </param-value>
+      </init-param>
+    </filter>
+
+    <filter-mapping>
+      <filter-name>PrismFilter</filter-name>
+      <url-pattern>/api/*</url-pattern>
+    </filter-mapping>
+
+    <!-- Servlet implementation -->
+    @WebServlet("/api/premium")
+    public class PremiumServlet extends HttpServlet {
+      protected void doGet(HttpServletRequest request,
+                          HttpServletResponse response)
+                          throws IOException {
+        String payer = (String) request.getAttribute("prism_payer");
+
+        response.setContentType("application/json");
+        response.getWriter().write(
+          "{\"message\":\"Premium content!\",\"payer\":\"" + payer + "\"}"
+        );
+      }
+    }
+    ```
+
+  </Step>
+
+  <Step title="Test it!">
+    ```bash
+    mvn jetty:run
+    curl http://localhost:8080/api/premium
+    ```
+  </Step>
+</Steps>
+
+---
+
+## What Happens Next?
+
+When a client tries to access a protected route **without payment**:
+
+```json
+HTTP/1.1 402 Payment Required
+
+{
+  "x402Version": 1,
+  "paymentRequired": true,
+  "acceptedPayments": [
+    {
+      "scheme": "eip3009",
+      "network": "eth-sepolia",
+      "asset": "usdc",
+      "amount": "10000",
+      "recipient": "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb",
+      "nonce": "abc123...",
+      "validBefore": 1735430400
+    }
+  ],
+  "description": "Premium API access",
+  "priceUSD": "0.01"
+}
+```
+
+The client then:
+
+1. **Signs** the payment authorization with their wallet
+2. **Sends** the signed payment in the `X-PAYMENT` header
+3. **Receives** the protected data with a `X-PAYMENT-RESPONSE` header containing the transaction hash
+
+<Note>
+  **Learn more:** See [Payment Flow](/concepts/payment-flow) for complete
+  details on the payment process.
+</Note>
+
+---
+
+## Testing Without a Real Wallet
+
+For development and testing, you can use the **test mode** which accepts mock payments:
+
+<Tabs>
+  <Tab title="JavaScript">
+    ```javascript
+    // Generate a mock payment for testing
+    const mockPayment = {
+      scheme: 'eip3009',
+      network: 'eth-sepolia',
+      asset: 'usdc',
+      // ... copy from 402 response
+      signature: '0x' + '0'.repeat(130)  // Mock signature
+    };
+
+    const response = await fetch('http://localhost:3000/api/premium', {
+      headers: {
+        'X-PAYMENT': JSON.stringify(mockPayment)
+      }
+    });
+    ```
+
+  </Tab>
+
+  <Tab title="Python">
+    ```python
+    import requests
+    import json
+
+    mock_payment = {
+        'scheme': 'eip3009',
+        'network': 'eth-sepolia',
+        'asset': 'usdc',
+        # ... copy from 402 response
+        'signature': '0x' + '0' * 130
+    }
+
+    response = requests.get(
+        'http://localhost:5000/api/premium',
+        headers={'X-PAYMENT': json.dumps(mock_payment)}
+    )
+    ```
+
+  </Tab>
+
+  <Tab title="cURL">
+    ```bash
+    curl -H "X-PAYMENT: {...}" http://localhost:3000/api/premium
+    ```
+  </Tab>
+</Tabs>
+
+<Warning>
+  **Production Note:** In production, always use real wallet signatures. Mock
+  signatures will be rejected by the Gateway.
+</Warning>
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Core Concepts" icon="book" href="/concepts/system-overview">
+    Understand how Prism works under the hood
+  </Card>
+
+{" "}
+<Card title="Framework Guides" icon="code" href="/sdk/typescript/express">
+  Deep dive into your framework's integration
+</Card>
+
+{" "}
+<Card title="Testing Guide" icon="flask" href="/guides/testing">
+  Learn how to test payment flows locally
+</Card>
+
+  <Card
+    title="Production Deployment"
+    icon="rocket"
+    href="/guides/production-deployment"
+  >
+    Deploy to production with confidence
+  </Card>
+</CardGroup>

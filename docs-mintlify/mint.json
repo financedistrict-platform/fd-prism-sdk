@@ -1,0 +1,107 @@
+{
+  "$schema": "https://mintlify.com/schema.json",
+  "name": "Prism SDK",
+  "logo": {
+    "dark": "/logo/dark.svg",
+    "light": "/logo/light.svg"
+  },
+  "favicon": "/favicon.svg",
+  "colors": {
+    "primary": "#7C3AED",
+    "light": "#A78BFA",
+    "dark": "#5B21B6",
+    "anchors": {
+      "from": "#7C3AED",
+      "to": "#06B6D4"
+    },
+    "background": {
+      "dark": "#0F0F1A",
+      "light": "#FAFAFA"
+    }
+  },
+  "layout": "topnav",
+  "topbarLinks": [
+    {
+      "name": "Support",
+      "url": "mailto:support@1stdigital.tech"
+    }
+  ],
+  "topbarCtaButton": {
+    "name": "Client Portal",
+    "url": "https://prism.1stdigital.tech"
+  },
+  "tabs": [
+    {
+      "name": "SDK",
+      "url": "sdk"
+    },
+    {
+      "name": "API Reference",
+      "url": "api-reference"
+    }
+  ],
+  "anchors": [
+    {
+      "name": "GitHub",
+      "icon": "github",
+      "url": "https://github.com/1stdigital/fd-prism-sdk"
+    },
+    {
+      "name": "Discord",
+      "icon": "discord",
+      "url": "https://discord.gg/your-discord"
+    }
+  ],
+  "navigation": [
+    {
+      "group": "Get Started",
+      "pages": [
+        "introduction",
+        "quickstart"
+      ]
+    },
+    {
+      "group": "Core Concepts",
+      "pages": [
+        "concepts/system-overview",
+        "concepts/settlement-validation",
+        "concepts/eip3009-settlement"
+      ]
+    },
+    {
+      "group": "TypeScript SDK",
+      "pages": [
+        "sdk/typescript/express",
+        "sdk/typescript/fastify",
+        "sdk/typescript/http",
+        "sdk/typescript/nestjs",
+        "sdk/typescript/nextjs"
+      ]
+    },
+    {
+      "group": "Python SDK",
+      "pages": [
+        "sdk/python/flask",
+        "sdk/python/fastapi",
+        "sdk/python/django"
+      ]
+    },
+    {
+      "group": "Java SDK",
+      "pages": [
+        "sdk/java/servlet"
+      ]
+    },
+    {
+      "group": "Guides",
+      "pages": [
+        "guides/testing",
+        "guides/production-deployment"
+      ]
+    }
+  ],
+  "footerSocials": {
+    "github": "https://github.com/1stdigital/fd-prism-sdk",
+    "linkedin": "https://www.linkedin.com/company/1stdigital"
+  }
+}

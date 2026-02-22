@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.fdtech.prism</groupId>
+        <artifactId>prism-sdk-parent</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>prism-sdk-servlet</artifactId>
+    <packaging>jar</packaging>
+
+    <name>FD Prism SDK - Servlet</name>
+    <description>Servlet filter for FD Prism SDK - works with any servlet-based Java application</description>
+
+    <dependencies>
+        <!-- Prism Core -->
+        <dependency>
+            <groupId>org.fdtech.prism</groupId>
+            <artifactId>prism-sdk-core</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <!-- Servlet API -->
+        <dependency>
+            <groupId>javax.servlet</groupId>
+            <artifactId>javax.servlet-api</artifactId>
+        </dependency>
+
+        <!-- JUnit 5 for testing -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

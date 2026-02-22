@@ -1,0 +1,799 @@
+---
+title: "Express.js Integration"
+description: "Protect Express APIs with blockchain micropayments"
+icon: "node-js"
+---
+
+## Overview
+
+The **@financedistrict/prism-x402-sdk-express** package provides Express.js middleware for payment-protecting your API routes using the x402 protocol. It's the reference implementation for the Prism SDK and offers the most straightforward integration.
+
+<CardGroup cols={3}>
+  <Card title="Simple Setup" icon="bolt">
+    Single middleware function, 5 lines of code
+  </Card>
+  
+  <Card title="Route Matching" icon="route">
+    Exact paths, wildcards, and patterns
+  </Card>
+
+  <Card title="Payment Info" icon="user">
+    Access payer address in req.payer
+  </Card>
+</CardGroup>
+
+---
+
+## Installation
+
+<Tabs>
+  <Tab title="npm">
+    ```bash
+    npm install @financedistrict/prism-x402-sdk-express
+    ```
+  </Tab>
+
+{" "}
+
+<Tab title="yarn">```bash yarn add @financedistrict/prism-x402-sdk-express ```</Tab>
+
+  <Tab title="pnpm">
+    ```bash
+    pnpm add @financedistrict/prism-x402-sdk-express
+    ```
+  </Tab>
+</Tabs>
+
+---
+
+## Quick Start
+
+```javascript
+const express = require("express");
+const { prismPaymentMiddleware } = require("@financedistrict/prism-x402-sdk-express");
+
+const app = express();
+
+// Configure Prism middleware
+app.use(
+  prismPaymentMiddleware(
+    {
+      apiKey: process.env.PRISM_API_KEY || "dev-key-123",
+      baseUrl: "https://prism-gw.test.1stdigital.tech",
+    },
+    {
+      "/api/premium": {
+        price: 0.01, // 0.01 ETH
+        description: "Premium API access",
+      },
+    }
+  )
+);
+
+// Protected route - payment verified automatically
+app.get("/api/premium", (req, res) => {
+  res.json({
+    message: "Premium content!",
+    payer: req.payer, // Wallet address that paid
+  });
+});
+
+app.listen(3000);
+```
+
+---
+
+## Configuration
+
+### Middleware Configuration
+
+```typescript
+interface PrismMiddlewareConfig {
+  apiKey: string; // Your Prism API key
+  baseUrl?: string; // Gateway URL (optional, defaults to production)
+  debug?: boolean; // Enable debug logging (default: false)
+}
+```
+
+### Route Configuration
+
+```typescript
+interface RoutePaymentConfig {
+  price: number | string; // Price in USD (0.01 = $0.01 or '$0.001' string format)
+  description: string; // Human-readable description
+  mimeType?: string; // Response MIME type (default: 'application/json')
+}
+
+type RouteConfig = Record<string, RoutePaymentConfig>;
+```
+
+---
+
+## Route Protection Patterns
+
+### Exact Path Matching
+
+```javascript
+app.use(
+  prismPaymentMiddleware(config, {
+    "/api/premium": {
+      price: 0.01,
+      description: "Premium API",
+    },
+    "/api/weather": {
+      price: "$0.001",
+      description: "Weather data",
+    },
+  })
+);
+
+// ✅ Protected: GET /api/premium
+// ✅ Protected: GET /api/weather
+// ❌ Not protected: GET /api/public
+```
+
+---
+
+### Wildcard Matching
+
+```javascript
+app.use(
+  prismPaymentMiddleware(config, {
+    "/api/*": {
+      price: 0.005,
+      description: "API access",
+    },
+  })
+);
+
+// ✅ Protected: GET /api/users
+// ✅ Protected: GET /api/posts/123
+// ✅ Protected: POST /api/comments
+// ❌ Not protected: GET /public
+```
+
+---
+
+### Multiple Route Groups
+
+```javascript
+app.use(
+  prismPaymentMiddleware(config, {
+    // Free tier (low price)
+    "/api/basic/*": {
+      price: "$0.0001",
+      description: "Basic API",
+    },
+
+    // Premium tier (higher price)
+    "/api/premium/*": {
+      price: "$0.01",
+      description: "Premium API",
+    },
+
+    // Specific expensive endpoint
+    "/api/ai/generate": {
+      price: "$0.50",
+      description: "AI content generation",
+    },
+  })
+);
+```
+
+---
+
+### Dynamic Pricing (per-route middleware)
+
+```javascript
+// Global middleware for common routes
+app.use(
+  prismPaymentMiddleware(config, {
+    "/api/*": { price: 0.001, description: "API" },
+  })
+);
+
+// Override for specific route with custom middleware
+app.get(
+  "/api/expensive",
+  prismPaymentMiddleware(config, {
+    "/api/expensive": {
+      price: 0.1,
+      description: "Expensive operation",
+    },
+  }),
+  (req, res) => {
+    res.json({ result: "Expensive computation" });
+  }
+);
+```
+
+---
+
+## Accessing Payment Information
+
+The middleware adds payment information to the request object:
+
+```javascript
+app.get("/api/premium", (req, res) => {
+  // Access payer wallet address
+  const payer = req.payer; // '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb'
+
+  // Access full payment object (added to res.locals)
+  const payment = res.locals.payment;
+  /*
+  {
+    scheme: 'eip3009',
+    network: 'eth-sepolia',
+    asset: 'usdc',
+    amount: '10000',
+    recipient: '0x...',
+    nonce: '0x...',
+    validBefore: 1735430400,
+    signature: '0x...'
+  }
+  */
+
+  res.json({
+    message: "Premium content",
+    payer,
+    payment: {
+      network: payment.network,
+      asset: payment.asset,
+    },
+  });
+});
+```
+
+---
+
+## Settlement Validation
+
+The Express middleware uses **res.end() interception** to validate settlement before sending data:
+
+```javascript
+// Internal implementation (you don't need to write this!)
+const originalEnd = res.end.bind(res);
+
+res.end = async function (chunk, encoding, callback) {
+  // Perform settlement BEFORE sending response
+  const settlementResult = await core.settlementCallback(...);
+
+  if (!settlementResult || !settlementResult.success) {
+    // ❌ Settlement failed - send error instead of data
+    res.status(402);
+    return originalEnd(JSON.stringify({
+      error: 'Payment settlement failed',
+      details: settlementResult?.errorReason
+    }));
+  }
+
+  // ✅ Settlement succeeded - send original data with transaction hash
+  res.setHeader('X-PAYMENT-RESPONSE', settlementResult.transaction);
+  return originalEnd(chunk, encoding, callback);
+};
+```
+
+**Key Points:**
+
+- Works with `res.json()`, `res.send()`, `res.sendFile()`, etc.
+- Settlement happens **before** data reaches the client
+- Original response is replaced with 402 error if settlement fails
+
+See [Settlement Validation](/concepts/settlement-validation) for details.
+
+---
+
+## Error Handling
+
+### Payment Errors
+
+When a request lacks valid payment, the middleware returns **402 Payment Required**:
+
+```json
+HTTP/1.1 402 Payment Required
+
+{
+  "x402Version": 1,
+  "paymentRequired": true,
+  "acceptedPayments": [
+    {
+      "scheme": "eip3009",
+      "network": "eth-sepolia",
+      "asset": "usdc",
+      "amount": "10000",
+      "recipient": "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb",
+      "nonce": "0xabc123...",
+      "validBefore": 1735430400
+    }
+  ],
+  "description": "Premium API access",
+  "priceUSD": "0.01"
+}
+```
+
+---
+
+### Gateway Errors
+
+If the Prism Gateway is unreachable or returns an error:
+
+```json
+HTTP/1.1 500 Internal Server Error
+
+{
+  "x402Version": 1,
+  "error": "Gateway Error",
+  "details": "Failed to contact payment gateway",
+  "gateway": {
+    "traceId": "0HNGT483NH6I8:00000001",
+    "timestamp": "2025-12-18T10:30:00Z"
+  }
+}
+```
+
+**Include the `traceId` when contacting support!**
+
+---
+
+### Settlement Errors
+
+If payment verification succeeds but settlement fails:
+
+```json
+HTTP/1.1 402 Payment Required
+
+{
+  "x402Version": 1,
+  "error": "Payment settlement failed",
+  "details": "Insufficient balance"
+}
+```
+
+---
+
+### Custom Error Handling
+
+You can add Express error handlers after the Prism middleware:
+
+```javascript
+app.use(prismPaymentMiddleware(config, routes));
+
+// Custom error handler
+app.use((err, req, res, next) => {
+  if (err.name === "PrismPaymentError") {
+    // Handle Prism-specific errors
+    console.error("Payment error:", err.message);
+    res.status(err.statusCode || 402).json({
+      error: err.message,
+      code: err.code,
+    });
+  } else {
+    // Handle other errors
+    next(err);
+  }
+});
+```
+
+---
+
+## Testing
+
+### Unit Testing with Mocks
+
+```javascript
+const request = require("supertest");
+const express = require("express");
+const { prismPaymentMiddleware } = require("@financedistrict/prism-x402-sdk-express");
+
+describe("Payment-protected routes", () => {
+  let app;
+
+  beforeEach(() => {
+    app = express();
+    app.use(
+      prismPaymentMiddleware(
+        { apiKey: "test-key", baseUrl: "http://test-gateway" },
+        { "/api/premium": { price: 0.01, description: "Test" } }
+      )
+    );
+
+    app.get("/api/premium", (req, res) => {
+      res.json({ message: "Premium", payer: req.payer });
+    });
+  });
+
+  test("returns 402 without payment", async () => {
+    const response = await request(app).get("/api/premium");
+
+    expect(response.status).toBe(402);
+    expect(response.body.paymentRequired).toBe(true);
+  });
+
+  test("allows access with valid payment", async () => {
+    // Mock payment header (in real tests, sign with wallet)
+    const mockPayment = JSON.stringify({
+      scheme: "eip3009",
+      network: "eth-sepolia",
+      asset: "usdc",
+      amount: "10000",
+      signature: "0x" + "0".repeat(130),
+    });
+
+    const response = await request(app)
+      .get("/api/premium")
+      .set("X-PAYMENT", mockPayment);
+
+    // In test mode, mock signatures are accepted
+    expect(response.status).toBe(200);
+    expect(response.body.message).toBe("Premium");
+  });
+});
+```
+
+---
+
+### Integration Testing
+
+```javascript
+// test-server.js
+const app = require("./app"); // Your Express app
+const request = require("supertest");
+
+// Use real test gateway
+process.env.PRISM_BASE_URL = "https://prism-gw.test.1stdigital.tech";
+process.env.PRISM_API_KEY = "your-test-key";
+
+test("full payment flow", async () => {
+  // 1. Request without payment
+  const res1 = await request(app).get("/api/premium");
+  expect(res1.status).toBe(402);
+
+  const paymentReq = res1.body.acceptedPayments[0];
+
+  // 2. Sign payment with wallet (use ethers.js)
+  const wallet = new ethers.Wallet(process.env.TEST_PRIVATE_KEY);
+  const signature =
+    await wallet.signTypedData(/* EIP-712 domain and message */);
+
+  const payment = {
+    ...paymentReq,
+    signature,
+  };
+
+  // 3. Send request with signed payment
+  const res2 = await request(app)
+    .get("/api/premium")
+    .set("X-PAYMENT", JSON.stringify(payment));
+
+  expect(res2.status).toBe(200);
+  expect(res2.headers["x-payment-response"]).toBeTruthy(); // Transaction hash
+});
+```
+
+---
+
+## Production Deployment
+
+### Environment Variables
+
+```bash
+# .env
+PRISM_API_KEY=your-production-api-key
+PRISM_BASE_URL=https://prism-api.1stdigital.tech
+NODE_ENV=production
+```
+
+### Production Configuration
+
+```javascript
+const app = express();
+
+app.use(
+  prismPaymentMiddleware(
+    {
+      apiKey: process.env.PRISM_API_KEY,
+      baseUrl: process.env.PRISM_BASE_URL,
+      debug: process.env.NODE_ENV !== "production", // Disable debug in prod
+    },
+    {
+      "/api/premium": {
+        price: 0.01,
+        description: "Premium API",
+      },
+    }
+  )
+);
+```
+
+---
+
+### Monitoring & Logging
+
+```javascript
+const winston = require("winston");
+const logger = winston.createLogger({
+  /* config */
+});
+
+// Log payment events
+app.use((req, res, next) => {
+  const originalJson = res.json.bind(res);
+
+  res.json = function (data) {
+    if (res.statusCode === 402) {
+      logger.info("Payment required", {
+        path: req.path,
+        ip: req.ip,
+      });
+    } else if (res.statusCode === 200 && req.payer) {
+      logger.info("Payment succeeded", {
+        path: req.path,
+        payer: req.payer,
+        transaction: res.getHeader("x-payment-response"),
+      });
+    }
+
+    return originalJson(data);
+  };
+
+  next();
+});
+```
+
+---
+
+### Rate Limiting
+
+Combine with rate limiting to prevent abuse:
+
+```javascript
+const rateLimit = require("express-rate-limit");
+
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Max 100 requests per window
+  message: "Too many requests, please try again later",
+});
+
+// Apply rate limiting BEFORE payment middleware
+app.use(limiter);
+app.use(prismPaymentMiddleware(config, routes));
+```
+
+---
+
+## TypeScript Support
+
+Full TypeScript support with type definitions:
+
+```typescript
+import express, { Request, Response } from "express";
+import {
+  prismPaymentMiddleware,
+  PrismMiddlewareConfig,
+  RoutePaymentConfig,
+} from "@financedistrict/prism-x402-sdk-express";
+
+const app = express();
+
+const config: PrismMiddlewareConfig = {
+  apiKey: process.env.PRISM_API_KEY!,
+  baseUrl: "https://prism-gw.test.1stdigital.tech",
+  debug: false,
+};
+
+const routes: Record<string, RoutePaymentConfig> = {
+  "/api/premium": {
+    price: 0.01,
+    description: "Premium API access",
+  },
+};
+
+app.use(prismPaymentMiddleware(config, routes));
+
+// Request is augmented with payer property
+app.get("/api/premium", (req: Request, res: Response) => {
+  const payer: string | undefined = req.payer; // Type-safe!
+
+  res.json({
+    message: "Premium content",
+    payer,
+  });
+});
+```
+
+---
+
+## API Reference
+
+### `prismPaymentMiddleware(config, routes)`
+
+Creates Express middleware for payment protection.
+
+**Parameters:**
+
+- `config: PrismMiddlewareConfig` - SDK configuration
+- `routes: Record<string, RoutePaymentConfig>` - Protected routes
+
+**Returns:** `express.RequestHandler`
+
+---
+
+### `PrismMiddlewareConfig`
+
+```typescript
+interface PrismMiddlewareConfig {
+  apiKey: string; // Required: Your Prism API key
+  baseUrl?: string; // Optional: Gateway URL (default: production)
+  debug?: boolean; // Optional: Enable debug logging (default: false)
+}
+```
+
+---
+
+### `RoutePaymentConfig`
+
+```typescript
+interface RoutePaymentConfig {
+  price: number | string; // Required: Price in ETH or USD
+  description: string; // Required: Human-readable description
+  mimeType?: string; // Optional: Response MIME type
+}
+```
+
+---
+
+### Request Augmentation
+
+```typescript
+declare global {
+  namespace Express {
+    interface Request {
+      payer?: string; // Wallet address of payer (added by middleware)
+    }
+  }
+}
+```
+
+---
+
+## Examples
+
+### AI Agent API
+
+```javascript
+app.use(
+  prismPaymentMiddleware(config, {
+    "/api/ai/chat": {
+      price: "$0.01",
+      description: "AI chat response",
+    },
+    "/api/ai/image": {
+      price: "$0.50",
+      description: "AI image generation",
+    },
+  })
+);
+
+app.post("/api/ai/chat", express.json(), (req, res) => {
+  const { message } = req.body;
+  const payer = req.payer;
+
+  // Call AI service
+  const response = callAI(message);
+
+  res.json({
+    response,
+    payer,
+    creditsUsed: 1,
+  });
+});
+```
+
+---
+
+### Content Paywall
+
+```javascript
+app.use(
+  prismPaymentMiddleware(config, {
+    "/articles/:id": {
+      price: "$0.001",
+      description: "Article access",
+    },
+  })
+);
+
+app.get("/articles/:id", async (req, res) => {
+  const article = await db.articles.findById(req.params.id);
+
+  res.json({
+    title: article.title,
+    content: article.content,
+    author: article.author,
+    payer: req.payer,
+  });
+});
+```
+
+---
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="402 errors even with valid payment">
+    **Check:**
+    1. Payment signature is valid (use correct private key)
+    2. Payment hasn't expired (`validBefore` timestamp)
+    3. Nonce hasn't been used before (replay protection)
+    4. Network matches (`eth-sepolia` vs `eth-mainnet`)
+    5. Amount matches exactly (don't modify `amount` field)
+  </Accordion>
+
+{" "}
+
+<Accordion title="Settlement fails but payment was valid">
+  **Possible causes:** 1. Insufficient balance in sender's wallet 2. Token
+  allowance not set for USDC contract 3. Network congestion (transaction
+  timeout) 4. Gateway blockchain RPC node down **Solution:** Client should retry
+  after fixing the issue.
+</Accordion>
+
+{" "}
+
+<Accordion title="Middleware not intercepting routes">
+  **Check order:** ```javascript // ❌ Wrong order app.get('/api/premium',
+  handler); // Handler registered first app.use(prismPaymentMiddleware(config,
+  routes)); // Middleware too late // ✅ Correct order
+  app.use(prismPaymentMiddleware(config, routes)); // Middleware first
+  app.get('/api/premium', handler); // Handler after ```
+</Accordion>
+
+  <Accordion title="Type errors in TypeScript">
+    **Install type definitions:**
+    ```bash
+    npm install --save-dev @types/express
+    ```
+    
+    **Import types:**
+    ```typescript
+    import { Request, Response } from 'express';
+    ```
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Settlement Validation"
+    icon="shield-check"
+    href="/concepts/settlement-validation"
+  >
+    Learn how Express prevents data leakage on payment failures
+  </Card>
+
+{" "}
+<Card title="Testing Guide" icon="flask" href="/guides/testing">
+  Test payment flows with mock wallets and signatures
+</Card>
+
+{" "}
+<Card
+  title="Production Deployment"
+  icon="rocket"
+  href="/guides/production-deployment"
+>
+  Deploy Express + Prism to production
+</Card>
+
+  <Card
+    title="Error Handling"
+    icon="triangle-exclamation"
+    href="/concepts/error-handling"
+  >
+    Handle payment and Gateway errors gracefully
+  </Card>
+</CardGroup>

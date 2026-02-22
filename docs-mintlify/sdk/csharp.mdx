@@ -1,0 +1,603 @@
+---
+title: "C# / .NET SDK"
+description: "ASP.NET Core middleware for x402 payment protocol"
+icon: "microsoft"
+---
+
+<Info>
+  **Status:** 🔜 Coming Q4 2025 The C# SDK is currently in development. This
+  page shows the planned API and features.
+</Info>
+
+## Planned Features
+
+<CardGroup cols={3}>
+  <Card title="ASP.NET Core" icon="code">
+    Native middleware for ASP.NET Core
+  </Card>
+
+  <Card title="Attribute-Based" icon="at">
+    Decorator pattern with `[RequirePayment]`
+  </Card>
+
+  <Card title="Async/Await" icon="bolt">
+    Full async support with TPL
+  </Card>
+
+  <Card title="Dependency Injection" icon="syringe">
+    Works with built-in DI container
+  </Card>
+
+  <Card title="ILogger Integration" icon="file-lines">
+    Structured logging support
+  </Card>
+
+  <Card title="Health Checks" icon="heart-pulse">
+    Built-in health check endpoints
+  </Card>
+</CardGroup>
+
+## Installation (Planned)
+
+<Tabs>
+  <Tab title=".NET CLI">```bash dotnet add package Prism.AspNetCore ```</Tab>
+
+  <Tab title="Package Manager">
+    ```powershell Install-Package Prism.AspNetCore ```
+  </Tab>
+
+  <Tab title="PackageReference">
+    ```xml
+    <PackageReference Include="Prism.AspNetCore" Version="1.0.0" />
+    ```
+  </Tab>
+</Tabs>
+
+## Planned API
+
+### Basic Setup
+
+```csharp
+using Prism.AspNetCore;
+
+var builder = WebApplication.CreateBuilder(args);
+
+// Add Prism services
+builder.Services.AddPrism(options =>
+{
+    options.ApiKey = builder.Configuration["Prism:ApiKey"];
+    options.UseSandbox = true;
+    options.Timeout = TimeSpan.FromSeconds(10);
+});
+
+var app = builder.Build();
+
+// Use Prism middleware
+app.UsePrism();
+
+app.MapControllers();
+app.Run();
+```
+
+### Controller with Attributes
+
+```csharp
+using Microsoft.AspNetCore.Mvc;
+using Prism.AspNetCore.Attributes;
+
+[ApiController]
+[Route("api/[controller]")]
+public class WeatherController : ControllerBase
+{
+    // Protected endpoint - requires payment
+    [HttpGet]
+    [RequirePayment(0.001, Description = "Weather data")]
+    public ActionResult<WeatherForecast> Get()
+    {
+        return new WeatherForecast
+        {
+            Temperature = 72,
+            Condition = "Sunny"
+        };
+    }
+
+    // Premium endpoint - higher price
+    [HttpGet("premium")]
+    [RequirePayment(0.01, Description = "Premium weather data")]
+    public ActionResult<PremiumWeather> GetPremium()
+    {
+        // Payment info available in HttpContext
+        var payment = HttpContext.GetPaymentInfo();
+
+        return new PremiumWeather
+        {
+            Temperature = 72,
+            Condition = "Sunny",
+            Humidity = 60,
+            Pressure = 1013,
+            PaymentTxHash = payment?.TxHash
+        };
+    }
+}
+```
+
+### Minimal API
+
+```csharp
+using Prism.AspNetCore;
+
+var app = builder.Build();
+
+app.MapGet("/api/data", async (HttpContext context) =>
+{
+    return Results.Ok(new { data = "content" });
+})
+.RequirePayment(0.001, "Data access");
+
+app.MapGet("/api/premium", async (HttpContext context) =>
+{
+    var payment = context.GetPaymentInfo();
+
+    return Results.Ok(new
+    {
+        data = "premium content",
+        payment = new
+        {
+            network = payment?.Network,
+            amount = payment?.Amount,
+            txHash = payment?.TxHash
+        }
+    });
+})
+.RequirePayment(0.01, "Premium data access");
+
+app.Run();
+```
+
+### Configuration Options
+
+```csharp
+public class PrismOptions
+{
+    /// <summary>
+    /// Required: Prism API key
+    /// </summary>
+    public string ApiKey { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Use sandbox environment (default: true)
+    /// </summary>
+    public bool UseSandbox { get; set; } = true;
+
+    /// <summary>
+    /// Custom Gateway URL (overrides UseSandbox)
+    /// </summary>
+    public string? BaseUrl { get; set; }
+
+    /// <summary>
+    /// Request timeout (default: 10 seconds)
+    /// </summary>
+    public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(10);
+
+    /// <summary>
+    /// Number of retry attempts (default: 3)
+    /// </summary>
+    public int Retries { get; set; } = 3;
+
+    /// <summary>
+    /// Enable detailed logging (default: false)
+    /// </summary>
+    public bool EnableLogging { get; set; } = false;
+}
+```
+
+### Payment Info Model
+
+```csharp
+public class PaymentInfo
+{
+    public string Scheme { get; set; } = string.Empty;
+    public string Network { get; set; } = string.Empty;
+    public string Asset { get; set; } = string.Empty;
+    public string Amount { get; set; } = string.Empty;
+    public string PayTo { get; set; } = string.Empty;
+    public string? TxHash { get; set; }
+    public long ValidAfter { get; set; }
+    public long ValidBefore { get; set; }
+    public string Nonce { get; set; } = string.Empty;
+}
+```
+
+### Dependency Injection
+
+```csharp
+using Prism.AspNetCore.Services;
+
+public class WeatherService
+{
+    private readonly IPrismClient _prismClient;
+    private readonly ILogger<WeatherService> _logger;
+
+    public WeatherService(
+        IPrismClient prismClient,
+        ILogger<WeatherService> logger)
+    {
+        _prismClient = prismClient;
+        _logger = logger;
+    }
+
+    public async Task<WeatherData> GetWeatherAsync(string location)
+    {
+        // Manually verify payment if needed
+        var payment = await _prismClient.VerifyPaymentAsync(nonce);
+
+        if (payment.IsValid)
+        {
+            _logger.LogInformation(
+                "Payment verified: {TxHash} on {Network}",
+                payment.TxHash,
+                payment.Network
+            );
+
+            return await FetchWeatherDataAsync(location);
+        }
+
+        throw new UnauthorizedException("Invalid payment");
+    }
+}
+```
+
+### Custom Error Handling
+
+```csharp
+using Prism.AspNetCore.Exceptions;
+
+app.UseExceptionHandler(errorApp =>
+{
+    errorApp.Run(async context =>
+    {
+        var exception = context.Features
+            .Get<IExceptionHandlerFeature>()?
+            .Error;
+
+        if (exception is PrismException prismEx)
+        {
+            context.Response.StatusCode = prismEx.StatusCode;
+            context.Response.ContentType = "application/json";
+
+            await context.Response.WriteAsJsonAsync(new
+            {
+                error = prismEx.Code,
+                message = prismEx.Message,
+                details = prismEx.Details
+            });
+        }
+    });
+});
+```
+
+### Health Checks
+
+```csharp
+using Prism.AspNetCore.HealthChecks;
+
+builder.Services.AddHealthChecks()
+    .AddPrismGateway(
+        name: "prism-gateway",
+        failureStatus: HealthStatus.Degraded,
+        tags: new[] { "payment", "gateway" }
+    );
+
+app.MapHealthChecks("/health", new HealthCheckOptions
+{
+    ResponseWriter = UIResponseWriter.WriteHealthCheckUIResponse
+});
+```
+
+### Logging Integration
+
+```csharp
+{
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "Prism.AspNetCore": "Debug"
+    }
+  },
+  "Prism": {
+    "ApiKey": "your-api-key",
+    "UseSandbox": true,
+    "EnableLogging": true
+  }
+}
+```
+
+### Testing Support
+
+```csharp
+using Prism.AspNetCore.Testing;
+using Xunit;
+
+public class WeatherControllerTests
+{
+    [Fact]
+    public async Task Get_WithoutPayment_Returns402()
+    {
+        // Arrange
+        var client = new TestPrismClient();
+        var controller = new WeatherController();
+
+        // Act
+        var result = await controller.Get();
+
+        // Assert
+        Assert.IsType<StatusCodeResult>(result);
+        Assert.Equal(402, (result as StatusCodeResult)?.StatusCode);
+    }
+
+    [Fact]
+    public async Task Get_WithValidPayment_Returns200()
+    {
+        // Arrange
+        var client = new TestPrismClient();
+        client.SetupValidPayment(
+            nonce: "0x123...",
+            txHash: "0xabc..."
+        );
+
+        var controller = new WeatherController();
+
+        // Act
+        var result = await controller.Get();
+
+        // Assert
+        Assert.IsType<OkObjectResult>(result);
+    }
+}
+```
+
+## Planned Features Roadmap
+
+<Steps>
+  <Step title="Q4 2025 - Core Middleware">
+    - ASP.NET Core middleware - `[RequirePayment]` attribute - Basic
+    configuration - Payment verification
+  </Step>
+
+  <Step title="Q1 2026 - Advanced Features">
+    - Minimal API support - Dependency injection - Health checks - Structured
+    logging
+  </Step>
+
+  <Step title="Q2 2026 - Enterprise Features">
+    - Multi-tenant support - Custom payment providers - Advanced caching -
+    Metrics & monitoring
+  </Step>
+
+  <Step title="Q3 2026 - Ecosystem">
+    - Blazor components - SignalR integration - gRPC support - Azure Functions
+    support
+  </Step>
+</Steps>
+
+## Why C# SDK?
+
+<CardGroup cols={2}>
+  <Card title="Enterprise Adoption" icon="building">
+    .NET is widely used in enterprise environments
+  </Card>
+
+  <Card title="Type Safety" icon="shield-check">
+    Strong typing prevents runtime errors
+  </Card>
+
+  <Card title="Performance" icon="gauge-high">
+    ASP.NET Core is one of the fastest web frameworks
+  </Card>
+
+  <Card title="Azure Integration" icon="cloud">
+    Seamless deployment to Azure App Service
+  </Card>
+</CardGroup>
+
+## Expected Use Cases
+
+### Financial APIs
+
+```csharp
+[ApiController]
+[Route("api/finance")]
+public class FinanceController : ControllerBase
+{
+    [HttpGet("stock/{symbol}")]
+    [RequirePayment(0.005, Description = "Real-time stock data")]
+    public async Task<StockQuote> GetStockQuote(string symbol)
+    {
+        return await _stockService.GetQuoteAsync(symbol);
+    }
+
+    [HttpGet("historical/{symbol}")]
+    [RequirePayment(0.05, Description = "Historical stock data")]
+    public async Task<HistoricalData> GetHistoricalData(
+        string symbol,
+        [FromQuery] DateTime from,
+        [FromQuery] DateTime to)
+    {
+        return await _stockService.GetHistoricalAsync(symbol, from, to);
+    }
+}
+```
+
+### AI/ML APIs
+
+```csharp
+[ApiController]
+[Route("api/ai")]
+public class AIController : ControllerBase
+{
+    [HttpPost("inference")]
+    [RequirePayment(0.01, Description = "AI model inference")]
+    public async Task<InferenceResult> RunInference(
+        [FromBody] InferenceRequest request)
+    {
+        var payment = HttpContext.GetPaymentInfo();
+
+        _telemetry.TrackInference(
+            model: request.ModelId,
+            paymentNetwork: payment?.Network,
+            amount: payment?.Amount
+        );
+
+        return await _aiService.RunInferenceAsync(request);
+    }
+}
+```
+
+### Content APIs
+
+```csharp
+[ApiController]
+[Route("api/content")]
+public class ContentController : ControllerBase
+{
+    [HttpGet("article/{id}")]
+    [RequirePayment(0.001, Description = "Premium article")]
+    public async Task<Article> GetArticle(int id)
+    {
+        return await _contentService.GetArticleAsync(id);
+    }
+
+    [HttpGet("video/{id}")]
+    [RequirePayment(0.05, Description = "Premium video")]
+    [Produces("video/mp4")]
+    public async Task<IActionResult> GetVideo(int id)
+    {
+        var stream = await _contentService.GetVideoStreamAsync(id);
+        return File(stream, "video/mp4");
+    }
+}
+```
+
+## Get Notified
+
+Want to be notified when the C# SDK is released?
+
+<Card
+  title="Join Waitlist"
+  icon="bell"
+  href="https://prism.1stdigital.tech/waitlist/csharp-sdk"
+>
+  Get email notifications for C# SDK updates
+</Card>
+
+## Contribute
+
+Interested in contributing to the C# SDK development?
+
+<CardGroup cols={2}>
+  <Card
+    title="GitHub Discussions"
+    icon="github"
+    href="https://github.com/1stdigital/fd-prism-sdk/discussions"
+  >
+    Share ideas and feedback
+  </Card>
+
+  <Card
+    title="Discord Community"
+    icon="discord"
+    href="https://discord.gg/your-discord"
+  >
+    Join developer community
+  </Card>
+</CardGroup>
+
+## Alternative Solutions
+
+While waiting for the C# SDK, you can:
+
+<Tabs>
+  <Tab title="REST API">
+    Use Prism Gateway REST API directly from C#
+    
+    ```csharp
+    using System.Net.Http;
+    using System.Net.Http.Json;
+    
+    var client = new HttpClient
+    {
+        BaseAddress = new Uri("https://prism-gw.test.1stdigital.tech")
+    };
+    
+    client.DefaultRequestHeaders.Add("x-api-key", apiKey);
+    
+    var response = await client.PostAsJsonAsync(
+        "/api/v1/payment/requirements",
+        new { resource = "/api/premium", amount = "1000000" }
+    );
+    
+    var requirements = await response.Content
+        .ReadFromJsonAsync<PaymentRequirements>();
+    ```
+    
+    <Card
+      title="API Reference"
+      icon="book"
+      href="/api-reference/introduction"
+    >
+      Complete REST API documentation
+    </Card>
+  </Tab>
+  
+  <Tab title="TypeScript SDK">
+    Use TypeScript SDK with Node.js backend
+    
+    ```typescript
+    import express from 'express';
+    import { prismPaymentMiddleware } from '@financedistrict/prism-x402-sdk-express';
+    
+    const app = express();
+    
+    app.use(prismPaymentMiddleware(
+      { apiKey: 'key', useSandbox: true },
+      { '/api/data': { price: 0.01 } }
+    ));
+    
+    app.get('/api/data', (req, res) => {
+      res.json({ data: 'content' });
+    });
+    ```
+    
+    <Card
+      title="TypeScript SDK"
+      icon="js"
+      href="/sdk/typescript"
+    >
+      Full TypeScript documentation
+    </Card>
+  </Tab>
+</Tabs>
+
+## Related Resources
+
+<CardGroup cols={2}>
+  <Card
+    title="System Overview"
+    icon="diagram-project"
+    href="/concepts/system-overview"
+  >
+    Understand Prism architecture
+  </Card>
+
+  <Card title="x402 Protocol" icon="bolt" href="/concepts/x402-protocol">
+    HTTP 402 payment standard
+  </Card>
+
+  <Card title="EIP-3009" icon="ethereum" href="/concepts/eip3009-settlement">
+    Gasless token transfers
+  </Card>
+
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Get started with TypeScript
+  </Card>
+</CardGroup>

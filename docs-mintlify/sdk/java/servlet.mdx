@@ -1,0 +1,825 @@
+---
+title: "Java Servlet Integration"
+description: "Protect Java web applications with blockchain micropayments"
+icon: "java"
+---
+
+## Overview
+
+The **prism-servlet** package provides a generic Servlet Filter for payment-protecting Java web applications using the x402 protocol. It works with any servlet-based framework (Tomcat, Jetty, Spring Boot, Jakarta EE, etc.).
+
+<CardGroup cols={3}>
+  <Card title="Framework Agnostic" icon="layer-group">
+    Works with any Servlet 3.0+ container
+  </Card>
+  
+  <Card title="Response Buffering" icon="buffer">
+    Captures output before settlement validation
+  </Card>
+
+  <Card title="Standard Filter" icon="filter">
+    Standard javax.servlet.Filter interface
+  </Card>
+</CardGroup>
+
+---
+
+## Installation
+
+<Tabs>
+  <Tab title="Maven">
+    ```xml
+    <dependency>
+      <groupId>org.fdtech.prism</groupId>
+      <artifactId>prism-servlet</artifactId>
+      <version>1.0.0</version>
+    </dependency>
+    ```
+  </Tab>
+
+  <Tab title="Gradle">
+    ```gradle
+    implementation 'org.fdtech.prism:prism-servlet:1.0.0'
+    ```
+  </Tab>
+</Tabs>
+
+---
+
+## Quick Start
+
+### Configuration via web.xml
+
+```xml
+<!-- web.xml -->
+<filter>
+  <filter-name>PrismFilter</filter-name>
+  <filter-class>org.fdtech.prism.servlet.PrismFilter</filter-class>
+
+  <init-param>
+    <param-name>apiKey</param-name>
+    <param-value>dev-key-123</param-value>
+  </init-param>
+
+  <init-param>
+    <param-name>baseUrl</param-name>
+    <param-value>https://prism-gw.test.1stdigital.tech</param-value>
+  </init-param>
+
+  <init-param>
+    <param-name>routes</param-name>
+    <param-value>
+      /api/premium:0.01:Premium API access
+      /api/weather:$0.001:Weather data access
+    </param-value>
+  </init-param>
+</filter>
+
+<filter-mapping>
+  <filter-name>PrismFilter</filter-name>
+  <url-pattern>/api/*</url-pattern>
+</filter-mapping>
+```
+
+### Servlet Implementation
+
+```java
+import javax.servlet.ServletException;
+import javax.servlet.annotation.WebServlet;
+import javax.servlet.http.*;
+import java.io.IOException;
+
+@WebServlet("/api/premium")
+public class PremiumServlet extends HttpServlet {
+
+    @Override
+    protected void doGet(HttpServletRequest request,
+                        HttpServletResponse response)
+                        throws ServletException, IOException {
+
+        // Access payer address (set by PrismFilter)
+        String payer = (String) request.getAttribute("prism_payer");
+
+        response.setContentType("application/json");
+        response.getWriter().write(String.format(
+            "{\"message\":\"Premium content\",\"payer\":\"%s\"}",
+            payer
+        ));
+    }
+}
+```
+
+---
+
+## Configuration
+
+### PrismConfig
+
+```java
+import org.fdtech.prism.core.PrismConfig;
+
+PrismConfig config = new PrismConfig(
+    "your-api-key",                                    // Required: API key
+    "https://prism-gw.test.1stdigital.tech",         // Optional: Base URL
+    true                                               // Optional: Debug mode
+);
+```
+
+### Programmatic Configuration
+
+```java
+import org.fdtech.prism.servlet.PrismFilter;
+import javax.servlet.FilterRegistration;
+
+// In ServletContextInitializer or similar
+public class WebAppConfig {
+
+    public void configureFilter(ServletContext context) {
+        PrismConfig config = new PrismConfig("dev-key-123");
+        PrismFilter filter = new PrismFilter(config);
+
+        // Add route configuration
+        filter.addRoute("/api/premium", 0.01, "Premium API");
+        filter.addRoute("/api/weather", "$0.001", "Weather data");
+
+        // Register filter
+        FilterRegistration.Dynamic registration =
+            context.addFilter("PrismFilter", filter);
+
+        registration.addMappingForUrlPatterns(
+            null, false, "/api/*"
+        );
+    }
+}
+```
+
+---
+
+## Route Configuration Format
+
+### In web.xml
+
+Routes are configured as colon-separated values, one per line:
+
+```
+<init-param>
+  <param-name>routes</param-name>
+  <param-value>
+    /api/premium:0.01:Premium API access
+    /api/weather:$0.001:Weather data
+    /api/data/*:0.005:Data API (wildcard)
+  </param-value>
+</init-param>
+```
+
+**Format:** `path:price:description`
+
+- **path**: Exact path or wildcard (`/api/*`)
+- **price**: USD amount (`0.01` = $0.01 USD, or `$0.001` string format)
+- **description**: Human-readable description
+
+---
+
+### Programmatic Configuration
+
+```java
+PrismFilter filter = new PrismFilter(config);
+
+// Exact paths
+filter.addRoute("/api/premium", 0.01, "Premium API");
+filter.addRoute("/api/weather", "$0.001", "Weather data");
+
+// Wildcard matching
+filter.addRoute("/api/data/*", 0.005, "Data API");
+
+// Multiple route groups
+filter.addRoute("/api/basic/*", "$0.0001", "Basic tier");
+filter.addRoute("/api/premium/*", "$0.01", "Premium tier");
+```
+
+---
+
+## Accessing Payment Information
+
+Payment info is stored as request attributes:
+
+```java
+@WebServlet("/api/premium")
+public class PremiumServlet extends HttpServlet {
+
+    @Override
+    protected void doGet(HttpServletRequest request,
+                        HttpServletResponse response)
+                        throws ServletException, IOException {
+
+        // Get payer wallet address
+        String payer = (String) request.getAttribute("prism_payer");
+        // Returns: "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb" or null
+
+        // Get full payment object
+        Map<String, Object> payment =
+            (Map<String, Object>) request.getAttribute("prism_payment");
+        /*
+        {
+            "scheme": "eip3009",
+            "network": "eth-sepolia",
+            "asset": "usdc",
+            "amount": "10000",
+            "recipient": "0x...",
+            "signature": "0x..."
+        }
+        */
+
+        response.setContentType("application/json");
+        response.getWriter().write(
+            new JSONObject()
+                .put("message", "Premium content")
+                .put("payer", payer)
+                .put("network", payment.get("network"))
+                .toString()
+        );
+    }
+}
+```
+
+---
+
+### Safe Access Helper
+
+```java
+public class PaymentUtils {
+
+    public static String getPayer(HttpServletRequest request) {
+        return (String) request.getAttribute("prism_payer");
+    }
+
+    public static Map<String, Object> getPayment(HttpServletRequest request) {
+        return (Map<String, Object>) request.getAttribute("prism_payment");
+    }
+
+    public static boolean hasPayer(HttpServletRequest request) {
+        return request.getAttribute("prism_payer") != null;
+    }
+}
+
+// Usage in servlet
+@WebServlet("/api/data")
+public class DataServlet extends HttpServlet {
+
+    @Override
+    protected void doGet(HttpServletRequest request,
+                        HttpServletResponse response)
+                        throws ServletException, IOException {
+
+        if (!PaymentUtils.hasPayer(request)) {
+            response.sendError(402, "Payment required");
+            return;
+        }
+
+        String payer = PaymentUtils.getPayer(request);
+
+        response.setContentType("application/json");
+        response.getWriter().write(
+            "{\"data\":[1,2,3],\"payer\":\"" + payer + "\"}"
+        );
+    }
+}
+```
+
+---
+
+## Settlement Validation
+
+The Java Servlet filter uses **HttpServletResponseWrapper** to capture servlet output before settlement validation:
+
+```java
+// Internal implementation (automatic!)
+public class ResponseWrapper extends HttpServletResponseWrapper {
+    private ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+    private PrintWriter writer = new PrintWriter(buffer);
+
+    @Override
+    public PrintWriter getWriter() {
+        return writer;
+    }
+
+    public byte[] getCapturedOutput() {
+        writer.flush();
+        return buffer.toByteArray();
+    }
+}
+
+// In PrismFilter.doFilter()
+ResponseWrapper wrapper = new ResponseWrapper(response);
+chain.doFilter(request, wrapper);  // Execute servlet - output goes to buffer
+
+// Validate settlement BEFORE sending to client
+String settlementHeader = middleware.getSettlementHeader(paymentInfo);
+
+if (settlementHeader == null) {
+    // ❌ Settlement failed - send error instead of buffered output
+    response.setStatus(402);
+    response.setContentType("application/json");
+    response.getWriter().write(
+        "{\"error\":\"Payment settlement failed\"}"
+    );
+} else {
+    // ✅ Settlement succeeded - send buffered output
+    response.setHeader("X-PAYMENT-RESPONSE", settlementHeader);
+    response.getOutputStream().write(wrapper.getCapturedOutput());
+}
+```
+
+**Key Points:**
+
+- Servlet writes to **wrapper**, not real response
+- Output is **buffered in memory**
+- After settlement check, either send buffered data or error
+- Works with all response types (JSON, HTML, binary, etc.)
+
+See [Settlement Validation](/concepts/settlement-validation) for details.
+
+---
+
+## Error Handling
+
+### Payment Errors
+
+When payment is missing or invalid:
+
+```json
+HTTP/1.1 402 Payment Required
+
+{
+  "x402Version": 1,
+  "paymentRequired": true,
+  "acceptedPayments": [
+    {
+      "scheme": "eip3009",
+      "network": "eth-sepolia",
+      "asset": "usdc",
+      "amount": "10000",
+      "recipient": "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb",
+      "nonce": "0xabc123...",
+      "validBefore": 1735430400
+    }
+  ],
+  "description": "Premium API access",
+  "priceUSD": "0.01"
+}
+```
+
+---
+
+### Custom Error Handling
+
+```java
+@WebServlet("/api/premium")
+public class PremiumServlet extends HttpServlet {
+
+    @Override
+    protected void doGet(HttpServletRequest request,
+                        HttpServletResponse response)
+                        throws ServletException, IOException {
+
+        try {
+            String payer = (String) request.getAttribute("prism_payer");
+
+            if (payer == null) {
+                sendPaymentRequired(response);
+                return;
+            }
+
+            // Process request
+            String result = processRequest(payer);
+
+            response.setContentType("application/json");
+            response.getWriter().write(result);
+
+        } catch (Exception e) {
+            sendError(response, e);
+        }
+    }
+
+    private void sendPaymentRequired(HttpServletResponse response)
+            throws IOException {
+        response.setStatus(402);
+        response.setContentType("application/json");
+        response.getWriter().write(
+            "{\"error\":\"Payment required\"}"
+        );
+    }
+
+    private void sendError(HttpServletResponse response, Exception e)
+            throws IOException {
+        response.setStatus(500);
+        response.setContentType("application/json");
+        response.getWriter().write(
+            "{\"error\":\"" + e.getMessage() + "\"}"
+        );
+    }
+}
+```
+
+---
+
+## Spring Boot Integration
+
+### Configuration Class
+
+```java
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.fdtech.prism.servlet.PrismFilter;
+import org.fdtech.prism.core.PrismConfig;
+
+@Configuration
+public class PrismConfig {
+
+    @Bean
+    public FilterRegistrationBean<PrismFilter> prismFilter() {
+        PrismConfig config = new PrismConfig(
+            "dev-key-123",
+            "https://prism-gw.test.1stdigital.tech"
+        );
+
+        PrismFilter filter = new PrismFilter(config);
+        filter.addRoute("/api/premium", 0.01, "Premium API");
+        filter.addRoute("/api/weather", "$0.001", "Weather data");
+
+        FilterRegistrationBean<PrismFilter> registration =
+            new FilterRegistrationBean<>();
+        registration.setFilter(filter);
+        registration.addUrlPatterns("/api/*");
+        registration.setOrder(1);  // Execute early
+
+        return registration;
+    }
+}
+```
+
+### Spring Boot Controller
+
+```java
+import org.springframework.web.bind.annotation.*;
+import javax.servlet.http.HttpServletRequest;
+import java.util.Map;
+
+@RestController
+@RequestMapping("/api")
+public class ApiController {
+
+    @GetMapping("/premium")
+    public Map<String, Object> premium(HttpServletRequest request) {
+        String payer = (String) request.getAttribute("prism_payer");
+
+        return Map.of(
+            "message", "Premium content",
+            "payer", payer
+        );
+    }
+
+    @GetMapping("/weather")
+    public Map<String, Object> weather(HttpServletRequest request) {
+        String payer = (String) request.getAttribute("prism_payer");
+
+        return Map.of(
+            "location", "San Francisco",
+            "temperature", 72,
+            "condition", "Sunny",
+            "payer", payer
+        );
+    }
+}
+```
+
+---
+
+## Testing
+
+### JUnit 5 Tests
+
+```java
+import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.http.*;
+import static org.junit.jupiter.api.Assertions.*;
+
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+class PaymentIntegrationTest {
+
+    @Autowired
+    private TestRestTemplate restTemplate;
+
+    @Test
+    void testPaymentRequired() {
+        ResponseEntity<String> response =
+            restTemplate.getForEntity("/api/premium", String.class);
+
+        assertEquals(HttpStatus.PAYMENT_REQUIRED, response.getStatusCode());
+        assertTrue(response.getBody().contains("paymentRequired"));
+    }
+
+    @Test
+    void testValidPayment() {
+        // Create mock payment header
+        String payment = "{\"scheme\":\"eip3009\",\"signature\":\"0x" +
+                         "0".repeat(130) + "\"}";
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("X-PAYMENT", payment);
+
+        HttpEntity<String> entity = new HttpEntity<>(headers);
+
+        ResponseEntity<String> response = restTemplate.exchange(
+            "/api/premium",
+            HttpMethod.GET,
+            entity,
+            String.class
+        );
+
+        // In test mode, mock signatures accepted
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertTrue(response.getBody().contains("Premium content"));
+    }
+}
+```
+
+---
+
+### Mock Servlet Testing
+
+```java
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mockito.Mock;
+import org.mockito.MockitoAnnotations;
+
+import javax.servlet.FilterChain;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+
+import static org.mockito.Mockito.*;
+
+class PrismFilterTest {
+
+    @Mock
+    private HttpServletRequest request;
+
+    @Mock
+    private HttpServletResponse response;
+
+    @Mock
+    private FilterChain chain;
+
+    private PrismFilter filter;
+
+    @BeforeEach
+    void setUp() {
+        MockitoAnnotations.openMocks(this);
+
+        PrismConfig config = new PrismConfig("test-key");
+        filter = new PrismFilter(config);
+        filter.addRoute("/api/premium", 0.01, "Test");
+    }
+
+    @Test
+    void testPaymentRequired() throws Exception {
+        when(request.getRequestURI()).thenReturn("/api/premium");
+        when(request.getHeader("X-PAYMENT")).thenReturn(null);
+
+        filter.doFilter(request, response, chain);
+
+        verify(response).setStatus(402);
+        verify(chain, never()).doFilter(any(), any());
+    }
+}
+```
+
+---
+
+## Production Deployment
+
+### Environment Configuration
+
+```properties
+# application.properties (Spring Boot)
+prism.api-key=${PRISM_API_KEY}
+prism.base-url=${PRISM_BASE_URL:https://prism-api.1stdigital.tech}
+prism.debug=${PRISM_DEBUG:false}
+
+# Routes configuration
+prism.routes[0].path=/api/premium
+prism.routes[0].price=0.01
+prism.routes[0].description=Premium API
+
+prism.routes[1].path=/api/weather
+prism.routes[1].price=$0.001
+prism.routes[1].description=Weather data
+```
+
+### Configuration Class
+
+```java
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration
+@ConfigurationProperties(prefix = "prism")
+public class PrismProperties {
+    private String apiKey;
+    private String baseUrl;
+    private boolean debug;
+    private List<RouteConfig> routes;
+
+    // Getters and setters
+
+    public static class RouteConfig {
+        private String path;
+        private String price;
+        private String description;
+
+        // Getters and setters
+    }
+}
+```
+
+---
+
+### Logging & Monitoring
+
+```java
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+public class PremiumServlet extends HttpServlet {
+    private static final Logger logger =
+        LoggerFactory.getLogger(PremiumServlet.class);
+
+    @Override
+    protected void doGet(HttpServletRequest request,
+                        HttpServletResponse response)
+                        throws ServletException, IOException {
+
+        String payer = (String) request.getAttribute("prism_payer");
+
+        if (payer != null) {
+            logger.info("Payment succeeded: payer={}, path={}",
+                       payer, request.getRequestURI());
+        } else {
+            logger.warn("Payment required: path={}, ip={}",
+                       request.getRequestURI(), request.getRemoteAddr());
+        }
+
+        // Process request...
+    }
+}
+```
+
+---
+
+## Examples
+
+### AI Agent API
+
+```java
+@WebServlet("/api/ai/chat")
+public class AIChatServlet extends HttpServlet {
+
+    @Override
+    protected void doPost(HttpServletRequest request,
+                         HttpServletResponse response)
+                         throws ServletException, IOException {
+
+        String payer = (String) request.getAttribute("prism_payer");
+
+        // Parse request body
+        BufferedReader reader = request.getReader();
+        String message = new JSONObject(reader.readLine())
+            .getString("message");
+
+        // Call AI service
+        String aiResponse = callAIService(message);
+
+        // Return response
+        response.setContentType("application/json");
+        response.getWriter().write(
+            new JSONObject()
+                .put("response", aiResponse)
+                .put("payer", payer)
+                .put("creditsUsed", 1)
+                .toString()
+        );
+    }
+}
+```
+
+---
+
+### REST API with JAX-RS
+
+```java
+import javax.ws.rs.*;
+import javax.ws.rs.core.*;
+
+@Path("/api")
+public class ApiResource {
+
+    @Context
+    private HttpServletRequest request;
+
+    @GET
+    @Path("/premium")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response premium() {
+        String payer = (String) request.getAttribute("prism_payer");
+
+        return Response.ok()
+            .entity(Map.of(
+                "message", "Premium content",
+                "payer", payer
+            ))
+            .build();
+    }
+}
+```
+
+---
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Filter not executing">
+    **Check filter mapping in web.xml:**
+    ```xml
+    <filter-mapping>
+      <filter-name>PrismFilter</filter-name>
+      <url-pattern>/api/*</url-pattern>  <!-- Must match your routes -->
+    </filter-mapping>
+    ```
+    
+    **Verify filter order:** Prism filter should execute BEFORE authentication filters.
+  </Accordion>
+
+  <Accordion title="prism_payer attribute is null">
+    **Debug with logging:**
+    ```java
+    @Override
+    protected void doGet(HttpServletRequest request, ...) {
+        System.out.println("URI: " + request.getRequestURI());
+        System.out.println("Payment header: " + request.getHeader("X-PAYMENT"));
+        System.out.println("Payer: " + request.getAttribute("prism_payer"));
+    }
+    ```
+    
+    **Check:** Route matches filter URL pattern, payment header present and valid.
+  </Accordion>
+
+{" "}
+
+<Accordion title="Settlement fails">
+  **Common causes:** 1. Insufficient balance 2. Invalid signature 3. Nonce reuse
+  4. Network timeout **Check logs:** Enable debug mode in PrismConfig.
+</Accordion>
+
+  <Accordion title="Response wrapper causes issues">
+    **If you see encoding problems:**
+    - Make sure to set `Content-Type` before writing
+    - Use `getWriter()` for text, `getOutputStream()` for binary
+    - Don't mix `getWriter()` and `getOutputStream()`
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Settlement Validation"
+    icon="shield-check"
+    href="/concepts/settlement-validation"
+  >
+    Learn how Java prevents data leakage with ResponseWrapper
+  </Card>
+
+{" "}
+<Card title="Testing Guide" icon="flask" href="/guides/testing">
+  Test payment flows with JUnit and MockMvc
+</Card>
+
+{" "}
+<Card title="Spring Boot Guide" icon="leaf" href="/sdk/java/spring-boot">
+  Full Spring Boot integration guide (coming soon)
+</Card>
+
+  <Card
+    title="Production Deployment"
+    icon="rocket"
+    href="/guides/production-deployment"
+  >
+    Deploy Java + Prism to production
+  </Card>
+</CardGroup>

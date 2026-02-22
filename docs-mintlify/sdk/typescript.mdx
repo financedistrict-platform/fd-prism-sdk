@@ -1,0 +1,1432 @@
+---
+title: "TypeScript / JavaScript SDK"
+description: "Express.js middleware for x402 payment protocol"
+icon: "js"
+---
+
+<img
+  className="block dark:hidden"
+  src="/images/typescript-hero-light.svg"
+  alt="TypeScript SDK"
+/>
+<img
+  className="hidden dark:block"
+  src="/images/typescript-hero-dark.svg"
+  alt="TypeScript SDK"
+/>
+
+## Overview
+
+The **Prism Express Middleware** is a drop-in solution for protecting your Node.js API routes with blockchain-based micropayments using the x402 protocol.
+
+<CardGroup cols={3}>
+  <Card title="Zero Config" icon="bolt">
+    Works out of the box with Express.js
+  </Card>
+  
+  <Card title="Type Safe" icon="shield-check">
+    Full TypeScript support with IntelliSense
+  </Card>
+
+  <Card title="Flexible Pricing" icon="dollar-sign">
+    Per-route pricing with wildcards
+  </Card>
+</CardGroup>
+
+## What's New in v1.1
+
+<Note>
+  **Latest Version:** 1.1.0 - Enhanced error handling and Gateway integration
+</Note>
+
+<AccordionGroup>
+  <Accordion icon="sparkles" title="Structured Error Handling">
+    **New error classes** for better debugging and monitoring:
+    - `PrismGatewayError` - Preserves Gateway status codes and trace IDs
+    - `PrismNetworkError` - Network connectivity issues (503)
+    - `PrismConfigError` - SDK misconfiguration (500)
+    - `PrismPaymentError` - Invalid payment (402)
+    - `PrismValidationError` - Request validation (400)
+    
+    **Benefits:**
+    - ✅ Type-safe error handling with `instanceof` checks
+    - ✅ Gateway trace IDs for backend correlation
+    - ✅ Timestamps for log searching
+    - ✅ Original status codes preserved (not all converted to 500)
+  </Accordion>
+  
+  <Accordion icon="magnifying-glass" title="Gateway Trace IDs">
+    **Debug production issues faster** with Gateway trace IDs:
+    ```typescript
+    if (error instanceof PrismGatewayError) {
+      console.log('Trace ID:', error.traceId);  // "0HNGT483NH6I8:00000001"
+      console.log('Timestamp:', error.timestamp);
+      console.log('Details:', error.details);   // Full error message from Gateway
+    }
+    ```
+    
+    Include trace IDs in support tickets for faster resolution.
+  </Accordion>
+  
+  <Accordion icon="arrows-rotate" title="Payment Verification">
+    **Implemented** `verifyPayment()` endpoint integration:
+    - Cryptographic signature verification via Gateway
+    - Payer address extracted and stored in `res.locals.payer`
+    - Proper error handling for verification failures
+  </Accordion>
+  
+  <Accordion icon="code" title="Improved Error Responses">
+    **Better error messages** for end-users:
+    ```json
+    {
+      "x402Version": 1,
+      "error": "Internal Error",
+      "details": "Database query failed: column p.ProviderId does not exist",
+      "gateway": {
+        "traceId": "0HNGT483NH6I8:00000001",
+        "timestamp": "2025-11-06T13:13:00Z"
+      }
+    }
+    ```
+    
+    **Before:** Generic "Failed to generate payment requirements"  
+    **After:** Detailed error with trace ID and timestamp
+  </Accordion>
+</AccordionGroup>
+
+## Installation
+
+<Tabs>
+  <Tab title="npm">
+    ```bash
+    npm install @financedistrict/prism-x402-sdk-express
+    ```
+  </Tab>
+  
+  <Tab title="yarn">
+    ```bash
+    yarn add @financedistrict/prism-x402-sdk-express
+    ```
+  </Tab>
+
+  <Tab title="pnpm">
+    ```bash
+    pnpm add @financedistrict/prism-x402-sdk-express
+    ```
+  </Tab>
+</Tabs>
+
+<Info>
+  **Package Registry:** GitHub Packages **Scope:** `@financedistrict` **Package:**
+  `prism-express`
+</Info>
+
+## Quick Start
+
+<Steps>
+  <Step title="Install Package">
+    ```bash
+    npm install @financedistrict/prism-x402-sdk-express
+    ```
+  </Step>
+  
+  <Step title="Import Middleware">
+    ```typescript
+    import express from 'express';
+    import { prismPaymentMiddleware } from '@financedistrict/prism-x402-sdk-express';
+    ```
+  </Step>
+  
+  <Step title="Configure Middleware">
+    ```typescript
+    const app = express();
+    
+    app.use(
+      prismPaymentMiddleware(
+        {
+          apiKey: process.env.PRISM_API_KEY },
+        {
+          '/api/premium': {
+            price: 0.01,
+            description: 'Premium API access'
+          }
+        }
+      )
+    );
+    ```
+  </Step>
+  
+  <Step title="Add Protected Route">
+    ```typescript
+    app.get('/api/premium', (req, res) => {
+      res.json({ data: 'Premium content' });
+    });
+    
+    app.listen(3000);
+    ```
+  </Step>
+</Steps>
+
+## Basic Usage
+
+```typescript
+import express from "express";
+import { prismPaymentMiddleware } from "@financedistrict/prism-x402-sdk-express";
+
+const app = express();
+
+// Configure payment middleware
+app.use(
+  prismPaymentMiddleware(
+    {
+      apiKey: "dev-key-123" },
+    {
+      "/api/weather": {
+        price: 0.001,
+        description: "Weather API access",
+        mimeType: "application/json" },
+      "/api/premium/*": {
+        price: 0.01,
+        description: "Premium API endpoints" } }
+  )
+);
+
+// Public endpoint (no payment)
+app.get("/", (req, res) => {
+  res.json({ message: "Welcome to Prism API" });
+});
+
+// Protected endpoint (requires payment)
+app.get("/api/weather", (req, res) => {
+  res.json({
+    location: "San Francisco",
+    temperature: 72,
+    condition: "Sunny" });
+});
+
+// Protected premium endpoint
+app.get("/api/premium/data", (req, res) => {
+  res.json({
+    premium: true,
+    data: "This is premium content" });
+});
+
+app.listen(3000, () => {
+  console.log("Server running on http://localhost:3000");
+});
+```
+
+## Configuration
+
+### Middleware Config
+
+The first parameter to `prismPaymentMiddleware` is the global configuration:
+
+```typescript
+interface PrismMiddlewareConfig {
+  apiKey: string; // Required: Your Prism API key
+  baseUrl?: string; // Optional: Gateway URL (defaults to test environment)
+  timeout?: number; // Optional: Request timeout in ms (default: 10000)
+  retries?: number; // Optional: Failed request retries (default: 3)
+}
+```
+
+<ParamField path="apiKey" type="string" required>
+  Your Prism API key from [Client Portal](https://prism.1stdigital.tech)
+  <Tip>Store in environment variable: `process.env.PRISM_API_KEY`</Tip>
+</ParamField>
+
+<ParamField path="baseUrl" type="string">
+  Prism Gateway URL. Defaults to test environment.
+  
+  - Test: `https://prism-gw.test.1stdigital.tech` (default)
+  - Production: `https://prism-api.1stdigital.tech`
+  
+  ```typescript
+  {
+    apiKey: 'key',
+    baseUrl: 'https://prism-api.1stdigital.tech' // Production
+  }
+  ```
+</ParamField>
+
+<ParamField path="timeout" type="number" default="10000">
+  Request timeout in milliseconds
+  <Info>Gateway calls that exceed timeout will fail gracefully</Info>
+</ParamField>
+
+<ParamField path="retries" type="number" default="3">
+  Number of retry attempts for failed Gateway requests
+</ParamField>
+
+### Route Configuration
+
+The second parameter defines which routes require payment:
+
+```typescript
+interface RoutePaymentConfig {
+  price: number | string; // Required: Price per request
+  description?: string; // Optional: Human-readable description
+  mimeType?: string; // Optional: Response content type
+  maxTimeoutSeconds?: number; // Optional: Payment timeout
+  resource?: string; // Optional: Custom resource URL
+}
+```
+
+<ParamField path="price" type="number | string" required>
+  Price to charge per request **Formats:** - Number: `0.001` (USDC) - String:
+  `"$0.001"` (explicit USD) - String: `"0.001 USDC"` (explicit token)
+  <Tip>Use small decimals for micropayments: `0.001` = $0.001 = 0.1¢</Tip>
+</ParamField>
+
+<ParamField path="description" type="string">
+  Human-readable description shown to users
+  
+  ```typescript
+  {
+    price: 0.01,
+    description: 'Weather API - Current conditions'
+  }
+  ```
+</ParamField>
+
+<ParamField path="mimeType" type="string" default="application/json">
+  Response content type **Common values:** - `application/json` - `text/html` -
+  `image/png` - `video/mp4`
+</ParamField>
+
+<ParamField path="maxTimeoutSeconds" type="number" default="300">
+  Maximum time (seconds) to wait for payment
+  <Warning>After timeout, payment authorization expires</Warning>
+</ParamField>
+
+<ParamField path="resource" type="string">
+  Custom resource URL (overrides request path)
+  
+  ```typescript
+  {
+    price: 0.01,
+    resource: 'https://api.example.com/v2/premium'
+  }
+  ```
+</ParamField>
+
+## Route Patterns
+
+### Exact Match
+
+```typescript
+{
+  '/api/weather': {
+    price: 0.001,
+    description: 'Weather data'
+  }
+}
+```
+
+Matches:
+
+- ✅ `/api/weather`
+- ❌ `/api/weather/forecast`
+- ❌ `/api/weather-data`
+
+### Wildcard Routes
+
+```typescript
+{
+  '/api/premium/*': {
+    price: 0.01,
+    description: 'All premium endpoints'
+  }
+}
+```
+
+Matches:
+
+- ✅ `/api/premium/data`
+- ✅ `/api/premium/analytics`
+- ✅ `/api/premium/users/123`
+- ❌ `/api/public/data`
+
+### Multiple Routes
+
+```typescript
+{
+  '/api/basic': {
+    price: 0.001,
+    description: 'Basic tier'
+  },
+  '/api/premium': {
+    price: 0.01,
+    description: 'Premium tier'
+  },
+  '/api/enterprise/*': {
+    price: 0.1,
+    description: 'Enterprise tier'
+  }
+}
+```
+
+### Route Priority
+
+When multiple patterns match, **most specific wins**:
+
+```typescript
+{
+  '/api/*': { price: 0.001 },           // Generic
+  '/api/premium/*': { price: 0.01 },    // More specific
+  '/api/premium/gold': { price: 0.05 }  // Most specific (used)
+}
+```
+
+Request to `/api/premium/gold` → uses `0.05` price
+
+## Accessing Payment Info
+
+Payment details are available in route handlers via `res.locals.payment`:
+
+```typescript
+app.get("/api/premium", (req, res) => {
+  const payment = res.locals.payment;
+
+  console.log("Payment scheme:", payment.scheme);
+  console.log("Network:", payment.network);
+  console.log("Token:", payment.asset);
+  console.log("Amount:", payment.amount);
+  console.log("Transaction hash:", payment.txHash);
+
+  res.json({ data: "Premium content" });
+});
+```
+
+### Payment Object Type
+
+```typescript
+interface PaymentInfo {
+  scheme: string; // 'exact' | 'range' | 'any'
+  network: string; // 'base-sepolia' | 'ethereum' | 'bsc'
+  asset: string; // Token contract address
+  amount: string; // Amount in smallest unit
+  payTo: string; // Provider wallet address
+  txHash?: string; // Transaction hash (after settlement)
+  validAfter: number; // Unix timestamp
+  validBefore: number; // Unix timestamp
+  nonce: string; // Unique payment nonce
+}
+```
+
+## Error Handling
+
+The SDK provides structured error handling with specific error classes, detailed error messages, and Gateway tracing information.
+
+### Error Classes
+
+All Prism errors extend the base `PrismError` class and include:
+
+- **Status code** - HTTP status code to return
+- **Error code** - Machine-readable error identifier
+- **Message** - Human-readable error description
+- **Details** - Additional context (varies by error type)
+
+<AccordionGroup>
+  <Accordion icon="triangle-exclamation" title="PrismGatewayError - Gateway returned an error">
+    **When:** Prism Gateway API returns 4xx or 5xx response
+    
+    **Properties:**
+    - `statusCode` - Original HTTP status from Gateway (400, 401, 500, etc.)
+    - `message` - Error title from Gateway
+    - `details` - Detailed error description
+    - `traceId` - Gateway trace ID for debugging
+    - `timestamp` - Error timestamp from Gateway
+    
+    **Example Response:**
+    ```json
+    {
+      "x402Version": 1,
+      "error": "Internal Error",
+      "details": "Database query failed: column p.ProviderId does not exist",
+      "gateway": {
+        "traceId": "0HNGT483NH6I8:00000001",
+        "timestamp": "2025-11-06T13:13:00.2646107Z"
+      }
+    }
+    ```
+    
+    **Usage:**
+    ```typescript
+    import { PrismGatewayError } from '@financedistrict/prism-x402-sdk';
+    
+    app.use((err, req, res, next) => {
+      if (err instanceof PrismGatewayError) {
+        // Log with trace ID for backend correlation
+        logger.error('Gateway error', {
+          traceId: err.traceId,
+          statusCode: err.statusCode,
+          details: err.details
+        });
+        
+        // Alert on 5xx errors
+        if (err.statusCode >= 500) {
+          alertOps('Prism Gateway error', { traceId: err.traceId });
+        }
+      }
+      next(err);
+    });
+    ```
+  </Accordion>
+  
+  <Accordion icon="wifi-slash" title="PrismNetworkError - Network/connectivity issues">
+    **When:** Cannot reach Prism Gateway (timeout, DNS error, connection refused)
+    
+    **Status Code:** 503 Service Unavailable
+    
+    **Properties:**
+    - `message` - Network error description
+    - `originalError` - Original axios/network error
+    
+    **Example Response:**
+    ```json
+    {
+      "x402Version": 1,
+      "error": "Payment service unavailable",
+      "details": "Could not connect to Prism Gateway. Please try again later.",
+      "retryAfter": 60
+    }
+    ```
+    
+    **Usage (Retry Logic):**
+    ```typescript
+    import { PrismNetworkError } from '@financedistrict/prism-x402-sdk';
+    
+    async function getPaymentRequirementsWithRetry(client, request, maxRetries = 3) {
+      for (let i = 0; i < maxRetries; i++) {
+        try {
+          return await client.getPaymentRequirements(request);
+        } catch (error) {
+          if (error instanceof PrismNetworkError) {
+            console.log(`Network error, retrying (${i + 1}/${maxRetries})...`);
+            await sleep(1000 * Math.pow(2, i)); // Exponential backoff
+            continue;
+          }
+          throw error; // Non-network error, don't retry
+        }
+      }
+      throw new Error('Max retries exceeded');
+    }
+    ```
+  </Accordion>
+  
+  <Accordion icon="gear-code" title="PrismConfigError - Invalid configuration">
+    **When:** SDK is misconfigured (invalid API key format, bad URL, etc.)
+    
+    **Status Code:** 500 Internal Server Error
+    
+    **Properties:**
+    - `message` - Configuration error description
+    - `details` - Configuration problem details
+    
+    **Example Response:**
+    ```json
+    {
+      "x402Version": 1,
+      "error": "Payment service misconfigured",
+      "details": "Please contact the administrator."
+    }
+    ```
+    
+    **Usage:**
+    ```typescript
+    import { PrismConfigError } from '@financedistrict/prism-x402-sdk';
+    
+    app.use((err, req, res, next) => {
+      if (err instanceof PrismConfigError) {
+        // Alert developers - this is a code/config issue
+        alertDevs('Prism SDK misconfiguration', {
+          error: err.message,
+          details: err.details
+        });
+        
+        // Don't expose config details to clients
+        return res.status(500).json({
+          error: 'Service temporarily unavailable'
+        });
+      }
+      next(err);
+    });
+    ```
+  </Accordion>
+  
+  <Accordion icon="credit-card-blank" title="PrismPaymentError - Invalid payment">
+    **When:** Payment payload is malformed or invalid
+    
+    **Status Code:** 402 Payment Required
+    
+    **Properties:**
+    - `message` - Payment validation error
+    - `details` - Why payment is invalid
+    
+    **Example Response:**
+    ```json
+    {
+      "x402Version": 1,
+      "error": "Invalid payment authorization",
+      "details": "Signature verification failed"
+    }
+    ```
+  </Accordion>
+  
+  <Accordion icon="circle-exclamation" title="PrismValidationError - Bad request data">
+    **When:** Request data fails validation (negative price, missing fields, etc.)
+    
+    **Status Code:** 400 Bad Request
+    
+    **Properties:**
+    - `message` - Validation error message
+    - `field` - Field that failed validation
+    - `details` - Validation error details
+    
+    **Example Response:**
+    ```json
+    {
+      "x402Version": 1,
+      "error": "Validation failed",
+      "details": "requestedAmount must be a positive number",
+      "field": "requestedAmount"
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### Error Response Format
+
+All error responses follow a consistent structure:
+
+```typescript
+interface PrismErrorResponse {
+  x402Version: number; // Always 1
+  error: string; // Human-readable error message
+  details?: string; // Additional error details
+  gateway?: {
+    // Gateway-specific info (if applicable)
+    traceId?: string; // Trace ID for backend correlation
+    timestamp?: string; // ISO 8601 timestamp
+  };
+  retryAfter?: number; // Seconds to wait before retry (503 errors)
+}
+```
+
+### Advanced Error Handling
+
+#### 1. Monitoring & Alerting with Trace IDs
+
+```typescript
+import { PrismGatewayError, PrismNetworkError } from "@financedistrict/prism-x402-sdk";
+
+app.use((err, req, res, next) => {
+  if (err instanceof PrismGatewayError) {
+    // Log to monitoring service with Gateway trace ID
+    logger.error("Prism Gateway Error", {
+      traceId: err.traceId,
+      timestamp: err.timestamp,
+      statusCode: err.statusCode,
+      message: err.message,
+      details: err.details,
+      endpoint: req.path,
+      method: req.method });
+
+    // Alert on critical errors (5xx)
+    if (err.statusCode >= 500) {
+      alerting.critical("Prism Gateway Internal Error", {
+        traceId: err.traceId,
+        endpoint: req.path,
+        message: err.message });
+    }
+
+    // Return error with trace ID for support
+    return res.status(err.statusCode).json({
+      x402Version: 1,
+      error: err.message,
+      details: err.details,
+      support: {
+        traceId: err.traceId,
+        message: "Please contact support with this trace ID" } });
+  }
+
+  if (err instanceof PrismNetworkError) {
+    // Alert ops - Gateway is down
+    alerting.critical("Prism Gateway Unreachable", {
+      error: err.message,
+      originalError: err.originalError?.code });
+
+    return res.status(503).json({
+      x402Version: 1,
+      error: "Payment service temporarily unavailable",
+      retryAfter: 60 });
+  }
+
+  next(err);
+});
+```
+
+#### 2. Retry Logic with Exponential Backoff
+
+```typescript
+import {
+  PrismClient,
+  PrismNetworkError,
+  PrismGatewayError } from "@financedistrict/prism-x402-sdk";
+
+async function makePaymentRequestWithRetry(
+  client: PrismClient,
+  request: any,
+  maxRetries = 3
+) {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await client.getPaymentRequirements(request);
+    } catch (error) {
+      // Retry on network errors
+      if (error instanceof PrismNetworkError) {
+        const delay = 1000 * Math.pow(2, attempt); // 1s, 2s, 4s
+        console.log(
+          `Network error, retrying in ${delay}ms (${attempt + 1}/${maxRetries})`
+        );
+        await sleep(delay);
+        continue;
+      }
+
+      // Retry on Gateway 5xx errors (server issues)
+      if (error instanceof PrismGatewayError && error.statusCode >= 500) {
+        if (attempt < maxRetries - 1) {
+          const delay = 1000 * Math.pow(2, attempt);
+          console.log(
+            `Gateway error ${error.statusCode}, retrying in ${delay}ms`
+          );
+          await sleep(delay);
+          continue;
+        }
+      }
+
+      // Don't retry on 4xx errors (client errors)
+      if (error instanceof PrismGatewayError && error.statusCode < 500) {
+        throw error;
+      }
+
+      throw error;
+    }
+  }
+
+  throw new Error("Max retries exceeded");
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+```
+
+#### 3. User-Friendly Error Messages
+
+```typescript
+import { PrismGatewayError } from "@financedistrict/prism-x402-sdk";
+
+app.use((err, req, res, next) => {
+  if (err instanceof PrismGatewayError) {
+    // Map Gateway errors to user-friendly messages
+    const userMessages: Record<number, string> = {
+      400: "Invalid payment request. Please check your payment details.",
+      401: "Payment authentication failed. Please try again.",
+      403: "Payment not authorized. Please contact support.",
+      404: "Payment resource not found.",
+      500: "Payment service is experiencing issues. Please try again later.",
+      502: "Payment gateway temporarily unavailable.",
+      503: "Payment service under maintenance. Please try again soon." };
+
+    const userMessage =
+      userMessages[err.statusCode] || "Payment processing failed.";
+
+    return res.status(err.statusCode).json({
+      error: userMessage,
+      support: {
+        message:
+          "If the problem persists, contact support with this information:",
+        traceId: err.traceId,
+        timestamp: err.timestamp } });
+  }
+
+  next(err);
+});
+```
+
+#### 4. Error Metrics & Analytics
+
+```typescript
+import { PrismGatewayError, PrismNetworkError } from "@financedistrict/prism-x402-sdk";
+import { Counter, Histogram } from "prom-client";
+
+const paymentErrorCounter = new Counter({
+  name: "prism_payment_errors_total",
+  help: "Total payment errors by type and status",
+  labelNames: ["error_type", "status_code"] });
+
+const gatewayLatency = new Histogram({
+  name: "prism_gateway_latency_seconds",
+  help: "Prism Gateway API latency" });
+
+app.use((err, req, res, next) => {
+  if (err instanceof PrismGatewayError) {
+    paymentErrorCounter.inc({
+      error_type: "gateway",
+      status_code: err.statusCode });
+
+    // Track error by category
+    if (err.statusCode >= 500) {
+      metrics.increment("prism.gateway.server_error");
+    } else if (err.statusCode >= 400) {
+      metrics.increment("prism.gateway.client_error");
+    }
+  }
+
+  if (err instanceof PrismNetworkError) {
+    paymentErrorCounter.inc({
+      error_type: "network",
+      status_code: 503 });
+    metrics.increment("prism.gateway.unreachable");
+  }
+
+  next(err);
+});
+```
+
+### Debugging with Trace IDs
+
+When reporting issues to Prism support, always include the **trace ID** from error responses:
+
+```typescript
+// Extract trace ID from error response
+app.get("/api/paid", async (req, res) => {
+  try {
+    // ... payment logic
+  } catch (error) {
+    if (error instanceof PrismGatewayError) {
+      console.error("Payment failed", {
+        traceId: error.traceId, // ← Include in bug reports
+        timestamp: error.timestamp,
+        statusCode: error.statusCode,
+        message: error.message });
+
+      // Return trace ID to client for support tickets
+      return res.status(error.statusCode).json({
+        error: "Payment processing failed",
+        supportInfo: {
+          traceId: error.traceId,
+          message: "Please contact support with this trace ID" } });
+    }
+  }
+});
+```
+
+**Example support ticket:**
+
+```
+Subject: Payment Gateway Error - 500 Internal Server Error
+
+Gateway Trace ID: 0HNGT483NH6I8:00000001
+Timestamp: 2025-11-06T13:13:00.2646107Z
+Endpoint: POST /api/v1/payment/requirements
+Error: "42703: column p.ProviderId does not exist"
+```
+
+## Advanced Usage
+
+### Environment-Based Configuration
+
+```typescript
+const config = {
+  apiKey: process.env.PRISM_API_KEY };
+
+app.use(prismPaymentMiddleware(config, routes));
+```
+
+**.env.development:**
+
+```bash
+PRISM_API_KEY=dev-key-123
+NODE_ENV=development
+```
+
+**.env.production:**
+
+```bash
+PRISM_API_KEY=prod-key-456
+NODE_ENV=production
+```
+
+### Accessing Payment Details
+
+After successful payment verification, payment details are available in `res.locals`:
+
+```typescript
+app.get("/api/premium", (req, res) => {
+  // Payment payload (decoded from X-PAYMENT header)
+  const payment = res.locals.payment;
+
+  // Payer wallet address (from verification)
+  const payerAddress = res.locals.payer;
+
+  console.log("Payment received from:", payerAddress);
+  console.log("Payment scheme:", payment.scheme);
+  console.log("Network:", payment.network);
+
+  res.json({
+    data: "Premium content",
+    paidBy: payerAddress });
+});
+```
+
+### Rate Limiting with Payments
+
+Combine with rate limiting for hybrid monetization:
+
+```typescript
+import rateLimit from "express-rate-limit";
+
+// Free tier: 100 requests/hour
+const freeLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 100,
+  message: "Free tier limit reached. Please upgrade or pay per request." });
+
+app.use("/api/free", freeLimiter);
+
+// Paid tier: No rate limit, but requires payment
+app.use(
+  "/api/paid",
+  prismPaymentMiddleware(config, {
+    "/api/paid/*": { price: 0.001 } })
+);
+```
+
+## TypeScript Support
+
+### Full Type Definitions
+
+```typescript
+import {
+  prismPaymentMiddleware,
+  PrismMiddlewareConfig,
+  RoutePaymentConfig,
+  PaymentInfo,
+  PrismError } from "@financedistrict/prism-x402-sdk-express";
+
+// Type-safe configuration
+const config: PrismMiddlewareConfig = {
+  apiKey: process.env.PRISM_API_KEY!,
+  timeout: 15000 };
+
+const routes: Record<string, RoutePaymentConfig> = {
+  "/api/data": {
+    price: 0.001,
+    description: "Data access" } };
+
+// Type-safe middleware
+app.use(prismPaymentMiddleware(config, routes));
+
+// Type-safe payment info
+app.get("/api/data", (req, res) => {
+  const payment: PaymentInfo | undefined = res.locals.payment;
+
+  if (payment) {
+    console.log(`Paid ${payment.amount} on ${payment.network}`);
+  }
+
+  res.json({ data: "Content" });
+});
+```
+
+### Express Types Extension
+
+Add types to `res.locals`:
+
+```typescript
+// types/express.d.ts
+import { PaymentInfo } from "@financedistrict/prism-x402-sdk-express";
+
+declare global {
+  namespace Express {
+    interface Locals {
+      payment?: PaymentInfo;
+      prismPrice?: number;
+    }
+  }
+}
+```
+
+## Testing
+
+### Unit Tests
+
+```typescript
+import request from "supertest";
+import express from "express";
+import { prismPaymentMiddleware } from "@financedistrict/prism-x402-sdk-express";
+
+describe("Prism Payment Middleware", () => {
+  let app: express.Application;
+
+  beforeEach(() => {
+    app = express();
+    app.use(
+      prismPaymentMiddleware(
+        { apiKey: "test-key" },
+        { "/api/paid": { price: 0.01 } }
+      )
+    );
+
+    app.get("/api/paid", (req, res) => {
+      res.json({ data: "content" });
+    });
+  });
+
+  it("should return 402 for unpaid request", async () => {
+    const res = await request(app).get("/api/paid");
+
+    expect(res.status).toBe(402);
+    expect(res.headers["x-payment"]).toBeDefined();
+  });
+
+  it("should allow request with valid payment", async () => {
+    const paymentHeader = generateValidPayment();
+
+    const res = await request(app)
+      .get("/api/paid")
+      .set("X-PAYMENT-AUTHORIZATION", paymentHeader);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toBe("content");
+  });
+});
+```
+
+### Integration Tests with Sandbox
+
+```typescript
+import { ethers } from "ethers";
+
+describe("Payment Flow Integration", () => {
+  it("should complete full payment cycle", async () => {
+    // 1. Request protected resource
+    const res1 = await request(app).get("/api/paid");
+    expect(res1.status).toBe(402);
+
+    // 2. Parse payment requirements
+    const payment = JSON.parse(res1.headers["x-payment"]);
+
+    // 3. Sign authorization (with test wallet)
+    const wallet = new ethers.Wallet(process.env.TEST_PRIVATE_KEY!);
+    const signature = await wallet.signTypedData(
+      payment.typedData.domain,
+      {
+        TransferWithAuthorization:
+          payment.typedData.types.TransferWithAuthorization },
+      payment.typedData.message
+    );
+
+    // 4. Retry with signature
+    const res2 = await request(app)
+      .get("/api/paid")
+      .set(
+        "X-PAYMENT-AUTHORIZATION",
+        JSON.stringify({
+          signature,
+          ...payment.typedData.message })
+      );
+
+    expect(res2.status).toBe(200);
+    expect(res2.body.data).toBe("content");
+  });
+});
+```
+
+## Performance Optimization
+
+### Caching Payment Requirements
+
+```typescript
+import NodeCache from "node-cache";
+
+const cache = new NodeCache({ stdTTL: 300 }); // 5 minutes
+
+app.use((req, res, next) => {
+  const cacheKey = `payment:${req.path}`;
+  const cached = cache.get(cacheKey);
+
+  if (cached) {
+    res.set("X-PAYMENT", JSON.stringify(cached));
+    return res.status(402).json({ error: "Payment required" });
+  }
+
+  next();
+});
+
+app.use(prismPaymentMiddleware(config, routes));
+```
+
+### Connection Pooling
+
+```typescript
+const config = {
+  apiKey: process.env.PRISM_API_KEY,
+  timeout: 5000,
+  retries: 2,
+  // Use HTTP keep-alive
+  httpAgent: new http.Agent({ keepAlive: true }),
+  httpsAgent: new https.Agent({ keepAlive: true }) };
+```
+
+## Migration Guide
+
+### From v0.x to v1.x
+
+<Steps>
+  <Step title="Update Package">
+    ```bash
+    npm install @financedistrict/prism-x402-sdk-express@latest
+    ```
+  </Step>
+  
+  <Step title="Update Import">
+    ```typescript
+    // Old
+    import { prismMiddleware } from '@prism/middleware';
+    
+    // New
+    import { prismPaymentMiddleware } from '@financedistrict/prism-x402-sdk-express';
+    ```
+  </Step>
+  
+  <Step title="Update Configuration">
+    ```typescript
+    // Old
+    prismMiddleware({ key: 'xxx', sandbox: true }, routes)
+    
+    // New
+    prismPaymentMiddleware({ apiKey: 'xxx' }, routes)
+    ```
+  </Step>
+</Steps>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion icon="circle-question" title="402 responses not working">
+    **Symptoms:** Routes always return 200, no payment required
+    
+    **Solutions:**
+    - Verify middleware is registered **before** route handlers
+    - Check route paths match exactly (case-sensitive)
+    - Ensure `apiKey` is valid
+    - Check Gateway connectivity (`curl https://prism-gw.test.1stdigital.tech/health`)
+  </Accordion>
+  
+  <Accordion icon="clock" title="Gateway timeout errors">
+    **Symptoms:** `503 Service Unavailable` or `PrismNetworkError`
+    
+    **Solutions:**
+    - Check network connectivity to Gateway
+    - Verify no firewall blocking outbound HTTPS to `prism-gw.test.1stdigital.tech`
+    - Check Gateway status page
+    - Implement retry logic (see Error Handling section)
+    
+    **Example:**
+    ```typescript
+    import { PrismNetworkError } from '@financedistrict/prism-x402-sdk';
+    
+    if (error instanceof PrismNetworkError) {
+      console.error('Gateway unreachable:', error.message);
+      // Retry or alert ops team
+    }
+    ```
+  </Accordion>
+  
+  <Accordion icon="key" title="Invalid API key errors">
+    **Symptoms:** `401 Unauthorized` or `PrismGatewayError` with status 401
+    
+    **Solutions:**
+    - Verify API key in [Client Portal](https://prism.1stdigital.tech)
+    - Check environment variable: `echo $PRISM_API_KEY`
+    - Ensure key hasn't been revoked
+    - Use correct environment (sandbox vs production)
+    
+    **Check error details:**
+    ```typescript
+    if (error instanceof PrismGatewayError && error.statusCode === 401) {
+      console.error('Auth error:', {
+        traceId: error.traceId,
+        details: error.details
+      });
+    }
+    ```
+  </Accordion>
+  
+  <Accordion icon="server" title="Gateway 500 errors with trace ID">
+    **Symptoms:** `PrismGatewayError` with status 500 and trace ID
+    
+    **Solutions:**
+    - **This is a Gateway backend issue** - not your code
+    - Extract and log the `traceId` from error
+    - Report to Prism support with trace ID
+    
+    **Example:**
+    ```typescript
+    if (error instanceof PrismGatewayError && error.statusCode >= 500) {
+      console.error('Gateway internal error:', {
+        traceId: error.traceId,      // ← Include in support ticket
+        timestamp: error.timestamp,
+        details: error.details
+      });
+      
+      // Alert ops to contact Prism support
+      alertOps(`Gateway error - Trace ID: ${error.traceId}`);
+    }
+    ```
+  </Accordion>
+  
+  <Accordion icon="code" title="TypeScript compilation errors">
+    **Symptoms:** Type errors during build
+    
+    **Solutions:**
+    - Install type definitions: `npm install -D @types/express`
+    - Update `tsconfig.json`: `"moduleResolution": "node"`
+    - Ensure TypeScript version >= 4.5
+  </Accordion>
+</AccordionGroup>
+
+## API Reference
+
+### `prismPaymentMiddleware(config, routes)`
+
+Creates Express middleware for x402 payment protection.
+
+**Parameters:**
+
+- `config` (PrismMiddlewareConfig) - Global configuration
+- `routes` (Record&lt;string, RoutePaymentConfig&gt;) - Route payment settings
+
+**Returns:** Express middleware function
+
+**Example:**
+
+```typescript
+const middleware = prismPaymentMiddleware(
+  { apiKey: "key" },
+  { "/api/paid": { price: 0.01 } }
+);
+
+app.use(middleware);
+```
+
+### Error Classes
+
+#### `PrismError` (Base Class)
+
+Base error class for all Prism SDK errors.
+
+**Properties:**
+
+- `message` (string) - Error message
+- `code` (string) - Error code (e.g., 'GATEWAY_ERROR', 'NETWORK_ERROR')
+- `statusCode` (number) - HTTP status code
+- `details` (any) - Additional error context
+
+**Methods:**
+
+- `toJSON()` - Convert error to JSON representation
+
+**Example:**
+
+```typescript
+import { PrismError } from "@financedistrict/prism-x402-sdk";
+
+if (error instanceof PrismError) {
+  console.log(error.code); // 'GATEWAY_ERROR'
+  console.log(error.statusCode); // 500
+  console.log(error.toJSON()); // { name, message, code, statusCode, details }
+}
+```
+
+#### `PrismGatewayError extends PrismError`
+
+Gateway returned an error response (4xx or 5xx).
+
+**Additional Properties:**
+
+- `traceId` (string | undefined) - Gateway trace ID for debugging
+- `timestamp` (string | undefined) - ISO 8601 timestamp from Gateway
+
+**Example:**
+
+```typescript
+import { PrismGatewayError } from "@financedistrict/prism-x402-sdk";
+
+app.use((err, req, res, next) => {
+  if (err instanceof PrismGatewayError) {
+    logger.error("Gateway error", {
+      traceId: err.traceId,
+      statusCode: err.statusCode,
+      message: err.message,
+      details: err.details });
+  }
+});
+```
+
+#### `PrismNetworkError extends PrismError`
+
+Network connectivity issues (timeout, DNS error, connection refused).
+
+**Additional Properties:**
+
+- `originalError` (any) - Original network error from axios
+
+**Status Code:** Always 503
+
+**Example:**
+
+```typescript
+import { PrismNetworkError } from "@financedistrict/prism-x402-sdk";
+
+if (error instanceof PrismNetworkError) {
+  console.log("Gateway unreachable:", error.message);
+  console.log("Original error:", error.originalError);
+  // Implement retry logic or alert ops
+}
+```
+
+#### `PrismConfigError extends PrismError`
+
+SDK misconfiguration (invalid API key format, bad URL, etc.).
+
+**Status Code:** Always 500
+
+**Example:**
+
+```typescript
+import { PrismConfigError } from "@financedistrict/prism-x402-sdk";
+
+if (error instanceof PrismConfigError) {
+  // Developer/ops issue - fix configuration
+  alertDevs("Prism SDK misconfigured: " + error.message);
+}
+```
+
+#### `PrismPaymentError extends PrismError`
+
+Invalid payment payload or authorization.
+
+**Status Code:** Always 402
+
+**Example:**
+
+```typescript
+import { PrismPaymentError } from "@financedistrict/prism-x402-sdk";
+
+if (error instanceof PrismPaymentError) {
+  // Client sent invalid payment
+  return res.status(402).json({
+    error: error.message,
+    details: error.details });
+}
+```
+
+#### `PrismValidationError extends PrismError`
+
+Request validation failed.
+
+**Additional Properties:**
+
+- `field` (string | undefined) - Field that failed validation
+
+**Status Code:** Always 400
+
+**Example:**
+
+```typescript
+import { PrismValidationError } from "@financedistrict/prism-x402-sdk";
+
+if (error instanceof PrismValidationError) {
+  return res.status(400).json({
+    error: "Validation failed",
+    field: error.field,
+    message: error.message });
+}
+```
+
+### Error Codes
+
+| Code               | Error Class          | Description                      |
+| ------------------ | -------------------- | -------------------------------- |
+| `GATEWAY_ERROR`    | PrismGatewayError    | Gateway returned error (4xx/5xx) |
+| `NETWORK_ERROR`    | PrismNetworkError    | Cannot reach Gateway             |
+| `CONFIG_ERROR`     | PrismConfigError     | Invalid SDK configuration        |
+| `PAYMENT_ERROR`    | PrismPaymentError    | Invalid payment                  |
+| `VALIDATION_ERROR` | PrismValidationError | Request validation failed        |
+| `UNKNOWN_ERROR`    | PrismError           | Unclassified error               |
+
+## Resources
+
+<CardGroup cols={2}>
+  <Card
+    title="GitHub Repository"
+    icon="github"
+    href="https://github.com/1stdigital/fd-prism-sdk/tree/master/typescript"
+  >
+    View source code and examples
+  </Card>
+
+<Card
+  title="npm Package"
+  icon="npm"
+  href="https://github.com/1stdigital/fd-prism-sdk/packages"
+>
+  Package on GitHub Packages
+</Card>
+
+<Card title="API Reference" icon="book" href="/api-reference/introduction">
+  Prism Gateway REST API docs
+</Card>
+
+  <Card
+    title="Examples"
+    icon="code"
+    href="https://github.com/1stdigital/fd-prism-sdk/tree/master/typescript/examples"
+  >
+    Complete code examples
+  </Card>
+</CardGroup>
+
+## What's Next?
+
+<CardGroup cols={2}>
+  <Card title="Quick Start Guide" icon="rocket" href="/quickstart">
+    5-minute integration tutorial
+  </Card>
+
+<Card title="Testing Guide" icon="vial" href="/guides/testing">
+  Test with sandbox environment
+</Card>
+
+<Card
+  title="Production Deployment"
+  icon="server"
+  href="/guides/production-deployment"
+>
+  Production best practices
+</Card>
+
+  <Card
+    title="System Overview"
+    icon="diagram-project"
+    href="/concepts/system-overview"
+  >
+    Understand Prism architecture
+  </Card>
+</CardGroup>

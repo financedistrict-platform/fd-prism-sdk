@@ -1,0 +1,25 @@
+# Source files
+src/
+tsconfig.json
+jest.config.js
+
+# Tests
+**/*.test.ts
+**/*.spec.ts
+TESTING.md
+
+# Examples
+examples/
+
+# Documentation
+PROJECT_SUMMARY.md
+README.md
+
+# Build artifacts
+node_modules/
+*.log
+.DS_Store
+
+# Git
+.git/
+.gitignore

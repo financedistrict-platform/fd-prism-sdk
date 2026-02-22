@@ -1,0 +1,45 @@
+{
+  "name": "@financedistrict/prism-x402-sdk-fastify",
+  "version": "1.1.0",
+  "description": "Prism SDK - Fastify plugin",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "keywords": [
+    "prism",
+    "payment",
+    "x402",
+    "fastify",
+    "plugin",
+    "eip3009"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "clean": "rimraf dist",
+    "dev": "tsc --watch",
+    "test": "jest --passWithNoTests"
+  },
+  "dependencies": {
+    "@financedistrict/prism-x402-sdk": "^2.0.2",
+    "fastify-plugin": "^4.5.0"
+  },
+  "peerDependencies": {
+    "fastify": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "fastify": "^4.25.0",
+    "fastify-plugin": "^4.5.0",
+    "rimraf": "^5.0.5",
+    "typescript": "^5.3.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/1stdigital/fd-prism-sdk.git",
+    "directory": "typescript/packages/fastify"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "license": "MIT",
+  "author": "Finance District"
+}

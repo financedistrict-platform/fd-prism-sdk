@@ -1,0 +1,342 @@
+---
+title: "Fastify Integration"
+description: "Protect Fastify APIs with blockchain micropayments"
+icon: "bolt"
+---
+
+## Overview
+
+The **@financedistrict/prism-x402-sdk-fastify** package provides a Fastify plugin for payment-protecting your API routes using the x402 protocol. It leverages Fastify's hook system for high-performance payment validation.
+
+<CardGroup cols={3}>
+  <Card title="High Performance" icon="bolt">
+    Fastify's async hooks for minimal overhead
+  </Card>
+  
+  <Card title="Plugin Architecture" icon="puzzle-piece">
+    Standard Fastify plugin pattern
+  </Card>
+
+  <Card title="Type Safe" icon="shield-check">
+    Full TypeScript support with decorators
+  </Card>
+</CardGroup>
+
+---
+
+## Installation
+
+<Tabs>
+  <Tab title="npm">
+    ```bash
+    npm install @financedistrict/prism-x402-sdk-fastify fastify
+    ```
+  </Tab>
+
+{" "}
+<Tab title="yarn">```bash yarn add @financedistrict/prism-x402-sdk-fastify fastify ```</Tab>
+
+  <Tab title="pnpm">
+    ```bash
+    pnpm add @financedistrict/prism-x402-sdk-fastify fastify
+    ```
+  </Tab>
+</Tabs>
+
+---
+
+## Quick Start
+
+```typescript
+import Fastify from "fastify";
+import prismPlugin from "@financedistrict/prism-x402-sdk-fastify";
+
+const app = Fastify({ logger: true });
+
+// Register Prism plugin
+await app.register(prismPlugin, {
+  apiKey: process.env.PRISM_API_KEY || "dev-key-123",
+  baseUrl: "https://prism-gw.test.1stdigital.tech",
+  routes: {
+    "/api/premium": {
+      price: 0.01, // $0.01 USD
+      description: "Premium API access",
+    },
+  },
+});
+
+// Protected route - payment verified automatically
+app.get("/api/premium", async (request, reply) => {
+  return {
+    message: "Premium content!",
+    payer: request.prismPayer, // Wallet address
+  };
+});
+
+await app.listen({ port: 3000 });
+```
+
+---
+
+## Configuration
+
+### Plugin Options
+
+```typescript
+interface PrismFastifyOptions {
+  apiKey: string; // Your Prism API key
+  baseUrl?: string; // Gateway URL (optional)
+  debug?: boolean; // Enable debug logging
+  routes: Record<string, RoutePaymentConfig>;
+}
+
+interface RoutePaymentConfig {
+  price: number | string; // Price in USD
+  description: string; // Human-readable description
+  mimeType?: string; // Response MIME type
+}
+```
+
+---
+
+## Route Protection
+
+### Plugin Registration
+
+```typescript
+await app.register(prismPlugin, {
+  apiKey: "your-api-key",
+  routes: {
+    "/api/premium": {
+      price: 0.01,
+      description: "Premium API",
+    },
+    "/api/weather": {
+      price: "$0.001",
+      description: "Weather data",
+    },
+    "/api/data/*": {
+      price: 0.005,
+      description: "Data API (wildcard)",
+    },
+  },
+});
+```
+
+---
+
+## Accessing Payment Info
+
+Payment info is added to the request object:
+
+```typescript
+app.get("/api/premium", async (request, reply) => {
+  // Access payer wallet address
+  const payer = request.prismPayer;
+  // '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb'
+
+  // Access full payment object
+  const payment = request.prismPayment;
+  /*
+  {
+    scheme: 'eip3009',
+    network: 'eth-sepolia',
+    asset: 'usdc',
+    amount: '10000',
+    signature: '0x...'
+  }
+  */
+
+  return {
+    message: "Premium content",
+    payer,
+    network: payment?.network,
+  };
+});
+```
+
+---
+
+## Settlement Validation
+
+Fastify uses the **onSend hook** to validate settlement before sending data:
+
+```typescript
+// Internal implementation (automatic!)
+fastify.addHook('onSend', async (request, reply, payload) => {
+  const settlementResult = await core.settlementCallback(...);
+
+  if (!settlementResult || !settlementResult.success) {
+    // ❌ Settlement failed - replace payload
+    reply.code(402);
+    reply.header('Content-Type', 'application/json');
+    return JSON.stringify({
+      error: 'Payment settlement failed',
+      details: settlementResult?.errorReason
+    });
+  }
+
+  // ✅ Settlement succeeded - add header and return payload
+  reply.header('X-PAYMENT-RESPONSE', settlementResult.transaction);
+  return payload;
+});
+```
+
+See [Settlement Validation](/concepts/settlement-validation) for details.
+
+---
+
+## TypeScript Support
+
+Extend Fastify types for payment properties:
+
+```typescript
+import "fastify";
+
+declare module "fastify" {
+  interface FastifyRequest {
+    prismPayer?: string;
+    prismPayment?: {
+      scheme: string;
+      network: string;
+      asset: string;
+      amount: string;
+      signature: string;
+    };
+  }
+}
+
+// Now TypeScript knows about payment properties
+app.get("/api/data", async (request, reply) => {
+  const payer: string | undefined = request.prismPayer; // Type-safe!
+  return { data: [1, 2, 3], payer };
+});
+```
+
+---
+
+## Testing
+
+```typescript
+import { test } from "tap";
+import Fastify from "fastify";
+import prismPlugin from "@financedistrict/prism-x402-sdk-fastify";
+
+test("payment required without header", async (t) => {
+  const app = Fastify();
+
+  await app.register(prismPlugin, {
+    apiKey: "test-key",
+    routes: {
+      "/api/premium": { price: 0.01, description: "Test" },
+    },
+  });
+
+  app.get("/api/premium", async () => ({ message: "Premium" }));
+
+  const response = await app.inject({
+    method: "GET",
+    url: "/api/premium",
+  });
+
+  t.equal(response.statusCode, 402);
+  t.ok(response.json().paymentRequired);
+});
+
+test("access granted with valid payment", async (t) => {
+  const app = Fastify();
+
+  await app.register(prismPlugin, {
+    apiKey: "test-key",
+    routes: {
+      "/api/premium": { price: 0.01, description: "Test" },
+    },
+  });
+
+  app.get("/api/premium", async (request) => ({
+    message: "Premium",
+    payer: request.prismPayer,
+  }));
+
+  const payment = JSON.stringify({
+    scheme: "eip3009",
+    signature: "0x" + "0".repeat(130),
+  });
+
+  const response = await app.inject({
+    method: "GET",
+    url: "/api/premium",
+    headers: { "X-PAYMENT": payment },
+  });
+
+  t.equal(response.statusCode, 200);
+  t.equal(response.json().message, "Premium");
+});
+```
+
+---
+
+## Production Deployment
+
+```typescript
+import Fastify from "fastify";
+import prismPlugin from "@financedistrict/prism-x402-sdk-fastify";
+
+const app = Fastify({
+  logger: {
+    level: process.env.LOG_LEVEL || "info",
+  },
+});
+
+await app.register(prismPlugin, {
+  apiKey: process.env.PRISM_API_KEY!,
+  baseUrl: process.env.PRISM_BASE_URL,
+  debug: process.env.NODE_ENV !== "production",
+  routes: {
+    "/api/premium": {
+      price: 0.01,
+      description: "Premium API",
+    },
+  },
+});
+
+// Start server
+await app.listen({
+  port: parseInt(process.env.PORT || "3000"),
+  host: "0.0.0.0",
+});
+```
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Settlement Validation"
+    icon="shield-check"
+    href="/concepts/settlement-validation"
+  >
+    How Fastify prevents data leakage with onSend hook
+  </Card>
+
+  <Card
+    title="Express Integration"
+    icon="node-js"
+    href="/sdk/typescript/express"
+  >
+    Compare with Express.js implementation
+  </Card>
+
+  <Card title="Testing Guide" icon="flask" href="/guides/testing">
+    Test Fastify + Prism with tap or jest
+  </Card>
+
+  <Card
+    title="Production Deployment"
+    icon="rocket"
+    href="/guides/production-deployment"
+  >
+    Deploy Fastify + Prism to production
+  </Card>
+</CardGroup>

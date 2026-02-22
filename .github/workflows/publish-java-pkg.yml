@@ -1,0 +1,211 @@
+name: Publish Java Packages
+
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: "Package to publish"
+        required: true
+        type: choice
+        options:
+          - all
+          - core
+          - servlet
+          - spring-boot-starter
+      version_bump:
+        description: "Version bump type"
+        required: false
+        default: "patch"
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  publish:
+    runs-on: [self-hosted, linux, arm64]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup JDK 11
+        uses: actions/setup-java@v4
+        with:
+          java-version: "11"
+          distribution: "temurin"
+          server-id: github
+          server-username: MAVEN_USERNAME
+          server-password: MAVEN_TOKEN
+      - name: Install Maven
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y maven
+          mvn --version
+      - name: Build with Maven
+        run: mvn clean compile
+        working-directory: java
+
+      - name: Run tests
+        run: mvn test
+        working-directory: java
+        continue-on-error: true
+
+      - name: Configure Git
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+
+      - name: Determine Version Bump
+        if: github.event.inputs.version_bump != ''
+        id: version_calc
+        run: |
+          CURRENT_VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout 2>/dev/null | tail -n 1)
+          echo "Current version: $CURRENT_VERSION"
+          echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+
+          VERSION_NO_SNAPSHOT="${CURRENT_VERSION%-SNAPSHOT}"
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION_NO_SNAPSHOT"
+
+          echo "Parsed: MAJOR=$MAJOR MINOR=$MINOR PATCH=$PATCH"
+
+          case "${{ github.event.inputs.version_bump }}" in
+            major)
+              NEW_VERSION="$((MAJOR+1)).0.0-SNAPSHOT"
+              ;;
+            minor)
+              NEW_VERSION="${MAJOR}.$((MINOR+1)).0-SNAPSHOT"
+              ;;
+            patch)
+              NEW_VERSION="${MAJOR}.${MINOR}.$((PATCH+1))-SNAPSHOT"
+              ;;
+          esac
+
+          echo "New version: $NEW_VERSION"
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+        working-directory: java
+
+      - name: Bump Maven Version
+        if: github.event.inputs.version_bump != ''
+        run: |
+          mvn versions:set -DnewVersion=${{ steps.version_calc.outputs.new_version }} -DgenerateBackupPoms=false
+        working-directory: java
+
+      - name: Commit version changes
+        if: github.event.inputs.version_bump != ''
+        run: |
+          git add -A
+          git commit -m "chore: bump Java ${{ github.event.inputs.package }} package(s) to ${{ github.event.inputs.version_bump }}" || echo "No changes to commit"
+          git push origin HEAD:${{ github.ref_name }}
+
+      - name: Package JARs
+        run: mvn clean package -DskipTests
+        working-directory: java
+
+      - name: Deploy Core Package
+        if: github.event.inputs.package == 'all' || github.event.inputs.package == 'core'
+        run: mvn deploy -DskipTests -pl core
+        working-directory: java
+        env:
+          MAVEN_USERNAME: ${{ github.actor }}
+          MAVEN_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Deploy Servlet Package
+        if: github.event.inputs.package == 'all' || github.event.inputs.package == 'servlet'
+        run: mvn deploy -DskipTests -pl servlet
+        working-directory: java
+        env:
+          MAVEN_USERNAME: ${{ github.actor }}
+          MAVEN_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Deploy Spring Boot Starter
+        if: github.event.inputs.package == 'all' || github.event.inputs.package == 'spring-boot-starter'
+        run: mvn deploy -DskipTests -pl spring-boot-starter
+        working-directory: java
+        env:
+          MAVEN_USERNAME: ${{ github.actor }}
+          MAVEN_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get Package Version
+        if: github.event.inputs.version_bump != ''
+        id: package_version
+        run: |
+          PACKAGE="${{ github.event.inputs.package }}"
+          if [ "$PACKAGE" = "all" ]; then
+            PACKAGE="core"
+          fi
+          VERSION="${{ steps.version_calc.outputs.new_version }}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "package_name=$PACKAGE" >> $GITHUB_OUTPUT
+        working-directory: java
+
+      - name: Create Git Tag
+        if: github.event.inputs.version_bump != ''
+        run: |
+          TAG="java-${{ steps.package_version.outputs.package_name }}-v${{ steps.package_version.outputs.version }}"
+          git tag $TAG
+          git push origin $TAG
+
+      - name: Create Release
+        if: github.event.inputs.version_bump != ''
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: java-${{ steps.package_version.outputs.package_name }}-v${{ steps.package_version.outputs.version }}
+          release_name: Prism SDK - prism-sdk-${{ steps.package_version.outputs.package_name }} v${{ steps.package_version.outputs.version }} (Java)
+          body: |
+            ## Java Package Release: prism-sdk-${{ steps.package_version.outputs.package_name }}
+
+            ### Version: **v${{ steps.package_version.outputs.version }}**
+            ### Scope: **${{ github.event.inputs.package }}**
+
+            ${{ github.event.inputs.package == 'all' && '#### All Java Packages Published:
+            - **prism-sdk-core** - Core client library
+            - **prism-sdk-servlet** - Generic servlet filter
+            - **prism-spring-boot-starter** - Spring Boot auto-configuration' || '' }}
+
+            ${{ github.event.inputs.package == 'core' && '#### Core Package:
+            - **prism-sdk-core** - Core client library with PrismClient, PrismMiddleware, and configuration
+
+            This is the foundational package that all framework packages depend on.' || '' }}
+
+            ${{ github.event.inputs.package == 'servlet' && '#### Servlet Filter:
+            - **prism-sdk-servlet** - Generic servlet filter for Prism payment protocol
+
+            Works with any servlet-based Java application (Tomcat, Jetty, etc.).' || '' }}
+
+            ${{ github.event.inputs.package == 'spring-boot-starter' && '#### Spring Boot Starter:
+            - **prism-spring-boot-starter** - Spring Boot auto-configuration for Prism SDK
+
+            Zero-code configuration via application.properties.' || '' }}
+
+            ### Installation (Maven)
+            ```xml
+            <dependency>
+                <groupId>org.fdtech.prism</groupId>
+                <artifactId>prism-sdk-${{ steps.package_version.outputs.package_name }}</artifactId>
+                <version>${{ steps.package_version.outputs.version }}</version>
+            </dependency>
+            ```
+
+            ### Installation (Gradle)
+            ```groovy
+            implementation 'org.fdtech.prism:prism-sdk-${{ steps.package_version.outputs.package_name }}:${{ steps.package_version.outputs.version }}'
+            ```
+
+            ### What's Changed
+            - Version bump: **${{ github.event.inputs.version_bump }}**
+            - Branch: **${{ github.ref_name }}**
+
+            See [documentation](https://github.com/1stdigital/fd-prism-sdk/tree/master/java) for usage details.
+          draft: false
+          prerelease: false

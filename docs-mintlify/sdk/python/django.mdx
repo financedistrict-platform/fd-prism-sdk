@@ -1,0 +1,424 @@
+---
+title: "Django Integration"
+description: "Protect Django views with blockchain micropayments"
+icon: "d"
+---
+
+## Overview
+
+The **prism-django** package provides middleware for Django applications, integrating seamlessly with Django's request/response cycle and middleware stack.
+
+<CardGroup cols={3}>
+  <Card title="Middleware-Based" icon="layer-group">
+    Integrates with Django middleware stack
+  </Card>
+  
+  <Card title="ORM Compatible" icon="database">
+    Works with Django ORM and models
+  </Card>
+
+  <Card title="Admin Support" icon="user-shield">
+    Compatible with Django Admin
+  </Card>
+</CardGroup>
+
+---
+
+## Installation
+
+<Tabs>
+  <Tab title="pip">
+    ```bash
+    pip install prism-django django
+    ```
+  </Tab>
+
+{" "}
+<Tab title="poetry">```bash poetry add prism-django django ```</Tab>
+
+  <Tab title="requirements.txt">
+    ```
+    prism-django>=1.0.0
+    django>=4.2.0
+    ```
+  </Tab>
+</Tabs>
+
+---
+
+## Quick Start
+
+```python
+# settings.py
+MIDDLEWARE = [
+    'django.middleware.security.SecurityMiddleware',
+    'django.contrib.sessions.middleware.SessionMiddleware',
+    'django.middleware.common.CommonMiddleware',
+    'django.middleware.csrf.CsrfViewMiddleware',
+    'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'django.contrib.messages.middleware.MessageMiddleware',
+    'django.middleware.clickjacking.XFrameOptionsMiddleware',
+
+    # Add Prism middleware
+    'prism_django.middleware.PrismPaymentMiddleware',
+]
+
+# Prism configuration
+PRISM_CONFIG = {
+    'API_KEY': 'dev-key-123',
+    'BASE_URL': 'https://prism-gw.test.1stdigital.tech',
+    'DEBUG': True,
+    'ROUTES': {
+        '/api/premium/': {
+            'price': 0.01,  # $0.01 USD
+            'description': 'Premium API'
+        }
+    }
+}
+
+# views.py
+from django.http import JsonResponse
+
+def premium_view(request):
+    # Access payer address
+    payer = getattr(request, 'prism_payer', None)
+
+    return JsonResponse({
+        'message': 'Premium content',
+        'payer': payer
+    })
+
+# urls.py
+from django.urls import path
+from . import views
+
+urlpatterns = [
+    path('api/premium/', views.premium_view),
+]
+```
+
+---
+
+## Configuration
+
+### Settings.py
+
+```python
+PRISM_CONFIG = {
+    'API_KEY': 'your-api-key',
+    'BASE_URL': 'https://prism-gateway.com',
+    'DEBUG': False,
+    'ROUTES': {
+        '/api/premium/': {
+            'price': 0.01,
+            'description': 'Premium API'
+        },
+        '/api/weather/': {
+            'price': 0.001,
+            'description': 'Weather data'
+        },
+        '/api/data/*': {
+            'price': 0.005,
+            'description': 'Data API (wildcard)'
+        }
+    }
+}
+```
+
+---
+
+## Route Protection
+
+### URL Patterns
+
+```python
+# urls.py
+from django.urls import path
+from . import views
+
+urlpatterns = [
+    # Protected routes (configured in PRISM_CONFIG)
+    path('api/premium/', views.premium_view),
+    path('api/weather/', views.weather_view),
+
+    # Free routes (not in PRISM_CONFIG)
+    path('api/free/', views.free_view),
+]
+```
+
+---
+
+## Accessing Payment Info
+
+```python
+from django.http import JsonResponse
+
+def premium_view(request):
+    # Access payer address
+    payer = getattr(request, 'prism_payer', None)
+    # '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb'
+
+    # Access payment object
+    payment = getattr(request, 'prism_payment', None)
+
+    if payment:
+        return JsonResponse({
+            'message': 'Premium data',
+            'payer': payer,
+            'network': payment.get('network'),
+            'asset': payment.get('asset')
+        })
+
+    return JsonResponse({'message': 'No payment info'})
+```
+
+---
+
+## Settlement Validation
+
+Django middleware intercepts responses to validate settlement:
+
+```python
+# Internal implementation (automatic!)
+class PrismPaymentMiddleware:
+    def process_response(self, request, response):
+        # Validate settlement
+        settlement_result = core.settlement_callback(...)
+
+        if not settlement_result or not settlement_result.get("success"):
+            # ❌ Settlement failed
+            return JsonResponse(
+                {
+                    'error': 'Payment settlement failed',
+                    'details': settlement_result.get('errorReason')
+                },
+                status=402
+            )
+
+        # ✅ Settlement succeeded
+        response['X-PAYMENT-RESPONSE'] = settlement_result['transaction']
+        return response
+```
+
+---
+
+## Class-Based Views
+
+```python
+from django.views import View
+from django.http import JsonResponse
+
+class PremiumAPIView(View):
+    def get(self, request):
+        payer = getattr(request, 'prism_payer', None)
+
+        return JsonResponse({
+            'message': 'Premium content',
+            'payer': payer
+        })
+
+    def post(self, request):
+        payer = getattr(request, 'prism_payer', None)
+
+        # Process POST data
+        data = request.POST
+
+        return JsonResponse({
+            'message': 'Data received',
+            'payer': payer,
+            'data': dict(data)
+        })
+```
+
+---
+
+## Django REST Framework
+
+```python
+# views.py
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+
+class PremiumAPIView(APIView):
+    def get(self, request):
+        payer = getattr(request, 'prism_payer', None)
+
+        return Response({
+            'message': 'Premium content',
+            'payer': payer
+        })
+
+# settings.py
+INSTALLED_APPS = [
+    # ...
+    'rest_framework',
+]
+
+REST_FRAMEWORK = {
+    'DEFAULT_RENDERER_CLASSES': [
+        'rest_framework.renderers.JSONRenderer',
+    ]
+}
+```
+
+---
+
+## Testing
+
+```python
+from django.test import TestCase, Client
+import json
+
+class PrismPaymentTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+
+    def test_payment_required_without_header(self):
+        response = self.client.get('/api/premium/')
+
+        self.assertEqual(response.status_code, 402)
+        data = json.loads(response.content)
+        self.assertTrue(data['paymentRequired'])
+
+    def test_access_granted_with_valid_payment(self):
+        payment = json.dumps({
+            'scheme': 'eip3009',
+            'signature': '0x' + '0' * 130
+        })
+
+        response = self.client.get(
+            '/api/premium/',
+            HTTP_X_PAYMENT=payment
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.content)
+        self.assertIn('payer', data)
+
+    def test_wildcard_route(self):
+        response = self.client.get('/api/data/anything/')
+        self.assertEqual(response.status_code, 402)
+```
+
+---
+
+## Production Deployment
+
+### Settings for Production
+
+```python
+# settings.py
+import os
+from pathlib import Path
+
+# Production settings
+DEBUG = False
+ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '').split(',')
+
+# Prism configuration from environment
+PRISM_CONFIG = {
+    'API_KEY': os.environ['PRISM_API_KEY'],
+    'BASE_URL': os.getenv('PRISM_BASE_URL', 'https://prism-gateway.com'),
+    'DEBUG': DEBUG,
+    'ROUTES': {
+        '/api/premium/': {
+            'price': 0.01,
+            'description': 'Premium API'
+        }
+    }
+}
+
+# Security
+SECURE_SSL_REDIRECT = True
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = True
+
+# CORS (if needed)
+INSTALLED_APPS += ['corsheaders']
+MIDDLEWARE.insert(0, 'corsheaders.middleware.CorsMiddleware')
+CORS_ALLOWED_ORIGINS = os.getenv('CORS_ORIGINS', '').split(',')
+```
+
+### WSGI Deployment (Gunicorn)
+
+```bash
+# Install Gunicorn
+pip install gunicorn
+
+# Run with Gunicorn
+gunicorn myproject.wsgi:application \
+    --bind 0.0.0.0:8000 \
+    --workers 4 \
+    --timeout 120 \
+    --access-logfile - \
+    --error-logfile -
+```
+
+### Docker Deployment
+
+```dockerfile
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+RUN python manage.py collectstatic --noinput
+
+EXPOSE 8000
+
+CMD ["gunicorn", "myproject.wsgi:application", "--bind", "0.0.0.0:8000"]
+```
+
+---
+
+## Type Hints
+
+```python
+from typing import Optional, Dict, Any
+from django.http import JsonResponse, HttpRequest
+
+def premium_view(request: HttpRequest) -> JsonResponse:
+    payer: Optional[str] = getattr(request, 'prism_payer', None)
+    payment: Optional[Dict[str, Any]] = getattr(request, 'prism_payment', None)
+
+    return JsonResponse({
+        'message': 'Premium content',
+        'payer': payer,
+        'network': payment.get('network') if payment else None
+    })
+```
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Settlement Validation"
+    icon="shield-check"
+    href="/concepts/settlement-validation"
+  >
+    How Django prevents data leakage
+  </Card>
+
+  <Card title="Flask Integration" icon="flask" href="/sdk/python/flask">
+    Compare with Flask implementation
+  </Card>
+
+  <Card title="Testing Guide" icon="flask" href="/guides/testing">
+    Test Django + Prism with pytest
+  </Card>
+
+  <Card
+    title="Production Deployment"
+    icon="rocket"
+    href="/guides/production-deployment"
+  >
+    Deploy Django + Prism to production
+  </Card>
+</CardGroup>
