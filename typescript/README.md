@@ -5,14 +5,14 @@ Express.js middleware for implementing x402 payment protocol with Prism Gateway.
 ## Installation
 
 ```bash
-npm install @prism/express-middleware
+npm install @1stdigital/prism-express
 ```
 
 ## Quick Start
 
 ```typescript
 import express from "express";
-import { prismPaymentMiddleware } from "@prism/express-middleware";
+import { prismPaymentMiddleware } from "@1stdigital/prism-express";
 
 const app = express();
 
@@ -32,8 +32,8 @@ app.use(
         price: "$0.001",
         description: "Weather data",
       },
-    }
-  )
+    },
+  ),
 );
 
 // Your protected routes
@@ -116,7 +116,7 @@ app.use(
       price: 0.05,
       description: "Premium API endpoints",
     },
-  })
+  }),
 );
 ```
 
@@ -137,7 +137,7 @@ app.use(
       price: 0.1,
       description: "Enterprise API access",
     },
-  })
+  }),
 );
 ```
 
@@ -201,4 +201,4 @@ MIT
 
 ## Support
 
-For issues and questions, contact FD Technologies support.
+For issues and questions, contact Finance District support.

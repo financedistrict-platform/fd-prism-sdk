@@ -2,7 +2,7 @@
 name = "prism-sdk-monorepo"
 version = "1.0.0"
 description = "Prism SDK - Python monorepo"
-authors = ["FD Technologies <engineering@1stdigital.tech>"]
+authors = ["Finance District <engineering@1stdigital.tech>"]
 readme = "README.md"
 packages = []
 

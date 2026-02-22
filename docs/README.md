@@ -14,21 +14,18 @@ Welcome to the Prism SDK documentation. This documentation is shared across all 
 Learn about the fundamental concepts behind Prism SDK:
 
 1. **[x402 Protocol](./concepts/x402-protocol.md)**
-
    - Understanding HTTP 402 Payment Required
    - Payment requirement format
    - Payment payload structure
    - Network and asset support
 
 2. **[Authentication](./concepts/authentication.md)**
-
    - API key management
    - Sandbox vs Production environments
    - Security best practices
    - Environment configuration
 
 3. **[Payment Flow](./concepts/payment-flow.md)**
-
    - Complete payment lifecycle
    - Client-server interaction diagram
    - 13-step payment process
@@ -45,7 +42,6 @@ Learn about the fundamental concepts behind Prism SDK:
 Practical guides for implementing and deploying Prism SDK:
 
 - **[Testing Guide](./guides/testing.md)**
-
   - Sandbox environment setup
   - Manual testing with curl/PowerShell
   - Automated testing strategies
@@ -135,7 +131,7 @@ Follow the installation instructions for your chosen SDK:
 **TypeScript:**
 
 ```bash
-npm install prism-express-sdk
+npm install @1stdigital/prism-express
 ```
 
 **C# (coming soon):**
@@ -164,13 +160,13 @@ Add the Prism middleware to protect your routes:
 **TypeScript:**
 
 ```typescript
-import { prismPaymentMiddleware } from "prism-express-sdk";
+import { prismPaymentMiddleware } from "@1stdigital/prism-express";
 
 app.use(
   prismPaymentMiddleware(
     {
       apiKey: "dev-key-123",
-      },
+    },
     {
       "/api/weather": {
         price: 0.001,
@@ -180,8 +176,8 @@ app.use(
         price: 0.01,
         description: "Premium API endpoints",
       },
-    }
-  )
+    },
+  ),
 );
 ```
 
@@ -276,14 +272,14 @@ app.use(
   prismPaymentMiddleware(
     {
       apiKey: "dev-key-123",
-      },
+    },
     {
       "/api/weather": {
         price: 0.001,
         description: "Weather API access",
       },
-    }
-  )
+    },
+  ),
 );
 
 app.get("/api/weather", (req, res) => {
@@ -304,14 +300,14 @@ app.use(
   prismPaymentMiddleware(
     {
       apiKey: "dev-key-123",
-      },
+    },
     {
       "/api/premium/*": {
         price: 0.01,
         description: "Premium API endpoints",
       },
-    }
-  )
+    },
+  ),
 );
 
 app.get("/api/premium/data", (req, res) => {

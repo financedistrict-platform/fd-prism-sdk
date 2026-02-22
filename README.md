@@ -55,7 +55,7 @@ pip install prism-flask
 
 ```typescript
 import express from "express";
-import { prismPaymentMiddleware } from "prism-express-sdk";
+import { prismPaymentMiddleware } from "@1stdigital/prism-express";
 
 const app = express();
 
@@ -74,8 +74,8 @@ app.use(
         price: 0.01,
         description: "Premium API endpoints",
       },
-    }
-  )
+    },
+  ),
 );
 
 // Public endpoint
@@ -158,4 +158,4 @@ MIT
 
 ## 💬 Support
 
-For issues and questions, contact FD Technologies support.
+For issues and questions, contact Finance District support.

@@ -20,3 +20,8 @@ venv/
 # Java
 target/
 *.class
+
+# Misc
+*.bak
+*.swp
+*.swo

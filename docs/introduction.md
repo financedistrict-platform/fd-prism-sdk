@@ -36,7 +36,7 @@ Learn more: [x402 Protocol Specification](https://github.com/coinbase/x402)
 
 ```typescript
 import express from "express";
-import { prismPaymentMiddleware } from "prism-express-sdk";
+import { prismPaymentMiddleware } from "@1stdigital/prism-express";
 
 const app = express();
 
@@ -45,7 +45,7 @@ app.use(
   prismPaymentMiddleware(
     {
       apiKey: "dev-key-123",
-      },
+    },
     {
       "/api/weather": {
         price: 0.001,
@@ -55,8 +55,8 @@ app.use(
         price: 0.01,
         description: "Premium API endpoints",
       },
-    }
-  )
+    },
+  ),
 );
 
 // Public endpoint (no payment required)

@@ -14,7 +14,7 @@ X-API-Key: your-api-key-here
 
 ## Obtaining an API Key
 
-Contact FD Technologies to obtain your API key for:
+Contact Finance District to obtain your API key for:
 
 - **Sandbox/Test environment**: For development and testing
 - **Production environment**: For live transactions
@@ -116,8 +116,8 @@ app.use(
       apiKey: process.env.PRISM_API_KEY,
       useSandbox: process.env.NODE_ENV !== "production",
     },
-    routes
-  )
+    routes,
+  ),
 );
 ```
 

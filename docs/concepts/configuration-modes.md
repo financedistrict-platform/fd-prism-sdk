@@ -28,7 +28,7 @@ Prism SDK supports different modes for generating payment requirements, each sui
 
 ```typescript
 import express from "express";
-import { prismPaymentMiddleware } from "prism-express-sdk";
+import { prismPaymentMiddleware } from "@1stdigital/prism-express";
 
 const app = express();
 
@@ -47,8 +47,8 @@ app.use(
         price: 0.01,
         description: "Premium API endpoints",
       },
-    }
-  )
+    },
+  ),
 );
 
 app.get("/api/weather", (req, res) => {
@@ -105,8 +105,8 @@ app.use(
       mode: "cloud",
       cloudConfigUrl: "https://config.prism.1stdigital.tech/client-123.json",
     },
-    routes
-  )
+    routes,
+  ),
 );
 ```
 
@@ -178,8 +178,8 @@ app.use(
       mode: "file",
       configFilePath: "./config/prism-config.json",
     },
-    routes
-  )
+    routes,
+  ),
 );
 ```
 

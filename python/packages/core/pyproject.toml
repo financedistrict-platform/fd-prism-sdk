@@ -2,8 +2,9 @@
 name = "prism-sdk-core"
 version = "1.0.0"
 description = "Prism SDK - Core client library"
-authors = ["FD Technologies <engineering@1stdigital.tech>"]
+authors = ["Finance District <engineering@1stdigital.tech>"]
 readme = "README.md"
+license = "MIT"
 homepage = "https://github.com/1stdigital/fd-prism-sdk"
 repository = "https://github.com/1stdigital/fd-prism-sdk"
 documentation = "https://github.com/1stdigital/fd-prism-sdk/tree/master/python"

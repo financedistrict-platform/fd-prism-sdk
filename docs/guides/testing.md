@@ -140,7 +140,7 @@ Test middleware behavior in isolation:
 
 ```typescript
 // tests/middleware.test.ts
-import { prismPaymentMiddleware } from "prism-express-sdk";
+import { prismPaymentMiddleware } from "@1stdigital/prism-express";
 import { Request, Response } from "express";
 
 describe("Prism Middleware", () => {
@@ -164,7 +164,7 @@ describe("Prism Middleware", () => {
           price: 0.001,
           description: "Weather API access",
         },
-      }
+      },
     );
 
     await middleware(req, res, next);
@@ -189,7 +189,7 @@ describe("Prism Middleware", () => {
           price: 0.001,
           description: "Weather API access",
         },
-      }
+      },
     );
 
     await middleware(req, res, next);

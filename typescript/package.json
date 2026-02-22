@@ -4,7 +4,9 @@
   "private": true,
   "description": "Prism SDK - TypeScript/JavaScript monorepo",
   "packageManager": "npm@11.4.2",
-  "workspaces": ["packages/*"],
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "build": "turbo run build",
     "test": "turbo run test",
@@ -29,6 +31,6 @@
     "url": "https://github.com/1stdigital/fd-prism-sdk.git",
     "directory": "typescript"
   },
-  "author": "FD Technologies",
+  "author": "Finance District",
   "license": "MIT"
 }
