@@ -1,5 +1,5 @@
 /**
- * @1stdigital/prism-express
+ * @financedistrict/prism-x402-sdk-express
  * Express.js middleware for Prism payment protocol
  */
 
@@ -10,4 +10,4 @@ export type {
   RoutesConfig,
   PaymentPayload,
   PaymentRequirements,
-} from '@1stdigital/prism-core';
+} from '@financedistrict/prism-x402-sdk';

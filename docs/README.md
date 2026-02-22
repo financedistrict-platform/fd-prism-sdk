@@ -131,7 +131,7 @@ Follow the installation instructions for your chosen SDK:
 **TypeScript:**
 
 ```bash
-npm install @1stdigital/prism-express
+npm install @financedistrict/prism-x402-sdk-express
 ```
 
 **C# (coming soon):**
@@ -160,7 +160,7 @@ Add the Prism middleware to protect your routes:
 **TypeScript:**
 
 ```typescript
-import { prismPaymentMiddleware } from "@1stdigital/prism-express";
+import { prismPaymentMiddleware } from "@financedistrict/prism-x402-sdk-express";
 
 app.use(
   prismPaymentMiddleware(

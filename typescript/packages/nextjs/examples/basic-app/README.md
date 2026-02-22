@@ -1,6 +1,6 @@
 # Next.js Prism Payment Example
 
-Basic Next.js App Router application demonstrating payment-protected API routes using `@1stdigital/prism-nextjs`.
+Basic Next.js App Router application demonstrating payment-protected API routes using `@financedistrict/prism-x402-sdk-nextjs`.
 
 ## Features
 
@@ -133,7 +133,7 @@ Instead of middleware, you can protect individual routes:
 
 ```typescript
 // app/api/premium/route.ts
-import { withPrismPayment } from '@1stdigital/prism-nextjs';
+import { withPrismPayment } from '@financedistrict/prism-x402-sdk-nextjs';
 
 export const GET = withPrismPayment(
   async (request: Request) => {

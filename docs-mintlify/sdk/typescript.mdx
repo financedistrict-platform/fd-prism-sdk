@@ -99,25 +99,25 @@ The **Prism Express Middleware** is a drop-in solution for protecting your Node.
 <Tabs>
   <Tab title="npm">
     ```bash
-    npm install @1stdigital/prism-express
+    npm install @financedistrict/prism-x402-sdk-express
     ```
   </Tab>
   
   <Tab title="yarn">
     ```bash
-    yarn add @1stdigital/prism-express
+    yarn add @financedistrict/prism-x402-sdk-express
     ```
   </Tab>
 
   <Tab title="pnpm">
     ```bash
-    pnpm add @1stdigital/prism-express
+    pnpm add @financedistrict/prism-x402-sdk-express
     ```
   </Tab>
 </Tabs>
 
 <Info>
-  **Package Registry:** GitHub Packages **Scope:** `@1stdigital` **Package:**
+  **Package Registry:** GitHub Packages **Scope:** `@financedistrict` **Package:**
   `prism-express`
 </Info>
 
@@ -126,14 +126,14 @@ The **Prism Express Middleware** is a drop-in solution for protecting your Node.
 <Steps>
   <Step title="Install Package">
     ```bash
-    npm install @1stdigital/prism-express
+    npm install @financedistrict/prism-x402-sdk-express
     ```
   </Step>
   
   <Step title="Import Middleware">
     ```typescript
     import express from 'express';
-    import { prismPaymentMiddleware } from '@1stdigital/prism-express';
+    import { prismPaymentMiddleware } from '@financedistrict/prism-x402-sdk-express';
     ```
   </Step>
   
@@ -171,7 +171,7 @@ The **Prism Express Middleware** is a drop-in solution for protecting your Node.
 
 ```typescript
 import express from "express";
-import { prismPaymentMiddleware } from "@1stdigital/prism-express";
+import { prismPaymentMiddleware } from "@financedistrict/prism-x402-sdk-express";
 
 const app = express();
 
@@ -454,7 +454,7 @@ All Prism errors extend the base `PrismError` class and include:
     
     **Usage:**
     ```typescript
-    import { PrismGatewayError } from '@1stdigital/prism-core';
+    import { PrismGatewayError } from '@financedistrict/prism-x402-sdk';
     
     app.use((err, req, res, next) => {
       if (err instanceof PrismGatewayError) {
@@ -496,7 +496,7 @@ All Prism errors extend the base `PrismError` class and include:
     
     **Usage (Retry Logic):**
     ```typescript
-    import { PrismNetworkError } from '@1stdigital/prism-core';
+    import { PrismNetworkError } from '@financedistrict/prism-x402-sdk';
     
     async function getPaymentRequirementsWithRetry(client, request, maxRetries = 3) {
       for (let i = 0; i < maxRetries; i++) {
@@ -536,7 +536,7 @@ All Prism errors extend the base `PrismError` class and include:
     
     **Usage:**
     ```typescript
-    import { PrismConfigError } from '@1stdigital/prism-core';
+    import { PrismConfigError } from '@financedistrict/prism-x402-sdk';
     
     app.use((err, req, res, next) => {
       if (err instanceof PrismConfigError) {
@@ -620,7 +620,7 @@ interface PrismErrorResponse {
 #### 1. Monitoring & Alerting with Trace IDs
 
 ```typescript
-import { PrismGatewayError, PrismNetworkError } from "@1stdigital/prism-core";
+import { PrismGatewayError, PrismNetworkError } from "@financedistrict/prism-x402-sdk";
 
 app.use((err, req, res, next) => {
   if (err instanceof PrismGatewayError) {
@@ -674,7 +674,7 @@ app.use((err, req, res, next) => {
 import {
   PrismClient,
   PrismNetworkError,
-  PrismGatewayError } from "@1stdigital/prism-core";
+  PrismGatewayError } from "@financedistrict/prism-x402-sdk";
 
 async function makePaymentRequestWithRetry(
   client: PrismClient,
@@ -727,7 +727,7 @@ function sleep(ms: number) {
 #### 3. User-Friendly Error Messages
 
 ```typescript
-import { PrismGatewayError } from "@1stdigital/prism-core";
+import { PrismGatewayError } from "@financedistrict/prism-x402-sdk";
 
 app.use((err, req, res, next) => {
   if (err instanceof PrismGatewayError) {
@@ -760,7 +760,7 @@ app.use((err, req, res, next) => {
 #### 4. Error Metrics & Analytics
 
 ```typescript
-import { PrismGatewayError, PrismNetworkError } from "@1stdigital/prism-core";
+import { PrismGatewayError, PrismNetworkError } from "@financedistrict/prism-x402-sdk";
 import { Counter, Histogram } from "prom-client";
 
 const paymentErrorCounter = new Counter({
@@ -916,7 +916,7 @@ import {
   PrismMiddlewareConfig,
   RoutePaymentConfig,
   PaymentInfo,
-  PrismError } from "@1stdigital/prism-express";
+  PrismError } from "@financedistrict/prism-x402-sdk-express";
 
 // Type-safe configuration
 const config: PrismMiddlewareConfig = {
@@ -949,7 +949,7 @@ Add types to `res.locals`:
 
 ```typescript
 // types/express.d.ts
-import { PaymentInfo } from "@1stdigital/prism-express";
+import { PaymentInfo } from "@financedistrict/prism-x402-sdk-express";
 
 declare global {
   namespace Express {
@@ -968,7 +968,7 @@ declare global {
 ```typescript
 import request from "supertest";
 import express from "express";
-import { prismPaymentMiddleware } from "@1stdigital/prism-express";
+import { prismPaymentMiddleware } from "@financedistrict/prism-x402-sdk-express";
 
 describe("Prism Payment Middleware", () => {
   let app: express.Application;
@@ -1090,7 +1090,7 @@ const config = {
 <Steps>
   <Step title="Update Package">
     ```bash
-    npm install @1stdigital/prism-express@latest
+    npm install @financedistrict/prism-x402-sdk-express@latest
     ```
   </Step>
   
@@ -1100,7 +1100,7 @@ const config = {
     import { prismMiddleware } from '@prism/middleware';
     
     // New
-    import { prismPaymentMiddleware } from '@1stdigital/prism-express';
+    import { prismPaymentMiddleware } from '@financedistrict/prism-x402-sdk-express';
     ```
   </Step>
   
@@ -1139,7 +1139,7 @@ const config = {
     
     **Example:**
     ```typescript
-    import { PrismNetworkError } from '@1stdigital/prism-core';
+    import { PrismNetworkError } from '@financedistrict/prism-x402-sdk';
     
     if (error instanceof PrismNetworkError) {
       console.error('Gateway unreachable:', error.message);
@@ -1245,7 +1245,7 @@ Base error class for all Prism SDK errors.
 **Example:**
 
 ```typescript
-import { PrismError } from "@1stdigital/prism-core";
+import { PrismError } from "@financedistrict/prism-x402-sdk";
 
 if (error instanceof PrismError) {
   console.log(error.code); // 'GATEWAY_ERROR'
@@ -1266,7 +1266,7 @@ Gateway returned an error response (4xx or 5xx).
 **Example:**
 
 ```typescript
-import { PrismGatewayError } from "@1stdigital/prism-core";
+import { PrismGatewayError } from "@financedistrict/prism-x402-sdk";
 
 app.use((err, req, res, next) => {
   if (err instanceof PrismGatewayError) {
@@ -1292,7 +1292,7 @@ Network connectivity issues (timeout, DNS error, connection refused).
 **Example:**
 
 ```typescript
-import { PrismNetworkError } from "@1stdigital/prism-core";
+import { PrismNetworkError } from "@financedistrict/prism-x402-sdk";
 
 if (error instanceof PrismNetworkError) {
   console.log("Gateway unreachable:", error.message);
@@ -1310,7 +1310,7 @@ SDK misconfiguration (invalid API key format, bad URL, etc.).
 **Example:**
 
 ```typescript
-import { PrismConfigError } from "@1stdigital/prism-core";
+import { PrismConfigError } from "@financedistrict/prism-x402-sdk";
 
 if (error instanceof PrismConfigError) {
   // Developer/ops issue - fix configuration
@@ -1327,7 +1327,7 @@ Invalid payment payload or authorization.
 **Example:**
 
 ```typescript
-import { PrismPaymentError } from "@1stdigital/prism-core";
+import { PrismPaymentError } from "@financedistrict/prism-x402-sdk";
 
 if (error instanceof PrismPaymentError) {
   // Client sent invalid payment
@@ -1350,7 +1350,7 @@ Request validation failed.
 **Example:**
 
 ```typescript
-import { PrismValidationError } from "@1stdigital/prism-core";
+import { PrismValidationError } from "@financedistrict/prism-x402-sdk";
 
 if (error instanceof PrismValidationError) {
   return res.status(400).json({

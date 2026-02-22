@@ -36,7 +36,7 @@ Learn more: [x402 Protocol Specification](https://github.com/coinbase/x402)
 
 ```typescript
 import express from "express";
-import { prismPaymentMiddleware } from "@1stdigital/prism-express";
+import { prismPaymentMiddleware } from "@financedistrict/prism-x402-sdk-express";
 
 const app = express();
 

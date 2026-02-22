@@ -5,7 +5,7 @@ import {
   RoutesConfig,
   HeaderAdapter,
   detectProtocolVersion,
-} from '@1stdigital/prism-core';
+} from '@financedistrict/prism-x402-sdk';
 
 /**
  * Create Prism payment middleware for Express

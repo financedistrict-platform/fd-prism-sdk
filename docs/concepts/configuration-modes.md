@@ -28,7 +28,7 @@ Prism SDK supports different modes for generating payment requirements, each sui
 
 ```typescript
 import express from "express";
-import { prismPaymentMiddleware } from "@1stdigital/prism-express";
+import { prismPaymentMiddleware } from "@financedistrict/prism-x402-sdk-express";
 
 const app = express();
 

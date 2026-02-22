@@ -5,7 +5,7 @@
  */
 
 const http = require('http');
-const { prismPaymentMiddleware } = require('@1stdigital/prism-http');
+const { prismPaymentMiddleware } = require('@financedistrict/prism-x402-sdk-http');
 
 // Configure Prism middleware
 const paymentMiddleware = prismPaymentMiddleware(

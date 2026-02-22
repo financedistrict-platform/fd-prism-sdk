@@ -87,7 +87,7 @@ mvn install:install-file \
 
 ```
 //npm.pkg.github.com/:_authToken=YOUR_TOKEN
-@1stdigital:registry=https://npm.pkg.github.com
+@financedistrict:registry=https://npm.pkg.github.com
 ```
 
 **Python (~/.pypirc):**

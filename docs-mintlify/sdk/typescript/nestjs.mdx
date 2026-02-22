@@ -6,7 +6,7 @@ icon: "n"
 
 ## Overview
 
-The **@1stdigital/prism-nestjs** package provides a full-featured NestJS module with decorators, guards, and interceptors for payment-protecting your API routes.
+The **@financedistrict/prism-x402-sdk-nestjs** package provides a full-featured NestJS module with decorators, guards, and interceptors for payment-protecting your API routes.
 
 <CardGroup cols={3}>
   <Card title="Decorator-Based" icon="at">
@@ -29,18 +29,18 @@ The **@1stdigital/prism-nestjs** package provides a full-featured NestJS module 
 <Tabs>
   <Tab title="npm">
     ```bash
-    npm install @1stdigital/prism-nestjs @nestjs/core @nestjs/common
+    npm install @financedistrict/prism-x402-sdk-nestjs @nestjs/core @nestjs/common
     ```
   </Tab>
 
 {" "}
 <Tab title="yarn">
-  ```bash yarn add @1stdigital/prism-nestjs @nestjs/core @nestjs/common ```
+  ```bash yarn add @financedistrict/prism-x402-sdk-nestjs @nestjs/core @nestjs/common ```
 </Tab>
 
   <Tab title="pnpm">
     ```bash
-    pnpm add @1stdigital/prism-nestjs @nestjs/core @nestjs/common
+    pnpm add @financedistrict/prism-x402-sdk-nestjs @nestjs/core @nestjs/common
     ```
   </Tab>
 </Tabs>
@@ -52,7 +52,7 @@ The **@1stdigital/prism-nestjs** package provides a full-featured NestJS module 
 ```typescript
 // app.module.ts
 import { Module } from "@nestjs/common";
-import { PrismModule } from "@1stdigital/prism-nestjs";
+import { PrismModule } from "@financedistrict/prism-x402-sdk-nestjs";
 import { AppController } from "./app.controller";
 
 @Module({
@@ -74,7 +74,7 @@ export class AppModule {}
 
 // app.controller.ts
 import { Controller, Get } from "@nestjs/common";
-import { Payment, Payer } from "@1stdigital/prism-nestjs";
+import { Payment, Payer } from "@financedistrict/prism-x402-sdk-nestjs";
 
 @Controller("api")
 export class AppController {
@@ -121,7 +121,7 @@ PrismModule.forRoot({
 
 ```typescript
 import { Controller, Get } from "@nestjs/common";
-import { Payment } from "@1stdigital/prism-nestjs";
+import { Payment } from "@financedistrict/prism-x402-sdk-nestjs";
 
 @Controller("api")
 export class DataController {
@@ -144,7 +144,7 @@ export class DataController {
 
 ```typescript
 import { Controller, Get } from "@nestjs/common";
-import { Payment, Payer } from "@1stdigital/prism-nestjs";
+import { Payment, Payer } from "@financedistrict/prism-x402-sdk-nestjs";
 
 @Controller("api")
 export class DataController {
@@ -168,7 +168,7 @@ export class DataController {
 
 ```typescript
 import { Controller, Get, Req } from "@nestjs/common";
-import { Payment } from "@1stdigital/prism-nestjs";
+import { Payment } from "@financedistrict/prism-x402-sdk-nestjs";
 import { Request } from "express";
 
 @Controller("api")

@@ -1,18 +1,18 @@
-# @1stdigital/prism-http
+# @financedistrict/prism-x402-sdk-http
 
 Prism SDK middleware for **Node.js HTTP** servers. Enable x402 payment requirements on your raw HTTP server routes.
 
 ## Installation
 
 ```bash
-npm install @1stdigital/prism-http
+npm install @financedistrict/prism-x402-sdk-http
 ```
 
 ## Quick Start
 
 ```javascript
 const http = require("http");
-const { prismPaymentMiddleware } = require("@1stdigital/prism-http");
+const { prismPaymentMiddleware } = require("@financedistrict/prism-x402-sdk-http");
 
 // Create middleware
 const paymentMiddleware = prismPaymentMiddleware(
@@ -81,7 +81,7 @@ import * as http from "http";
 import {
   prismPaymentMiddleware,
   PrismHttpRequest,
-} from "@1stdigital/prism-http";
+} from "@financedistrict/prism-x402-sdk-http";
 
 const paymentMiddleware = prismPaymentMiddleware(
   {

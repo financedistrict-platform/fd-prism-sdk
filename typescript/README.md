@@ -5,14 +5,14 @@ Express.js middleware for implementing x402 payment protocol with Prism Gateway.
 ## Installation
 
 ```bash
-npm install @1stdigital/prism-express
+npm install @financedistrict/prism-x402-sdk-express
 ```
 
 ## Quick Start
 
 ```typescript
 import express from "express";
-import { prismPaymentMiddleware } from "@1stdigital/prism-express";
+import { prismPaymentMiddleware } from "@financedistrict/prism-x402-sdk-express";
 
 const app = express();
 

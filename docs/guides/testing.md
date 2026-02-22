@@ -140,7 +140,7 @@ Test middleware behavior in isolation:
 
 ```typescript
 // tests/middleware.test.ts
-import { prismPaymentMiddleware } from "@1stdigital/prism-express";
+import { prismPaymentMiddleware } from "@financedistrict/prism-x402-sdk-express";
 import { Request, Response } from "express";
 
 describe("Prism Middleware", () => {

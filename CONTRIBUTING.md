@@ -41,7 +41,7 @@ npm run build
 # Test locally with npm link
 npm link
 cd ../your-test-project
-npm link @1stdigital/prism-express
+npm link @financedistrict/prism-x402-sdk-express
 ```
 
 ### Version Management
@@ -73,7 +73,7 @@ To install from GitHub Packages, users need to authenticate:
 **Option 1: Interactive Login**
 
 ```bash
-npm login --registry=https://npm.pkg.github.com --scope=@1stdigital
+npm login --registry=https://npm.pkg.github.com --scope=@financedistrict
 ```
 
 **Option 2: Using Personal Access Token**
@@ -81,7 +81,7 @@ npm login --registry=https://npm.pkg.github.com --scope=@1stdigital
 Create `.npmrc` in your project root:
 
 ```
-@1stdigital:registry=https://npm.pkg.github.com
+@financedistrict:registry=https://npm.pkg.github.com
 //npm.pkg.github.com/:_authToken=YOUR_GITHUB_TOKEN
 ```
 
@@ -133,6 +133,6 @@ Make sure:
 
 Make sure:
 
-- `.npmrc` is configured with `@1stdigital:registry=https://npm.pkg.github.com`
+- `.npmrc` is configured with `@financedistrict:registry=https://npm.pkg.github.com`
 - User is authenticated to GitHub Packages
-- Package name matches: `@1stdigital/prism-express`
+- Package name matches: `@financedistrict/prism-x402-sdk-express`

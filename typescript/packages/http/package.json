@@ -1,5 +1,5 @@
 {
-  "name": "@1stdigital/prism-http",
+  "name": "@financedistrict/prism-x402-sdk-http",
   "version": "1.1.0",
   "description": "Prism SDK - Node.js HTTP middleware",
   "main": "dist/index.js",
@@ -20,7 +20,7 @@
     "test": "jest"
   },
   "dependencies": {
-    "@1stdigital/prism-core": "^2.0.2"
+    "@financedistrict/prism-x402-sdk": "^2.0.2"
   },
   "peerDependencies": {},
   "devDependencies": {
@@ -38,7 +38,7 @@
     "directory": "typescript/packages/http"
   },
   "publishConfig": {
-    "registry": "https://npm.pkg.github.com"
+    "access": "public"
   },
   "license": "MIT",
   "author": "Finance District"

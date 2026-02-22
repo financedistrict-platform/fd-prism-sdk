@@ -25,7 +25,7 @@ This module provides seamless interoperability between x402 protocol v1 and v2.
 The compatibility layer automatically detects protocol versions:
 
 ```typescript
-import { detectProtocolVersion, HeaderAdapter } from "@1stdigital/prism-core";
+import { detectProtocolVersion, HeaderAdapter } from "@financedistrict/prism-x402-sdk";
 
 // Detect from payload
 const version = detectProtocolVersion(payloadData); // 1 or 2
@@ -41,7 +41,7 @@ import {
   networkV1ToV2,
   networkV2ToV1,
   normalizeNetwork,
-} from "@1stdigital/prism-core";
+} from "@financedistrict/prism-x402-sdk";
 
 // v1 → v2
 const v2Network = networkV1ToV2("base-sepolia"); // "eip155:84532"
@@ -60,7 +60,7 @@ import {
   SchemaTransformer,
   upgradePaymentRequiredResponse,
   downgradePaymentPayload,
-} from "@1stdigital/prism-core";
+} from "@financedistrict/prism-x402-sdk";
 
 // Upgrade v1 → v2
 const v2Response = upgradePaymentRequiredResponse(v1Response);
@@ -78,7 +78,7 @@ const transformed = SchemaTransformer.transformPaymentRequired(
 ### Header Management
 
 ```typescript
-import { HeaderAdapter, V2_HEADERS } from "@1stdigital/prism-core";
+import { HeaderAdapter, V2_HEADERS } from "@financedistrict/prism-x402-sdk";
 
 // Write headers (defaults to v2)
 HeaderAdapter.setPaymentPayload(
@@ -176,7 +176,7 @@ import {
   HeaderAdapter,
   detectProtocolVersion,
   SchemaTransformer,
-} from "@1stdigital/prism-core";
+} from "@financedistrict/prism-x402-sdk";
 
 // In your middleware
 const version =

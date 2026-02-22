@@ -1,5 +1,5 @@
 {
-  "name": "@1stdigital/prism-express",
+  "name": "@financedistrict/prism-x402-sdk-express",
   "version": "2.0.3",
   "description": "Prism SDK - Express.js middleware",
   "main": "dist/index.js",
@@ -19,7 +19,7 @@
     "test": "jest"
   },
   "dependencies": {
-    "@1stdigital/prism-core": "^2.0.2"
+    "@financedistrict/prism-x402-sdk": "^2.0.2"
   },
   "peerDependencies": {
     "express": "^4.0.0 || ^5.0.0"
@@ -43,7 +43,7 @@
     "directory": "typescript/packages/express"
   },
   "publishConfig": {
-    "registry": "https://npm.pkg.github.com"
+    "access": "public"
   },
   "license": "MIT",
   "author": "Finance District"

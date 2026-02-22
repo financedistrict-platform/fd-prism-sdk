@@ -6,7 +6,7 @@ icon: "n"
 
 ## Overview
 
-The **@1stdigital/prism-nextjs** package provides middleware for Next.js API routes and App Router route handlers. Supports both Pages Router and App Router architectures.
+The **@financedistrict/prism-x402-sdk-nextjs** package provides middleware for Next.js API routes and App Router route handlers. Supports both Pages Router and App Router architectures.
 
 <CardGroup cols={3}>
   <Card title="App Router" icon="layer-group">
@@ -29,16 +29,16 @@ The **@1stdigital/prism-nextjs** package provides middleware for Next.js API rou
 <Tabs>
   <Tab title="npm">
     ```bash
-    npm install @1stdigital/prism-nextjs next
+    npm install @financedistrict/prism-x402-sdk-nextjs next
     ```
   </Tab>
 
 {" "}
-<Tab title="yarn">```bash yarn add @1stdigital/prism-nextjs next ```</Tab>
+<Tab title="yarn">```bash yarn add @financedistrict/prism-x402-sdk-nextjs next ```</Tab>
 
   <Tab title="pnpm">
     ```bash
-    pnpm add @1stdigital/prism-nextjs next
+    pnpm add @financedistrict/prism-x402-sdk-nextjs next
     ```
   </Tab>
 </Tabs>
@@ -50,7 +50,7 @@ The **@1stdigital/prism-nextjs** package provides middleware for Next.js API rou
 ```typescript
 // app/api/premium/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { withPrismPayment } from "@1stdigital/prism-nextjs";
+import { withPrismPayment } from "@financedistrict/prism-x402-sdk-nextjs";
 
 async function handler(request: NextRequest) {
   // Access payer from request
@@ -78,7 +78,7 @@ export const GET = withPrismPayment(handler, {
 ```typescript
 // pages/api/premium.ts
 import { NextApiRequest, NextApiResponse } from "next";
-import { createPrismMiddleware } from "@1stdigital/prism-nextjs";
+import { createPrismMiddleware } from "@financedistrict/prism-x402-sdk-nextjs";
 
 const prismMiddleware = createPrismMiddleware({
   apiKey: process.env.PRISM_API_KEY || "dev-key-123",
@@ -146,7 +146,7 @@ interface RoutePaymentConfig {
 
 ```typescript
 // app/api/premium/route.ts
-import { withPrismPayment } from "@1stdigital/prism-nextjs";
+import { withPrismPayment } from "@financedistrict/prism-x402-sdk-nextjs";
 
 async function handler(request: NextRequest) {
   return NextResponse.json({ data: "Premium" });
@@ -163,7 +163,7 @@ export const GET = withPrismPayment(handler, {
 
 ```typescript
 // app/api/data/route.ts
-import { withPrismPayment } from "@1stdigital/prism-nextjs";
+import { withPrismPayment } from "@financedistrict/prism-x402-sdk-nextjs";
 
 async function getHandler(request: NextRequest) {
   return NextResponse.json({ data: "GET data" });

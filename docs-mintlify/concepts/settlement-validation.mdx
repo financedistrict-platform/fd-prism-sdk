@@ -392,7 +392,7 @@ To test that your API **blocks data** when settlement fails:
   <Tab title="Mock Gateway Failure">
     ```javascript
     // Override settlement callback in tests
-    jest.mock('@1stdigital/prism-core', () => ({
+    jest.mock('@financedistrict/prism-x402-sdk', () => ({
       PrismMiddlewareCore: class {
         async settlementCallback() {
           return {
@@ -418,7 +418,7 @@ To test that your API **blocks data** when settlement fails:
   <Tab title="Network Timeout">
     ```javascript
     // Simulate Gateway timeout (returns null)
-    jest.mock('@1stdigital/prism-core', () => ({
+    jest.mock('@financedistrict/prism-x402-sdk', () => ({
       PrismMiddlewareCore: class {
         async settlementCallback() {
           return null;  // Exception occurred
@@ -559,7 +559,7 @@ If you're upgrading from an older version without settlement validation:
 <Steps>
   <Step title="Update SDK packages">
     ```bash
-    npm install @1stdigital/prism-express@latest
+    npm install @financedistrict/prism-x402-sdk-express@latest
     # or
     pip install --upgrade prism-flask
     ```

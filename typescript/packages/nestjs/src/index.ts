@@ -1,5 +1,5 @@
 /**
- * @1stdigital/prism-nestjs
+ * @financedistrict/prism-x402-sdk-nestjs
  * NestJS module for Prism payment protocol
  */
 
@@ -23,7 +23,7 @@ import {
   type RoutePaymentConfig,
   HeaderAdapter,
   detectProtocolVersion,
-} from '@1stdigital/prism-core';
+} from '@financedistrict/prism-x402-sdk';
 
 /**
  * Prism module configuration

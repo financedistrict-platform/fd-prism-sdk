@@ -6,7 +6,7 @@ icon: "server"
 
 ## Overview
 
-The **@1stdigital/prism-http** package provides middleware for vanilla Node.js HTTP servers, without requiring any framework. Perfect for lightweight APIs or custom HTTP implementations.
+The **@financedistrict/prism-x402-sdk-http** package provides middleware for vanilla Node.js HTTP servers, without requiring any framework. Perfect for lightweight APIs or custom HTTP implementations.
 
 <CardGroup cols={3}>
   <Card title="Zero Dependencies" icon="feather">
@@ -29,13 +29,13 @@ The **@1stdigital/prism-http** package provides middleware for vanilla Node.js H
 <Tabs>
   <Tab title="npm">
     ```bash
-    npm install @1stdigital/prism-http
+    npm install @financedistrict/prism-x402-sdk-http
     ```
   </Tab>
 
   <Tab title="yarn">
     ```bash
-    yarn add @1stdigital/prism-http
+    yarn add @financedistrict/prism-x402-sdk-http
     ```
   </Tab>
 </Tabs>
@@ -46,7 +46,7 @@ The **@1stdigital/prism-http** package provides middleware for vanilla Node.js H
 
 ```javascript
 const http = require("http");
-const { prismPaymentMiddleware } = require("@1stdigital/prism-http");
+const { prismPaymentMiddleware } = require("@financedistrict/prism-x402-sdk-http");
 
 // Create middleware
 const middleware = prismPaymentMiddleware(
@@ -199,7 +199,7 @@ res.end = async function(chunk, encoding, callback) {
 
 ```javascript
 const http = require("http");
-const { prismPaymentMiddleware } = require("@1stdigital/prism-http");
+const { prismPaymentMiddleware } = require("@financedistrict/prism-x402-sdk-http");
 
 describe("HTTP Payment Middleware", () => {
   let server;

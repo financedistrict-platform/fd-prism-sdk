@@ -52,7 +52,7 @@ typescript/
 
 ## ✅ Implemented Features
 
-### Core Package (@1stdigital/prism-core)
+### Core Package (@financedistrict/prism-x402-sdk)
 
 **TypeScript Types** (`packages/core/src/types/`):
 
@@ -77,7 +77,7 @@ typescript/
   - settlePayment method (5 tests)
   - Error handling (27 tests)
 
-### Express Package (@1stdigital/prism-express)
+### Express Package (@financedistrict/prism-x402-sdk-express)
 
 **Express Middleware** (`packages/express/src/middleware/prism-middleware.ts`):
 
@@ -99,7 +99,7 @@ typescript/
 
 ```typescript
 import express from "express";
-import { prismPaymentMiddleware } from "@1stdigital/prism-express";
+import { prismPaymentMiddleware } from "@financedistrict/prism-x402-sdk-express";
 
 const app = express();
 
@@ -128,13 +128,13 @@ npm install
 npm run build
 
 # Build specific package
-npm run build --filter=@1stdigital/prism-core
+npm run build --filter=@financedistrict/prism-x402-sdk
 
 # Run tests
 npm test
 
 # Run tests for specific package
-npm test --filter=@1stdigital/prism-core
+npm test --filter=@financedistrict/prism-x402-sdk
 
 # Development mode (watch)
 npm run dev
@@ -158,13 +158,13 @@ npm test
 
 **Core Package Tests**: 51 passing tests
 ```bash
-npm test --filter=@1stdigital/prism-core
+npm test --filter=@financedistrict/prism-x402-sdk
 ````
 
 **Express Package Tests**: 8 tests (4 passing)
 
 ```bash
-npm test --filter=@1stdigital/prism-express
+npm test --filter=@financedistrict/prism-x402-sdk-express
 ```
 
 See `TESTING.md` for detailed testing guide.
@@ -198,7 +198,7 @@ Routes can be configured with payment requirements:
 
 1. **Monorepo Structure**: Turbo-based monorepo for framework-agnostic core with framework-specific packages
 2. **TypeScript First**: Full type safety with strict mode enabled
-3. **Modular Architecture**: Separated @1stdigital/prism-core from framework integrations
+3. **Modular Architecture**: Separated @financedistrict/prism-x402-sdk from framework integrations
 4. **x402 Compatible**: Follows Coinbase x402 protocol specification
 5. **Direct Base URL**: Replaced useSandbox flag with direct baseUrl parameter for flexibility
 6. **Test Coverage**: Jest with Nock for HTTP mocking and comprehensive test suites
@@ -217,7 +217,7 @@ Routes can be configured with payment requirements:
 The decorator approach will work on top of the existing middleware:
 
 ```typescript
-import { requiresPayment } from "@1stdigital/prism-express";
+import { requiresPayment } from "@financedistrict/prism-x402-sdk-express";
 
 class ApiController {
   @requiresPayment({ price: 0.01, description: "Premium" })
@@ -231,8 +231,8 @@ class ApiController {
 
 Packages are published to npm registry:
 
-- `@1stdigital/prism-core` - Core SDK
-- `@1stdigital/prism-express` - Express middleware
+- `@financedistrict/prism-x402-sdk` - Core SDK
+- `@financedistrict/prism-x402-sdk-express` - Express middleware
 - Additional framework packages (when ready)
 
 This will internally use the same middleware logic, just with a different API surface.

@@ -6,7 +6,7 @@ icon: "bolt"
 
 ## Overview
 
-The **@1stdigital/prism-fastify** package provides a Fastify plugin for payment-protecting your API routes using the x402 protocol. It leverages Fastify's hook system for high-performance payment validation.
+The **@financedistrict/prism-x402-sdk-fastify** package provides a Fastify plugin for payment-protecting your API routes using the x402 protocol. It leverages Fastify's hook system for high-performance payment validation.
 
 <CardGroup cols={3}>
   <Card title="High Performance" icon="bolt">
@@ -29,16 +29,16 @@ The **@1stdigital/prism-fastify** package provides a Fastify plugin for payment-
 <Tabs>
   <Tab title="npm">
     ```bash
-    npm install @1stdigital/prism-fastify fastify
+    npm install @financedistrict/prism-x402-sdk-fastify fastify
     ```
   </Tab>
 
 {" "}
-<Tab title="yarn">```bash yarn add @1stdigital/prism-fastify fastify ```</Tab>
+<Tab title="yarn">```bash yarn add @financedistrict/prism-x402-sdk-fastify fastify ```</Tab>
 
   <Tab title="pnpm">
     ```bash
-    pnpm add @1stdigital/prism-fastify fastify
+    pnpm add @financedistrict/prism-x402-sdk-fastify fastify
     ```
   </Tab>
 </Tabs>
@@ -49,7 +49,7 @@ The **@1stdigital/prism-fastify** package provides a Fastify plugin for payment-
 
 ```typescript
 import Fastify from "fastify";
-import prismPlugin from "@1stdigital/prism-fastify";
+import prismPlugin from "@financedistrict/prism-x402-sdk-fastify";
 
 const app = Fastify({ logger: true });
 
@@ -220,7 +220,7 @@ app.get("/api/data", async (request, reply) => {
 ```typescript
 import { test } from "tap";
 import Fastify from "fastify";
-import prismPlugin from "@1stdigital/prism-fastify";
+import prismPlugin from "@financedistrict/prism-x402-sdk-fastify";
 
 test("payment required without header", async (t) => {
   const app = Fastify();
@@ -280,7 +280,7 @@ test("access granted with valid payment", async (t) => {
 
 ```typescript
 import Fastify from "fastify";
-import prismPlugin from "@1stdigital/prism-fastify";
+import prismPlugin from "@financedistrict/prism-x402-sdk-fastify";
 
 const app = Fastify({
   logger: {

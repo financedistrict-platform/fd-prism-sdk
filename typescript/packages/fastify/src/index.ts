@@ -1,5 +1,5 @@
 /**
- * @1stdigital/prism-fastify
+ * @financedistrict/prism-x402-sdk-fastify
  * Fastify plugin for Prism payment protocol
  */
 
@@ -11,7 +11,7 @@ import {
   type RoutesConfig,
   HeaderAdapter,
   detectProtocolVersion,
-} from '@1stdigital/prism-core';
+} from '@financedistrict/prism-x402-sdk';
 
 export interface PrismFastifyOptions extends PrismMiddlewareConfig {
   routes: RoutesConfig;
@@ -23,7 +23,7 @@ export interface PrismFastifyOptions extends PrismMiddlewareConfig {
  * @example
  * ```typescript
  * import Fastify from 'fastify';
- * import prismPlugin from '@1stdigital/prism-fastify';
+ * import prismPlugin from '@financedistrict/prism-x402-sdk-fastify';
  * 
  * const app = Fastify();
  * 
@@ -165,7 +165,7 @@ const prismPluginCore: FastifyPluginAsync<PrismFastifyOptions> = async (fastify,
 
 const prismPlugin = fp(prismPluginCore, {
   fastify: '4.x',
-  name: '@1stdigital/prism-fastify',
+  name: '@financedistrict/prism-x402-sdk-fastify',
 });
 
 export default prismPlugin;

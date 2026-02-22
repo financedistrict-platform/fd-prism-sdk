@@ -4,7 +4,7 @@ This document summarizes the TypeScript framework integrations implemented for F
 
 ## ✅ Completed Integrations
 
-### 1. **Express.js** (`@1stdigital/prism-express`)
+### 1. **Express.js** (`@financedistrict/prism-x402-sdk-express`)
 
 **Status:** ✅ Complete (Reference Implementation)
 
@@ -26,7 +26,7 @@ This document summarizes the TypeScript framework integrations implemented for F
 
 ---
 
-### 2. **Fastify** (`@1stdigital/prism-fastify`)
+### 2. **Fastify** (`@financedistrict/prism-x402-sdk-fastify`)
 
 **Status:** ✅ Complete (Just Implemented)
 
@@ -65,7 +65,7 @@ fastify.get("/api/premium", async (request, reply) => {
 
 ---
 
-### 3. **NestJS** (`@1stdigital/prism-nestjs`)
+### 3. **NestJS** (`@financedistrict/prism-x402-sdk-nestjs`)
 
 **Status:** ✅ Complete (Just Implemented)
 
@@ -114,7 +114,7 @@ export class ApiController {
 
 ---
 
-### 4. **Next.js** (`@1stdigital/prism-nextjs`)
+### 4. **Next.js** (`@financedistrict/prism-x402-sdk-nextjs`)
 
 **Status:** ✅ Complete (Just Implemented)
 
@@ -175,7 +175,7 @@ All integrations follow the same pattern:
 ```
 Framework Integration
     ↓
-PrismMiddlewareCore (from @1stdigital/prism-core)
+PrismMiddlewareCore (from @financedistrict/prism-x402-sdk)
     ↓
 PrismClient (HTTP client)
     ↓
@@ -448,7 +448,7 @@ Different frameworks expose payment info differently:
 
 ```javascript
 const express = require("express");
-const { prismPaymentMiddleware } = require("@1stdigital/prism-express");
+const { prismPaymentMiddleware } = require("@financedistrict/prism-x402-sdk-express");
 
 app.use(
   prismPaymentMiddleware({ apiKey: "key" }, { "/api/premium": { price: 0.01 } })
@@ -459,7 +459,7 @@ app.use(
 
 ```typescript
 import Fastify from "fastify";
-import { prismPaymentPlugin } from "@1stdigital/prism-fastify";
+import { prismPaymentPlugin } from "@financedistrict/prism-x402-sdk-fastify";
 
 const fastify = Fastify();
 await fastify.register(prismPaymentPlugin, {
@@ -471,7 +471,7 @@ await fastify.register(prismPaymentPlugin, {
 ### NestJS (TypeScript)
 
 ```typescript
-import { PrismModule, Payment, Payer } from '@1stdigital/prism-nestjs';
+import { PrismModule, Payment, Payer } from '@financedistrict/prism-x402-sdk-nestjs';
 
 @Module({
   imports: [PrismModule.forRoot({ apiKey: 'key' })],
@@ -487,7 +487,7 @@ getPremium(@Payer() payer: string) {}
 ### Next.js (TypeScript)
 
 ```typescript
-import { createPrismMiddleware } from "@1stdigital/prism-nextjs";
+import { createPrismMiddleware } from "@financedistrict/prism-x402-sdk-nextjs";
 
 export const middleware = createPrismMiddleware({
   apiKey: "key",

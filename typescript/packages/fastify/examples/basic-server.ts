@@ -5,7 +5,7 @@
  */
 
 import Fastify from 'fastify';
-import prismPlugin from '@1stdigital/prism-fastify';
+import prismPlugin from '@financedistrict/prism-x402-sdk-fastify';
 
 const app = Fastify({
   logger: true

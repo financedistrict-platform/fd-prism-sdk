@@ -42,16 +42,16 @@ Get started with Prism in minutes. Pick your framework below and follow the 3-st
 <Steps>
   <Step title="Install the package">
     ```bash
-    npm install @1stdigital/prism-express
+    npm install @financedistrict/prism-x402-sdk-express
     # or
-    yarn add @1stdigital/prism-express
+    yarn add @financedistrict/prism-x402-sdk-express
     ```
   </Step>
 
   <Step title="Add middleware to your app">
     ```javascript
     const express = require('express');
-    const { prismPaymentMiddleware } = require('@1stdigital/prism-express');
+    const { prismPaymentMiddleware } = require('@financedistrict/prism-x402-sdk-express');
 
     const app = express();
 
@@ -107,14 +107,14 @@ Get started with Prism in minutes. Pick your framework below and follow the 3-st
 <Steps>
   <Step title="Install the package">
     ```bash
-    npm install @1stdigital/prism-fastify
+    npm install @financedistrict/prism-x402-sdk-fastify
     ```
   </Step>
 
   <Step title="Register the plugin">
     ```javascript
     const fastify = require('fastify')();
-    const { prismPaymentPlugin } = require('@1stdigital/prism-fastify');
+    const { prismPaymentPlugin } = require('@financedistrict/prism-x402-sdk-fastify');
 
     // Register Prism plugin
     await fastify.register(prismPaymentPlugin, {
@@ -156,7 +156,7 @@ Get started with Prism in minutes. Pick your framework below and follow the 3-st
 <Steps>
   <Step title="Install the package">
     ```bash
-    npm install @1stdigital/prism-nestjs
+    npm install @financedistrict/prism-x402-sdk-nestjs
     ```
   </Step>
 
@@ -164,7 +164,7 @@ Get started with Prism in minutes. Pick your framework below and follow the 3-st
     ```typescript
     // app.module.ts
     import { Module } from '@nestjs/common';
-    import { PrismModule } from '@1stdigital/prism-nestjs';
+    import { PrismModule } from '@financedistrict/prism-x402-sdk-nestjs';
 
     @Module({
       imports: [
@@ -179,7 +179,7 @@ Get started with Prism in minutes. Pick your framework below and follow the 3-st
 
     // api.controller.ts
     import { Controller, Get } from '@nestjs/common';
-    import { Payment, Payer } from '@1stdigital/prism-nestjs';
+    import { Payment, Payer } from '@financedistrict/prism-x402-sdk-nestjs';
 
     @Controller('api')
     export class ApiController {
@@ -211,14 +211,14 @@ Get started with Prism in minutes. Pick your framework below and follow the 3-st
 <Steps>
   <Step title="Install the package">
     ```bash
-    npm install @1stdigital/prism-nextjs
+    npm install @financedistrict/prism-x402-sdk-nextjs
     ```
   </Step>
 
   <Step title="Wrap your API route handler">
     ```typescript
     // app/api/premium/route.ts
-    import { withPrismPayment } from '@1stdigital/prism-nextjs';
+    import { withPrismPayment } from '@financedistrict/prism-x402-sdk-nextjs';
 
     export const GET = withPrismPayment(
       async (request: Request) => {

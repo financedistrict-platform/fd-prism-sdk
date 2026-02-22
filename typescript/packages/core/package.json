@@ -1,5 +1,5 @@
 {
-  "name": "@1stdigital/prism-core",
+  "name": "@financedistrict/prism-x402-sdk",
   "version": "2.0.2",
   "private": false,
   "description": "Prism SDK - Core library (shared logic)",
@@ -37,7 +37,7 @@
     "directory": "typescript/packages/core"
   },
   "publishConfig": {
-    "registry": "https://npm.pkg.github.com"
+    "access": "public"
   },
   "license": "MIT",
   "author": "Finance District"

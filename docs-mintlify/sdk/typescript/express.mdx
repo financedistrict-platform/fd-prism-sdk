@@ -6,7 +6,7 @@ icon: "node-js"
 
 ## Overview
 
-The **@1stdigital/prism-express** package provides Express.js middleware for payment-protecting your API routes using the x402 protocol. It's the reference implementation for the Prism SDK and offers the most straightforward integration.
+The **@financedistrict/prism-x402-sdk-express** package provides Express.js middleware for payment-protecting your API routes using the x402 protocol. It's the reference implementation for the Prism SDK and offers the most straightforward integration.
 
 <CardGroup cols={3}>
   <Card title="Simple Setup" icon="bolt">
@@ -29,17 +29,17 @@ The **@1stdigital/prism-express** package provides Express.js middleware for pay
 <Tabs>
   <Tab title="npm">
     ```bash
-    npm install @1stdigital/prism-express
+    npm install @financedistrict/prism-x402-sdk-express
     ```
   </Tab>
 
 {" "}
 
-<Tab title="yarn">```bash yarn add @1stdigital/prism-express ```</Tab>
+<Tab title="yarn">```bash yarn add @financedistrict/prism-x402-sdk-express ```</Tab>
 
   <Tab title="pnpm">
     ```bash
-    pnpm add @1stdigital/prism-express
+    pnpm add @financedistrict/prism-x402-sdk-express
     ```
   </Tab>
 </Tabs>
@@ -50,7 +50,7 @@ The **@1stdigital/prism-express** package provides Express.js middleware for pay
 
 ```javascript
 const express = require("express");
-const { prismPaymentMiddleware } = require("@1stdigital/prism-express");
+const { prismPaymentMiddleware } = require("@financedistrict/prism-x402-sdk-express");
 
 const app = express();
 
@@ -383,7 +383,7 @@ app.use((err, req, res, next) => {
 ```javascript
 const request = require("supertest");
 const express = require("express");
-const { prismPaymentMiddleware } = require("@1stdigital/prism-express");
+const { prismPaymentMiddleware } = require("@financedistrict/prism-x402-sdk-express");
 
 describe("Payment-protected routes", () => {
   let app;
@@ -572,7 +572,7 @@ import {
   prismPaymentMiddleware,
   PrismMiddlewareConfig,
   RoutePaymentConfig,
-} from "@1stdigital/prism-express";
+} from "@financedistrict/prism-x402-sdk-express";
 
 const app = express();
 

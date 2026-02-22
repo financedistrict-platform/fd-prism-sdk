@@ -5,7 +5,7 @@
  */
 
 const express = require('express');
-const { prismPaymentMiddleware } = require('@1stdigital/prism-express');
+const { prismPaymentMiddleware } = require('@financedistrict/prism-x402-sdk-express');
 
 const app = express();
 

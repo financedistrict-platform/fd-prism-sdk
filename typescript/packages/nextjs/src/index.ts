@@ -1,5 +1,5 @@
 /**
- * @1stdigital/prism-nextjs
+ * @financedistrict/prism-x402-sdk-nextjs
  * Next.js middleware for Prism payment protocol
  */
 
@@ -11,7 +11,7 @@ import {
   MiddlewareResult,
   HeaderAdapter,
   detectProtocolVersion,
-} from '@1stdigital/prism-core';
+} from '@financedistrict/prism-x402-sdk';
 
 /**
  * Prism Next.js configuration
@@ -26,7 +26,7 @@ export interface PrismNextConfig extends PrismMiddlewareConfig {
  * @example
  * ```typescript
  * // middleware.ts
- * import { createPrismMiddleware } from '@1stdigital/prism-nextjs';
+ * import { createPrismMiddleware } from '@financedistrict/prism-x402-sdk-nextjs';
  * 
  * export const middleware = createPrismMiddleware({
  *   apiKey: 'your-api-key',
@@ -107,7 +107,7 @@ export function createPrismMiddleware(config: PrismNextConfig) {
  * @example
  * ```typescript
  * // app/api/premium/route.ts
- * import { withPrismPayment } from '@1stdigital/prism-nextjs';
+ * import { withPrismPayment } from '@financedistrict/prism-x402-sdk-nextjs';
  * 
  * export const GET = withPrismPayment(
  *   async (request: Request) => {
