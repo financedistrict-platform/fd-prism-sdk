@@ -3,8 +3,11 @@ Prism FastAPI Middleware
 FastAPI middleware for x402 payment protocol (async)
 """
 
+from __future__ import annotations
+
 from typing import Dict, Callable, Optional
-from fastapi import FastAPI, Request, Response
+from functools import wraps
+from fastapi import FastAPI, Request, Response, HTTPException
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from prism_sdk_core import (
@@ -50,12 +53,12 @@ class PrismPaymentMiddleware(BaseHTTPMiddleware):
             if detected:
                 protocol_version = detected
         
-        # Process through middleware core
-        result = self.core.handle_request(
+        # Process through middleware core (async for non-blocking I/O)
+        result = await self.core.ahandle_request(
             path=request.url.path,
             resource_url=resource_url,
             payment_header=payment_header,
-            protocol_version=protocol_version
+            protocol_version=protocol_version,
         )
         
         # If middleware handled (returned 402 or error)
@@ -82,10 +85,10 @@ class PrismPaymentMiddleware(BaseHTTPMiddleware):
             protocol_version = getattr(request.state, 'prism_protocol_version', self.config.x402_version)
             
             try:
-                settlement_result = self.core.settlement_callback(
+                settlement_result = await self.core.asettlement_callback(
                     result.payment_info['payment'],
                     result.payment_info['payment_requirements'],
-                    response.status_code
+                    response.status_code,
                 )
                 
                 if settlement_result.get('success') and settlement_result.get('transaction'):
@@ -164,9 +167,39 @@ def get_payment(request: Request) -> Optional[Dict]:
     return getattr(request.state, 'prism_payment', None)
 
 
+def require_payment(price: float | str, description: str):
+    """
+    Decorator for protecting individual FastAPI route handlers.
+    Must be used alongside add_prism_middleware().
+
+    Usage:
+        @app.get('/api/premium')
+        @require_payment(price=0.01, description='Premium API')
+        async def premium(request: Request):
+            payer = get_payer(request)
+            return {'payer': payer}
+    """
+    def decorator(func: Callable):
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            request = next(
+                (a for a in args if isinstance(a, Request)),
+                kwargs.get('request')
+            )
+            if request is None or not hasattr(request.state, 'prism_payer'):
+                raise HTTPException(
+                    status_code=402,
+                    detail={'error': 'Payment Required', 'message': description}
+                )
+            return await func(*args, **kwargs)
+        return wrapper
+    return decorator
+
+
 __all__ = [
     'PrismPaymentMiddleware',
     'add_prism_middleware',
     'get_payer',
-    'get_payment'
+    'get_payment',
+    'require_payment',
 ]

@@ -3,6 +3,8 @@ Prism Django Middleware
 Django middleware for x402 payment protocol
 """
 
+from __future__ import annotations
+
 from typing import Dict, Callable, Optional
 from django.http import JsonResponse, HttpRequest, HttpResponse
 from django.conf import settings
@@ -39,22 +41,27 @@ class PrismPaymentMiddleware:
     
     def __init__(self, get_response: Callable):
         self.get_response = get_response
-        
-        # Load configuration from Django settings
-        prism_config_dict = getattr(settings, 'PRISM_CONFIG', {})
+
+        prism_config_raw = getattr(settings, 'PRISM_CONFIG', {})
         prism_routes_dict = getattr(settings, 'PRISM_ROUTES', {})
-        
-        # Convert to config objects
-        config = PrismMiddlewareConfig(
-            api_key=prism_config_dict.get('api_key', ''),
-            base_url=prism_config_dict.get('base_url', 'https://prism-api.1stdigital.tech'),
-            debug=prism_config_dict.get('debug', False)
-        )
-        
+
+        # Accept PrismMiddlewareConfig object or dict
+        if isinstance(prism_config_raw, PrismMiddlewareConfig):
+            config = prism_config_raw
+        else:
+            config = PrismMiddlewareConfig(
+                api_key=prism_config_raw.get('api_key', ''),
+                base_url=prism_config_raw.get('base_url', 'https://prism-api.1stdigital.tech'),
+                debug=prism_config_raw.get('debug', False),
+                timeout=prism_config_raw.get('timeout', 30),
+                x402_version=prism_config_raw.get('x402_version', 2),
+            )
+
+        # Accept RoutePaymentConfig objects or dicts
         routes = {
-            path: RoutePaymentConfig(
-                price=cfg['price'],
-                description=cfg['description']
+            path: (
+                cfg if isinstance(cfg, RoutePaymentConfig)
+                else RoutePaymentConfig(price=cfg['price'], description=cfg['description'])
             )
             for path, cfg in prism_routes_dict.items()
         }
@@ -188,4 +195,110 @@ def require_payment(price: float | str, description: str):
     return decorator
 
 
-__all__ = ['PrismPaymentMiddleware', 'require_payment']
+class AsyncPrismPaymentMiddleware:
+    """
+    Django ASGI async middleware for Prism payment protection.
+    Requires Django 4.1+ and ASGI deployment (uvicorn, daphne).
+
+    Replace PrismPaymentMiddleware with this class in settings.MIDDLEWARE
+    when deploying with an ASGI server.
+    """
+
+    async_capable = True
+    sync_capable = False
+
+    def __init__(self, get_response: Callable):
+        from asgiref.sync import markcoroutinefunction
+        self.get_response = get_response
+        markcoroutinefunction(self)
+
+        prism_config_raw = getattr(settings, 'PRISM_CONFIG', {})
+        prism_routes_dict = getattr(settings, 'PRISM_ROUTES', {})
+
+        if isinstance(prism_config_raw, PrismMiddlewareConfig):
+            config = prism_config_raw
+        else:
+            config = PrismMiddlewareConfig(
+                api_key=prism_config_raw.get('api_key', ''),
+                base_url=prism_config_raw.get('base_url', 'https://prism-api.1stdigital.tech'),
+                debug=prism_config_raw.get('debug', False),
+                timeout=prism_config_raw.get('timeout', 30),
+                x402_version=prism_config_raw.get('x402_version', 2),
+            )
+
+        routes = {
+            path: (
+                cfg if isinstance(cfg, RoutePaymentConfig)
+                else RoutePaymentConfig(price=cfg['price'], description=cfg['description'])
+            )
+            for path, cfg in prism_routes_dict.items()
+        }
+
+        self.core = PrismMiddlewareCore(config, routes)
+        self.config = config
+
+    async def __call__(self, request: HttpRequest):
+        import json
+        import base64
+
+        resource_url = request.build_absolute_uri()
+        payment_header = HeaderAdapter.get_payment_payload(
+            lambda name: request.META.get(f'HTTP_{name.replace("-", "_").upper()}')
+        )
+        protocol_version = self.config.x402_version
+        if payment_header:
+            detected = detect_protocol_version(payment_header)
+            if detected:
+                protocol_version = detected
+
+        result = await self.core.ahandle_request(
+            path=request.path,
+            resource_url=resource_url,
+            payment_header=payment_header,
+            protocol_version=protocol_version,
+        )
+
+        if result.handled:
+            response = JsonResponse(result.body, status=result.status_code)
+            for key, value in result.headers.items():
+                response[key] = value
+            return response
+
+        if result.payment_info:
+            request.prism_payment = result.payment_info['payment']
+            request.prism_payer = result.payment_info['payer']
+            request.prism_requirements = result.payment_info['payment_requirements']
+
+        response = await self.get_response(request)
+
+        if result.payment_info and response.status_code < 400:
+            try:
+                settlement_result = await self.core.asettlement_callback(
+                    result.payment_info['payment'],
+                    result.payment_info['payment_requirements'],
+                    response.status_code,
+                )
+                if settlement_result.get('success') and settlement_result.get('transaction'):
+                    settlement_base64 = base64.b64encode(
+                        json.dumps(settlement_result).encode()
+                    ).decode()
+                    HeaderAdapter.set_settlement_response(
+                        lambda name, value: response.__setitem__(name, value),
+                        settlement_base64,
+                        protocol_version,
+                    )
+                elif settlement_result and not settlement_result.get('success'):
+                    return JsonResponse({
+                        'x402Version': protocol_version,
+                        'error': 'Payment settlement failed',
+                        'details': settlement_result.get('errorReason', 'Unknown error'),
+                    }, status=402)
+            except Exception as e:
+                if self.config.debug:
+                    print(f"[Prism] Settlement error: {e}")
+                return JsonResponse({'error': 'Settlement processing error'}, status=500)
+
+        return response
+
+
+__all__ = ['PrismPaymentMiddleware', 'AsyncPrismPaymentMiddleware', 'require_payment']
