@@ -140,7 +140,7 @@ Test middleware behavior in isolation:
 
 ```typescript
 // tests/middleware.test.ts
-import { prismPaymentMiddleware } from "@financedistrict/prism-x402-sdk-express";
+import { prismPaymentMiddleware } from "@1stdigital/prism-express";
 import { Request, Response } from "express";
 
 describe("Prism Middleware", () => {
@@ -273,7 +273,7 @@ jest.mock("../../src/client/prism-client", () => ({
 // Complete payment flow test
 describe("Successful Payment Flow", () => {
   it("should allow access after valid payment", async () => {
-    // 1. Request without payment → 402
+    // 1. Request without payment â†’ 402
     const res1 = await request(app).get("/api/weather");
     expect(res1.status).toBe(402);
 
@@ -283,7 +283,7 @@ describe("Successful Payment Flow", () => {
     // 3. Generate payment (in real scenario, client does this)
     const payment = await generatePayment(requirements);
 
-    // 4. Request with payment → 200
+    // 4. Request with payment â†’ 200
     const res2 = await request(app)
       .get("/api/weather")
       .set("X-PAYMENT", payment);

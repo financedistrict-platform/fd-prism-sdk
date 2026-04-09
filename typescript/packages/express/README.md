@@ -1,18 +1,18 @@
-# @financedistrict/prism-x402-sdk-express
+# @1stdigital/prism-express
 
 Prism SDK middleware for **Express.js**. Enable x402 payment requirements on your Express routes with a simple middleware.
 
 ## Installation
 
 ```bash
-npm install @financedistrict/prism-x402-sdk-express
+npm install @1stdigital/prism-express
 ```
 
 ## Quick Start
 
 ```javascript
 const express = require("express");
-const { prismPaymentMiddleware } = require("@financedistrict/prism-x402-sdk-express");
+const { prismPaymentMiddleware } = require("@1stdigital/prism-express");
 
 const app = express();
 
@@ -59,7 +59,7 @@ app.listen(3000, () => {
 
 ```typescript
 import express, { Request, Response } from "express";
-import { prismPaymentMiddleware } from "@financedistrict/prism-x402-sdk-express";
+import { prismPaymentMiddleware } from "@1stdigital/prism-express";
 
 const app = express();
 
@@ -202,7 +202,7 @@ Errors are logged to `console.error()` and appropriate responses are sent.
 
 ```javascript
 const express = require("express");
-const { prismPaymentMiddleware } = require("@financedistrict/prism-x402-sdk-express");
+const { prismPaymentMiddleware } = require("@1stdigital/prism-express");
 
 const app = express();
 
@@ -233,7 +233,7 @@ const routes = {
   "/cheap": { price: 0.001 }, // Number
   "/medium": { price: "0.01" }, // String
   "/expensive": { price: "$0.1" }, // String with currency
-  "/euro": { price: "€0.05" }, // Different currency
+  "/euro": { price: "â‚¬0.05" }, // Different currency
 };
 ```
 

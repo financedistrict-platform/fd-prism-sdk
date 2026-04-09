@@ -14,12 +14,12 @@ Learn more: [x402 Protocol Specification](https://github.com/coinbase/x402)
 
 ## Key Features
 
-- 🔐 **API Key Authentication** - Simple authentication with Prism Gateway
-- 💰 **Multiple Blockchains** - Support for various blockchain networks
-- 🎯 **Route-based Pricing** - Configure different prices for different endpoints
-- 🧪 **Sandbox Mode** - Test environment for development
-- 🚀 **Easy Integration** - One-line middleware setup
-- 🌍 **Multi-language** - TypeScript, C#, Python support
+- ðŸ” **API Key Authentication** - Simple authentication with Prism Gateway
+- ðŸ’° **Multiple Blockchains** - Support for various blockchain networks
+- ðŸŽ¯ **Route-based Pricing** - Configure different prices for different endpoints
+- ðŸ§ª **Sandbox Mode** - Test environment for development
+- ðŸš€ **Easy Integration** - One-line middleware setup
+- ðŸŒ **Multi-language** - TypeScript, C#, Python support
 
 ## How It Works
 
@@ -36,7 +36,7 @@ Learn more: [x402 Protocol Specification](https://github.com/coinbase/x402)
 
 ```typescript
 import express from "express";
-import { prismPaymentMiddleware } from "@financedistrict/prism-x402-sdk-express";
+import { prismPaymentMiddleware } from "@1stdigital/prism-express";
 
 const app = express();
 

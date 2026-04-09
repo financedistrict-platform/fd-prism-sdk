@@ -16,7 +16,7 @@ export type {
   PaymentRequirementsRequest,
   PaymentRequiredResponse,
   ConfigurationMode,
-} from '@financedistrict/prism-x402-sdk';
+} from '@1stdigital/prism-core';
 
 // Re-export error classes
 export {
@@ -25,4 +25,4 @@ export {
   PrismPaymentError,
   PrismGatewayError,
   PrismNetworkError,
-} from '@financedistrict/prism-x402-sdk';
+} from '@1stdigital/prism-core';

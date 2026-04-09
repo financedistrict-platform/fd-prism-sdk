@@ -1,5 +1,5 @@
 {
-  "name": "@financedistrict/prism-x402-sdk-nextjs",
+  "name": "@1stdigital/prism-nextjs",
   "version": "1.1.0",
   "description": "Prism SDK - Next.js middleware",
   "main": "dist/index.js",
@@ -20,7 +20,7 @@
     "test": "jest --passWithNoTests"
   },
   "dependencies": {
-    "@financedistrict/prism-x402-sdk": "^2.0.2"
+    "@1stdigital/prism-core": "^2.0.2"
   },
   "peerDependencies": {
     "next": "^13.0.0 || ^14.0.0 || ^15.0.0"

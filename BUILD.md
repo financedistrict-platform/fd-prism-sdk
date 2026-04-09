@@ -1,6 +1,6 @@
 # Build & Publish Guide
 
-## 📦 Build Commands by Language
+## ðŸ“¦ Build Commands by Language
 
 ### TypeScript
 
@@ -70,14 +70,14 @@ mvn install:install-file \
 
 ---
 
-## 🚀 Publishing
+## ðŸš€ Publishing
 
 ### GitHub Packages (all languages)
 
 **1. Create GitHub Token:**
 
 ```bash
-# Go to GitHub → Settings → Developer settings → Personal access tokens
+# Go to GitHub â†’ Settings â†’ Developer settings â†’ Personal access tokens
 # Scopes: write:packages, read:packages
 ```
 
@@ -87,7 +87,7 @@ mvn install:install-file \
 
 ```
 //npm.pkg.github.com/:_authToken=YOUR_TOKEN
-@financedistrict:registry=https://npm.pkg.github.com
+@1stdigital:registry=https://npm.pkg.github.com
 ```
 
 **Python (~/.pypirc):**
@@ -117,7 +117,7 @@ password = YOUR_TOKEN
 
 ---
 
-## 🔢 Versioning
+## ðŸ”¢ Versioning
 
 All packages follow semantic versioning: `MAJOR.MINOR.PATCH`
 
@@ -127,7 +127,7 @@ All packages follow semantic versioning: `MAJOR.MINOR.PATCH`
 
 ```bash
 cd packages/core
-npm version patch  # 1.0.0 → 1.0.1
+npm version patch  # 1.0.0 â†’ 1.0.1
 ```
 
 **Python:**
@@ -145,7 +145,7 @@ mvn versions:set -DnewVersion=1.0.1
 
 ---
 
-## ✅ Pre-publish Checklist
+## âœ… Pre-publish Checklist
 
 - [ ] All tests passing
 - [ ] Version bumped
@@ -156,7 +156,7 @@ mvn versions:set -DnewVersion=1.0.1
 
 ---
 
-## 📊 Build Matrix
+## ðŸ“Š Build Matrix
 
 | Language   | Build Tool  | Package Format     | Registry                        |
 | ---------- | ----------- | ------------------ | ------------------------------- |
@@ -166,7 +166,7 @@ mvn versions:set -DnewVersion=1.0.1
 
 ---
 
-## 🧪 Test Before Publish
+## ðŸ§ª Test Before Publish
 
 **TypeScript:**
 

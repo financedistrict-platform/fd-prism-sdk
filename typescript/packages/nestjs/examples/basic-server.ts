@@ -11,7 +11,7 @@ import {
   PrismPaymentGuard,
   Payment,
   Payer,
-} from '@financedistrict/prism-x402-sdk-nestjs';
+} from '@1stdigital/prism-nestjs';
 
 /**
  * API Controller with payment-protected endpoints

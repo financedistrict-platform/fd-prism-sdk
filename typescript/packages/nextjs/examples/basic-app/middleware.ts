@@ -2,7 +2,7 @@
  * Next.js App Router Middleware with Prism Payment Protection
  */
 
-import { createPrismMiddleware } from '@financedistrict/prism-x402-sdk-nextjs';
+import { createPrismMiddleware } from '@1stdigital/prism-nextjs';
 
 export const middleware = createPrismMiddleware({
   // API Configuration

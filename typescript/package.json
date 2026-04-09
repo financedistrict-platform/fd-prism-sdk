@@ -1,5 +1,5 @@
 {
-  "name": "@financedistrict/prism-x402-sdk-monorepo",
+  "name": "@1stdigital/prism-sdk-monorepo",
   "version": "1.0.0",
   "private": true,
   "description": "Prism SDK - TypeScript/JavaScript monorepo",

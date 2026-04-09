@@ -2,11 +2,11 @@
 
 This document summarizes the TypeScript framework integrations implemented for FD Prism SDK.
 
-## ✅ Completed Integrations
+## âœ… Completed Integrations
 
-### 1. **Express.js** (`@financedistrict/prism-x402-sdk-express`)
+### 1. **Express.js** (`@1stdigital/prism-express`)
 
-**Status:** ✅ Complete (Reference Implementation)
+**Status:** âœ… Complete (Reference Implementation)
 
 **Package:** `typescript/packages/express/`
 
@@ -26,9 +26,9 @@ This document summarizes the TypeScript framework integrations implemented for F
 
 ---
 
-### 2. **Fastify** (`@financedistrict/prism-x402-sdk-fastify`)
+### 2. **Fastify** (`@1stdigital/prism-fastify`)
 
-**Status:** ✅ Complete (Just Implemented)
+**Status:** âœ… Complete (Just Implemented)
 
 **Package:** `typescript/packages/fastify/`
 
@@ -65,9 +65,9 @@ fastify.get("/api/premium", async (request, reply) => {
 
 ---
 
-### 3. **NestJS** (`@financedistrict/prism-x402-sdk-nestjs`)
+### 3. **NestJS** (`@1stdigital/prism-nestjs`)
 
-**Status:** ✅ Complete (Just Implemented)
+**Status:** âœ… Complete (Just Implemented)
 
 **Package:** `typescript/packages/nestjs/`
 
@@ -114,9 +114,9 @@ export class ApiController {
 
 ---
 
-### 4. **Next.js** (`@financedistrict/prism-x402-sdk-nextjs`)
+### 4. **Next.js** (`@1stdigital/prism-nextjs`)
 
-**Status:** ✅ Complete (Just Implemented)
+**Status:** âœ… Complete (Just Implemented)
 
 **Package:** `typescript/packages/nextjs/`
 
@@ -174,11 +174,11 @@ All integrations follow the same pattern:
 
 ```
 Framework Integration
-    ↓
-PrismMiddlewareCore (from @financedistrict/prism-x402-sdk)
-    ↓
+    â†“
+PrismMiddlewareCore (from @1stdigital/prism-core)
+    â†“
 PrismClient (HTTP client)
-    ↓
+    â†“
 Prism Gateway API
 ```
 
@@ -219,10 +219,10 @@ interface MiddlewareResult {
 
 | Framework | Package | Plugin/Middleware                               | Example            | Tests      | README  |
 | --------- | ------- | ----------------------------------------------- | ------------------ | ---------- | ------- |
-| Express   | ✅      | ✅ `prismPaymentMiddleware`                     | ✅ basic-server.js | ✅ 8 tests | ✅      |
-| Fastify   | ✅      | ✅ `prismPaymentPlugin`                         | ✅ basic-server.ts | ⏳ TODO    | ⏳ TODO |
-| NestJS    | ✅      | ✅ Module + Guard + Decorators                  | ✅ basic-server.ts | ⏳ TODO    | ⏳ TODO |
-| Next.js   | ✅      | ✅ `createPrismMiddleware` + `withPrismPayment` | ✅ basic-app/      | ⏳ TODO    | ⏳ TODO |
+| Express   | âœ…      | âœ… `prismPaymentMiddleware`                     | âœ… basic-server.js | âœ… 8 tests | âœ…      |
+| Fastify   | âœ…      | âœ… `prismPaymentPlugin`                         | âœ… basic-server.ts | â³ TODO    | â³ TODO |
+| NestJS    | âœ…      | âœ… Module + Guard + Decorators                  | âœ… basic-server.ts | â³ TODO    | â³ TODO |
+| Next.js   | âœ…      | âœ… `createPrismMiddleware` + `withPrismPayment` | âœ… basic-app/      | â³ TODO    | â³ TODO |
 
 ---
 
@@ -329,42 +329,42 @@ curl http://localhost:3000/api/premium
 
 ```
 typescript/packages/
-├── core/                     # ✅ Core logic (51 tests passing)
-│   └── src/
-│       └── middleware/
-│           └── middleware-core.ts
-│
-├── express/                  # ✅ Express integration
-│   ├── src/
-│   │   └── middleware/
-│   │       └── prism-middleware.ts
-│   └── examples/
-│       └── basic-server.js
-│
-├── fastify/                  # ✅ Fastify integration (NEW)
-│   ├── src/
-│   │   └── index.ts
-│   └── examples/
-│       └── basic-server.ts
-│
-├── nestjs/                   # ✅ NestJS integration (NEW)
-│   ├── src/
-│   │   └── index.ts
-│   └── examples/
-│       └── basic-server.ts
-│
-└── nextjs/                   # ✅ Next.js integration (NEW)
-    ├── src/
-    │   └── index.ts
-    └── examples/
-        └── basic-app/
-            ├── middleware.ts
-            ├── app/
-            │   ├── page.tsx
-            │   └── api/
-            │       ├── premium/route.ts
-            │       └── weather/route.ts
-            └── package.json
+â”œâ”€â”€ core/                     # âœ… Core logic (51 tests passing)
+â”‚   â””â”€â”€ src/
+â”‚       â””â”€â”€ middleware/
+â”‚           â””â”€â”€ middleware-core.ts
+â”‚
+â”œâ”€â”€ express/                  # âœ… Express integration
+â”‚   â”œâ”€â”€ src/
+â”‚   â”‚   â””â”€â”€ middleware/
+â”‚   â”‚       â””â”€â”€ prism-middleware.ts
+â”‚   â””â”€â”€ examples/
+â”‚       â””â”€â”€ basic-server.js
+â”‚
+â”œâ”€â”€ fastify/                  # âœ… Fastify integration (NEW)
+â”‚   â”œâ”€â”€ src/
+â”‚   â”‚   â””â”€â”€ index.ts
+â”‚   â””â”€â”€ examples/
+â”‚       â””â”€â”€ basic-server.ts
+â”‚
+â”œâ”€â”€ nestjs/                   # âœ… NestJS integration (NEW)
+â”‚   â”œâ”€â”€ src/
+â”‚   â”‚   â””â”€â”€ index.ts
+â”‚   â””â”€â”€ examples/
+â”‚       â””â”€â”€ basic-server.ts
+â”‚
+â””â”€â”€ nextjs/                   # âœ… Next.js integration (NEW)
+    â”œâ”€â”€ src/
+    â”‚   â””â”€â”€ index.ts
+    â””â”€â”€ examples/
+        â””â”€â”€ basic-app/
+            â”œâ”€â”€ middleware.ts
+            â”œâ”€â”€ app/
+            â”‚   â”œâ”€â”€ page.tsx
+            â”‚   â””â”€â”€ api/
+            â”‚       â”œâ”€â”€ premium/route.ts
+            â”‚       â””â”€â”€ weather/route.ts
+            â””â”€â”€ package.json
 ```
 
 ---
@@ -423,14 +423,14 @@ Different frameworks expose payment info differently:
 
 | Feature       | FD Prism SDK          | Coinbase x402 |
 | ------------- | --------------------- | ------------- |
-| Express       | ✅                    | ✅            |
-| Fastify       | ✅                    | ❌            |
-| NestJS        | ✅                    | ❌            |
-| Next.js       | ✅                    | ❌            |
-| Python        | 🔄 In Progress        | ✅ (buggy)    |
-| Smart Wallets | 🔄 Planned (ERC-6492) | ⚠️ Broken     |
-| Type Safety   | ✅ Full TypeScript    | ⚠️ Partial    |
-| Testing       | ✅ 51 core tests      | ⚠️ Limited    |
+| Express       | âœ…                    | âœ…            |
+| Fastify       | âœ…                    | âŒ            |
+| NestJS        | âœ…                    | âŒ            |
+| Next.js       | âœ…                    | âŒ            |
+| Python        | ðŸ”„ In Progress        | âœ… (buggy)    |
+| Smart Wallets | ðŸ”„ Planned (ERC-6492) | âš ï¸ Broken     |
+| Type Safety   | âœ… Full TypeScript    | âš ï¸ Partial    |
+| Testing       | âœ… 51 core tests      | âš ï¸ Limited    |
 
 **Key Differentiators:**
 
@@ -448,7 +448,7 @@ Different frameworks expose payment info differently:
 
 ```javascript
 const express = require("express");
-const { prismPaymentMiddleware } = require("@financedistrict/prism-x402-sdk-express");
+const { prismPaymentMiddleware } = require("@1stdigital/prism-express");
 
 app.use(
   prismPaymentMiddleware({ apiKey: "key" }, { "/api/premium": { price: 0.01 } })
@@ -459,7 +459,7 @@ app.use(
 
 ```typescript
 import Fastify from "fastify";
-import { prismPaymentPlugin } from "@financedistrict/prism-x402-sdk-fastify";
+import { prismPaymentPlugin } from "@1stdigital/prism-fastify";
 
 const fastify = Fastify();
 await fastify.register(prismPaymentPlugin, {
@@ -471,7 +471,7 @@ await fastify.register(prismPaymentPlugin, {
 ### NestJS (TypeScript)
 
 ```typescript
-import { PrismModule, Payment, Payer } from '@financedistrict/prism-x402-sdk-nestjs';
+import { PrismModule, Payment, Payer } from '@1stdigital/prism-nestjs';
 
 @Module({
   imports: [PrismModule.forRoot({ apiKey: 'key' })],
@@ -487,7 +487,7 @@ getPremium(@Payer() payer: string) {}
 ### Next.js (TypeScript)
 
 ```typescript
-import { createPrismMiddleware } from "@financedistrict/prism-x402-sdk-nextjs";
+import { createPrismMiddleware } from "@1stdigital/prism-nextjs";
 
 export const middleware = createPrismMiddleware({
   apiKey: "key",
@@ -497,5 +497,5 @@ export const middleware = createPrismMiddleware({
 
 ---
 
-**Status:** All 4 framework integrations implemented ✅  
+**Status:** All 4 framework integrations implemented âœ…  
 **Next:** Add tests, documentation, and publish packages

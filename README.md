@@ -2,19 +2,19 @@
 
 Multi-language SDK for implementing the x402 payment protocol with Prism Gateway.
 
-## 📦 Installation
+## ðŸ“¦ Installation
 
 ### TypeScript / Express.js
 
 ```bash
-npm install @financedistrict/prism-x402-sdk-express
+npm install @1stdigital/prism-express
 ```
 
 Or configure for GitHub Packages:
 
 ```bash
-echo "@financedistrict:registry=https://npm.pkg.github.com" >> .npmrc
-npm install @financedistrict/prism-x402-sdk-express
+echo "@1stdigital:registry=https://npm.pkg.github.com" >> .npmrc
+npm install @1stdigital/prism-express
 ```
 
 ### C# / .NET _(coming soon)_
@@ -29,14 +29,14 @@ dotnet add package Prism.AspNetCore
 pip install prism-flask
 ```
 
-## 📦 Available SDKs
+## ðŸ“¦ Available SDKs
 
 ### TypeScript / JavaScript
 
-- **[@financedistrict/prism-x402-sdk-express](./typescript/)** - Express.js middleware ✅
-- [@financedistrict/prism-x402-sdk-fastify](./typescript/) - Fastify plugin _(coming soon)_
-- [@financedistrict/prism-x402-sdk-nestjs](./typescript/) - NestJS module _(coming soon)_
-- [@financedistrict/prism-x402-sdk-nextjs](./typescript/) - Next.js middleware _(coming soon)_
+- **[@1stdigital/prism-express](./typescript/)** - Express.js middleware âœ…
+- [@1stdigital/prism-fastify](./typescript/) - Fastify plugin _(coming soon)_
+- [@1stdigital/prism-nestjs](./typescript/) - NestJS module _(coming soon)_
+- [@1stdigital/prism-nextjs](./typescript/) - Next.js middleware _(coming soon)_
 
 ### C# / .NET
 
@@ -49,13 +49,13 @@ pip install prism-flask
 - **prism-fastapi** - FastAPI middleware _(coming soon)_
 - **prism-django** - Django middleware _(coming soon)_
 
-## 🚀 Quick Start
+## ðŸš€ Quick Start
 
 ### TypeScript / Express.js
 
 ```typescript
 import express from "express";
-import { prismPaymentMiddleware } from "@financedistrict/prism-x402-sdk-express";
+import { prismPaymentMiddleware } from "@1stdigital/prism-express";
 
 const app = express();
 
@@ -119,7 +119,7 @@ cd python
 # Coming soon
 ```
 
-## 📚 Documentation
+## ðŸ“š Documentation
 
 - [Introduction](./docs/introduction.md)
 - [x402 Protocol](./docs/concepts/x402-protocol.md)
@@ -127,19 +127,19 @@ cd python
 - [Payment Flow](./docs/concepts/payment-flow.md)
 - [Configuration Modes](./docs/concepts/configuration-modes.md)
 
-## 🏗️ Repository Structure
+## ðŸ—ï¸ Repository Structure
 
 ```
 Prism-SDK/
-├── docs/              # Shared documentation (language-agnostic)
-├── typescript/        # TypeScript/JavaScript SDKs
-├── csharp/            # C#/.NET SDKs
-├── python/            # Python SDKs
-├── website/           # Documentation website (Docusaurus)
-└── README.md          # This file
+â”œâ”€â”€ docs/              # Shared documentation (language-agnostic)
+â”œâ”€â”€ typescript/        # TypeScript/JavaScript SDKs
+â”œâ”€â”€ csharp/            # C#/.NET SDKs
+â”œâ”€â”€ python/            # Python SDKs
+â”œâ”€â”€ website/           # Documentation website (Docusaurus)
+â””â”€â”€ README.md          # This file
 ```
 
-## 🤝 Contributing
+## ðŸ¤ Contributing
 
 Each SDK follows the language-specific conventions:
 
@@ -147,15 +147,15 @@ Each SDK follows the language-specific conventions:
 - **C#**: StyleCop, XML documentation
 - **Python**: Black, pylint, docstrings
 
-## 📄 License
+## ðŸ“„ License
 
 MIT
 
-## 🔗 Links
+## ðŸ”— Links
 
 - [Prism Gateway Documentation](https://prism-gw.test.1stdigital.tech/health)
 - [x402 Protocol Specification](https://github.com/coinbase/x402)
 
-## 💬 Support
+## ðŸ’¬ Support
 
 For issues and questions, contact Finance District support.

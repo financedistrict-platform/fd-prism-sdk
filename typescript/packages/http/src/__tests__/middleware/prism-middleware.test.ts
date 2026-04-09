@@ -360,7 +360,7 @@ describe('prismPaymentMiddleware (HTTP)', () => {
 
   describe('Error handling', () => {
     it('should handle Gateway errors gracefully', async () => {
-      const { PrismGatewayError } = require('@financedistrict/prism-x402-sdk');
+      const { PrismGatewayError } = require('@1stdigital/prism-core');
 
       mockGetPaymentRequirements.mockRejectedValue(
         new PrismGatewayError('Gateway unavailable', 500, '0HNGT483NH6I8:00000001')
@@ -399,7 +399,7 @@ describe('prismPaymentMiddleware (HTTP)', () => {
     });
 
     it('should handle Network errors gracefully', async () => {
-      const { PrismNetworkError } = require('@financedistrict/prism-x402-sdk');
+      const { PrismNetworkError } = require('@1stdigital/prism-core');
 
       mockGetPaymentRequirements.mockRejectedValue(
         new PrismNetworkError('Connection refused', { code: 'ECONNREFUSED' })

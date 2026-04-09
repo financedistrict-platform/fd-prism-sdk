@@ -25,7 +25,7 @@ This module provides seamless interoperability between x402 protocol v1 and v2.
 The compatibility layer automatically detects protocol versions:
 
 ```typescript
-import { detectProtocolVersion, HeaderAdapter } from "@financedistrict/prism-x402-sdk";
+import { detectProtocolVersion, HeaderAdapter } from "@1stdigital/prism-core";
 
 // Detect from payload
 const version = detectProtocolVersion(payloadData); // 1 or 2
@@ -41,12 +41,12 @@ import {
   networkV1ToV2,
   networkV2ToV1,
   normalizeNetwork,
-} from "@financedistrict/prism-x402-sdk";
+} from "@1stdigital/prism-core";
 
-// v1 → v2
+// v1 â†’ v2
 const v2Network = networkV1ToV2("base-sepolia"); // "eip155:84532"
 
-// v2 → v1
+// v2 â†’ v1
 const v1Network = networkV2ToV1("eip155:84532"); // "base-sepolia"
 
 // Auto-normalize to target version
@@ -60,12 +60,12 @@ import {
   SchemaTransformer,
   upgradePaymentRequiredResponse,
   downgradePaymentPayload,
-} from "@financedistrict/prism-x402-sdk";
+} from "@1stdigital/prism-core";
 
-// Upgrade v1 → v2
+// Upgrade v1 â†’ v2
 const v2Response = upgradePaymentRequiredResponse(v1Response);
 
-// Downgrade v2 → v1
+// Downgrade v2 â†’ v1
 const v1Payload = downgradePaymentPayload(v2Payload);
 
 // Generic transformation
@@ -78,7 +78,7 @@ const transformed = SchemaTransformer.transformPaymentRequired(
 ### Header Management
 
 ```typescript
-import { HeaderAdapter, V2_HEADERS } from "@financedistrict/prism-x402-sdk";
+import { HeaderAdapter, V2_HEADERS } from "@1stdigital/prism-core";
 
 // Write headers (defaults to v2)
 HeaderAdapter.setPaymentPayload(
@@ -158,14 +158,14 @@ npm test compatibility
 - `SchemaTransformer.transformPaymentRequired(payload, targetVersion)` - Transform requirements
 - `SchemaTransformer.transformPaymentPayload(payload, targetVersion, context)` - Transform payload
 - `SchemaTransformer.transformSettlementResponse(response, targetVersion)` - Transform settlement
-- `upgradePaymentRequirements(v1)` - v1 → v2
-- `downgradePaymentRequirements(v2, resource)` - v2 → v1
-- `upgradePaymentRequiredResponse(v1)` - v1 → v2
-- `downgradePaymentRequiredResponse(v2)` - v2 → v1
-- `upgradePaymentPayload(v1, accepted, resource)` - v1 → v2
-- `downgradePaymentPayload(v2)` - v2 → v1
-- `upgradeSettlementResponse(v1)` - v1 → v2
-- `downgradeSettlementResponse(v2)` - v2 → v1
+- `upgradePaymentRequirements(v1)` - v1 â†’ v2
+- `downgradePaymentRequirements(v2, resource)` - v2 â†’ v1
+- `upgradePaymentRequiredResponse(v1)` - v1 â†’ v2
+- `downgradePaymentRequiredResponse(v2)` - v2 â†’ v1
+- `upgradePaymentPayload(v1, accepted, resource)` - v1 â†’ v2
+- `downgradePaymentPayload(v2)` - v2 â†’ v1
+- `upgradeSettlementResponse(v1)` - v1 â†’ v2
+- `downgradeSettlementResponse(v2)` - v2 â†’ v1
 
 ## Examples
 
@@ -176,7 +176,7 @@ import {
   HeaderAdapter,
   detectProtocolVersion,
   SchemaTransformer,
-} from "@financedistrict/prism-x402-sdk";
+} from "@1stdigital/prism-core";
 
 // In your middleware
 const version =
@@ -226,7 +226,7 @@ When adding new protocol features:
 
 1. Add types to both `v1.ts` and `v2.ts`
 2. Add transformation logic to `schema-transformer.ts`
-3. Add tests for both directions (v1→v2 and v2→v1)
+3. Add tests for both directions (v1â†’v2 and v2â†’v1)
 4. Update this README with examples
 
 ## License

@@ -1,5 +1,5 @@
 {
-  "name": "@financedistrict/prism-x402-sdk",
+  "name": "@1stdigital/prism-core",
   "version": "2.0.2",
   "private": false,
   "description": "Prism SDK - Core library (shared logic)",

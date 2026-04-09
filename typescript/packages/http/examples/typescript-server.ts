@@ -7,7 +7,7 @@
 
 import * as http from 'http';
 import * as url from 'url';
-import { prismPaymentMiddleware, PrismHttpRequest } from '@financedistrict/prism-x402-sdk-http';
+import { prismPaymentMiddleware, PrismHttpRequest } from '@1stdigital/prism-http';
 
 // Configure Prism middleware
 const paymentMiddleware = prismPaymentMiddleware(

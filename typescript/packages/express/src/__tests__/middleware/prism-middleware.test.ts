@@ -275,7 +275,7 @@ describe('prismPaymentMiddleware', () => {
 
   describe('Error handling', () => {
     it('should handle Gateway errors gracefully', async () => {
-      const { PrismGatewayError } = jest.requireActual('@financedistrict/prism-x402-sdk');
+      const { PrismGatewayError } = jest.requireActual('@1stdigital/prism-core');
 
       const gatewayError = new PrismGatewayError(
         'Gateway unavailable',
@@ -310,7 +310,7 @@ describe('prismPaymentMiddleware', () => {
     });
 
     it('should handle Network errors gracefully', async () => {
-      const { PrismNetworkError } = jest.requireActual('@financedistrict/prism-x402-sdk');
+      const { PrismNetworkError } = jest.requireActual('@1stdigital/prism-core');
 
       const networkError = new PrismNetworkError('Connection refused', {
         code: 'ECONNREFUSED',

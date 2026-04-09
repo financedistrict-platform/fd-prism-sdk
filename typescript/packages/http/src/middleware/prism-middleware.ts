@@ -7,7 +7,7 @@ import {
   PrismMiddlewareCore,
   HeaderAdapter,
   detectProtocolVersion,
-} from '@financedistrict/prism-x402-sdk';
+} from '@1stdigital/prism-core';
 
 /**
  * Extended IncomingMessage with parsed data
@@ -42,7 +42,7 @@ function sendResponse(res: ServerResponse, statusCode: number, headers: Record<s
  * @example
  * ```typescript
  * const http = require('http');
- * const { prismPaymentMiddleware } = require('@financedistrict/prism-x402-sdk-http');
+ * const { prismPaymentMiddleware } = require('@1stdigital/prism-http');
  * 
  * const middleware = prismPaymentMiddleware(
  *   {

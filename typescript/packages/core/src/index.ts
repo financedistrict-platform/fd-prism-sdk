@@ -1,5 +1,5 @@
 /**
- * @financedistrict/prism-x402-sdk
+ * @1stdigital/prism-core
  * Core library for Prism SDK - Shared types, client, and utilities
  */
 

@@ -1,5 +1,5 @@
 {
-  "name": "@financedistrict/prism-x402-sdk-fastify",
+  "name": "@1stdigital/prism-fastify",
   "version": "1.1.0",
   "description": "Prism SDK - Fastify plugin",
   "main": "dist/index.js",
@@ -19,7 +19,7 @@
     "test": "jest --passWithNoTests"
   },
   "dependencies": {
-    "@financedistrict/prism-x402-sdk": "^2.0.2",
+    "@1stdigital/prism-core": "^2.0.2",
     "fastify-plugin": "^4.5.0"
   },
   "peerDependencies": {
