@@ -16,13 +16,26 @@ export interface MiddlewareResponse {
  * @param requirements - Payment requirements from gateway
  * @returns Standard 402 response with headers
  */
-export function build402Response(requirements: PaymentRequiredResponse): MiddlewareResponse {
+export function build402Response(requirements: PaymentRequiredResponse, protocolVersion: 1 | 2 = 2): MiddlewareResponse {
+  const requirementsJson = JSON.stringify(requirements);
+  const requirementsBase64 = Buffer.from(requirementsJson).toString('base64');
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+
+  // Set version-appropriate header with base64-encoded value
+  if (protocolVersion === 1) {
+    headers['X-PAYMENT-REQUIREMENTS'] = requirementsBase64;
+  } else {
+    headers['PAYMENT-REQUIRED'] = requirementsBase64;
+    // Also set legacy header for backwards compatibility
+    headers['X-PAYMENT-REQUIREMENTS'] = requirementsBase64;
+  }
+
   return {
     statusCode: 402,
-    headers: {
-      'X-PAYMENT-REQUIREMENTS': JSON.stringify(requirements),
-      'Content-Type': 'application/json',
-    },
+    headers,
     body: requirements,
   };
 }
@@ -42,7 +55,8 @@ export function build402Response(requirements: PaymentRequiredResponse): Middlew
  */
 export function buildErrorResponse(
   error: any,
-  context: 'requirements' | 'payment'
+  context: 'requirements' | 'payment',
+  protocolVersion: 1 | 2 = 2
 ): MiddlewareResponse {
   // Handle PrismGatewayError
   if (error instanceof PrismGatewayError) {
@@ -50,7 +64,7 @@ export function buildErrorResponse(
       statusCode: error.statusCode,
       headers: { 'Content-Type': 'application/json' },
       body: {
-        x402Version: 1,
+        x402Version: protocolVersion,
         error: context === 'requirements' ? error.message : 'Payment processing failed',
         details: error.details,
         gateway: {
@@ -67,7 +81,7 @@ export function buildErrorResponse(
       statusCode: 503,
       headers: { 'Content-Type': 'application/json' },
       body: {
-        x402Version: 1,
+        x402Version: protocolVersion,
         error: 'Payment service unavailable',
         details: 'Could not connect to Prism Gateway. Please try again later.',
         retryAfter: 60,
@@ -81,7 +95,7 @@ export function buildErrorResponse(
       statusCode: 402,
       headers: { 'Content-Type': 'application/json' },
       body: {
-        x402Version: 1,
+        x402Version: protocolVersion,
         error: error.message,
         details: error.details,
       },
@@ -93,7 +107,7 @@ export function buildErrorResponse(
     statusCode: 500,
     headers: { 'Content-Type': 'application/json' },
     body: {
-      x402Version: 1,
+      x402Version: protocolVersion,
       error: context === 'requirements'
         ? 'Failed to generate payment requirements'
         : 'Failed to process payment',
@@ -105,12 +119,12 @@ export function buildErrorResponse(
 /**
  * Build invalid payment header response
  */
-export function buildInvalidPaymentHeaderResponse(): MiddlewareResponse {
+export function buildInvalidPaymentHeaderResponse(protocolVersion: 1 | 2 = 2): MiddlewareResponse {
   return {
     statusCode: 400,
     headers: { 'Content-Type': 'application/json' },
     body: {
-      x402Version: 1,
+      x402Version: protocolVersion,
       error: 'Invalid payment header format',
       details: 'X-PAYMENT header must be valid JSON',
     },
@@ -120,12 +134,12 @@ export function buildInvalidPaymentHeaderResponse(): MiddlewareResponse {
 /**
  * Build invalid payment response
  */
-export function buildInvalidPaymentResponse(error?: string): MiddlewareResponse {
+export function buildInvalidPaymentResponse(error?: string, protocolVersion: 1 | 2 = 2): MiddlewareResponse {
   return {
     statusCode: 402,
     headers: { 'Content-Type': 'application/json' },
     body: {
-      x402Version: 1,
+      x402Version: protocolVersion,
       error: error || 'Invalid payment',
     },
   };

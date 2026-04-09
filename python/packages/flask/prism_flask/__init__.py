@@ -79,7 +79,19 @@ def prism_payment_middleware(
             # Set headers
             for key, value in result.headers.items():
                 response.headers[key] = value
-          Get protocol version from g (set in before_request)
+            
+            return response
+        
+        # Payment verified - store info in g for after_request
+        if result.payment_info:
+            g.prism_payment = result.payment_info['payment']
+            g.prism_payer = result.payment_info['payer']
+            g.prism_requirements = result.payment_info['payment_requirements']
+    
+    @app.after_request
+    def settle_payment(response):
+        """Settle payment after successful response"""
+        # Get protocol version from g (set in before_request)
         protocol_version = getattr(g, 'prism_protocol_version', config.x402_version)
         
         # Only settle if payment was verified
@@ -116,20 +128,7 @@ def prism_payment_middleware(
                     print(f"[Prism] Settlement error: {e}")
                 # Settlement error - DO NOT send data, return 500 error
                 return jsonify({
-                    'x402Version': protocol_versionled - DO NOT send data, return 402 Payment Required
-                    error_reason = settlement_result.get('errorReason', 'Unknown error')
-                    print(f"[Prism] Settlement failed: {error_reason}")
-                    return jsonify({
-                        'x402Version': 1,
-                        'error': 'Payment settlement failed',
-                        'details': error_reason or 'Payment could not be settled. Please try again.'
-                    }), 402
-            except Exception as e:
-                if config.debug:
-                    print(f"[Prism] Settlement error: {e}")
-                # Settlement error - DO NOT send data, return 500 error
-                return jsonify({
-                    'x402Version': 1,
+                    'x402Version': protocol_version,
                     'error': 'Settlement processing error',
                     'details': 'An error occurred while settling the payment. Please try again.'
                 }), 500

@@ -206,7 +206,7 @@ export class PrismMiddlewareCore {
       }
 
       // Return 402 Payment Required
-      const response = build402Response(paymentRequirements as any);
+      const response = build402Response(paymentRequirements as any, protocolVersion);
       return {
         handled: true,
         ...response,
@@ -215,7 +215,7 @@ export class PrismMiddlewareCore {
       console.error('Error generating payment requirements:', error);
 
       // Build appropriate error response
-      const response = buildErrorResponse(error, 'requirements');
+      const response = buildErrorResponse(error, 'requirements', protocolVersion);
       return {
         handled: true,
         ...response,
@@ -236,7 +236,7 @@ export class PrismMiddlewareCore {
       // Decode and parse payment header (supports both v1 and v2)
       const paymentPayload = this.decodePaymentHeader(paymentHeader);
       if (!paymentPayload) {
-        const response = buildInvalidPaymentHeaderResponse();
+        const response = buildInvalidPaymentHeaderResponse(protocolVersion);
         return {
           handled: true,
           ...response,
@@ -285,7 +285,7 @@ export class PrismMiddlewareCore {
         if (this.debug) {
           console.log('[PrismMiddlewareCore] No matching payment requirement found for payment:', paymentPayload);
         }
-        const response = buildInvalidPaymentResponse('No matching payment requirement found for the provided payment');
+        const response = buildInvalidPaymentResponse('No matching payment requirement found for the provided payment', protocolVersion);
         return {
           handled: true,
           ...response,
@@ -300,7 +300,7 @@ export class PrismMiddlewareCore {
         if (this.debug) {
           console.log('[PrismMiddlewareCore] Payment verification failed:', verificationResult.error);
         }
-        const response = buildInvalidPaymentResponse(verificationResult.error);
+        const response = buildInvalidPaymentResponse(verificationResult.error, protocolVersion);
         return {
           handled: true,
           ...response,
@@ -324,7 +324,7 @@ export class PrismMiddlewareCore {
       console.error('Error processing payment:', error);
 
       // Build appropriate error response
-      const response = buildErrorResponse(error, 'payment');
+      const response = buildErrorResponse(error, 'payment', protocolVersion);
       return {
         handled: true,
         ...response,

@@ -23,6 +23,11 @@ export interface PrismNextConfig extends PrismMiddlewareConfig {
 /**
  * Create Prism middleware for Next.js App Router
  * 
+ * Note: Next.js App Router middleware cannot intercept responses after the route
+ * handler executes. This means settlement (and X-PAYMENT-RESPONSE header) cannot
+ * be performed in middleware. Use {@link withPrismPayment} on individual route
+ * handlers for the full payment flow including settlement.
+ * 
  * @example
  * ```typescript
  * // middleware.ts
@@ -45,6 +50,12 @@ export interface PrismNextConfig extends PrismMiddlewareConfig {
 export function createPrismMiddleware(config: PrismNextConfig) {
   const { routes, ...middlewareConfig } = config;
   const core = new PrismMiddlewareCore(middlewareConfig, routes);
+
+  console.warn(
+    '[prism-nextjs] createPrismMiddleware() only handles payment verification. ' +
+    'Settlement and X-PAYMENT-RESPONSE header are not supported in Next.js middleware. ' +
+    'Use withPrismPayment() on individual route handlers for the full payment flow.'
+  );
 
   return async function middleware(request: NextRequest): Promise<NextResponse> {
     const pathname = request.nextUrl.pathname;
@@ -184,6 +195,23 @@ export function withPrismPayment(
           result.paymentInfo.paymentRequirements,
           response.status
         );
+
+        if (settlementResult && settlementResult.success && settlementResult.transaction) {
+          // Settlement succeeded - add payment response header to response
+          const settlementResponse = JSON.stringify(settlementResult);
+          const settlementBase64 = Buffer.from(settlementResponse).toString('base64');
+          const newHeaders = new Headers(response.headers);
+          HeaderAdapter.setSettlementResponse(
+            (name, value) => newHeaders.set(name, value),
+            settlementBase64,
+            protocolVersion
+          );
+          return new Response(response.body, {
+            status: response.status,
+            statusText: response.statusText,
+            headers: newHeaders,
+          });
+        }
 
         if (settlementResult && !settlementResult.success) {
           // Settlement failed - DO NOT return data, return 402 Payment Required

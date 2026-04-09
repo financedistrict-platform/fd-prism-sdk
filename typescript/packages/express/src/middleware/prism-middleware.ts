@@ -134,7 +134,7 @@ export function prismPaymentMiddleware(
               res.setHeader('Content-Type', 'application/json');
             }
             return originalEnd(JSON.stringify({
-              x402Version: 1,
+              x402Version: protocolVersion,
               error: 'Settlement processing error',
               details: 'An error occurred while settling the payment. Please try again.',
             }));
