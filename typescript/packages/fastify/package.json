@@ -1,6 +1,6 @@
 {
   "name": "@1stdigital/prism-fastify",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Prism SDK - Fastify plugin",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
