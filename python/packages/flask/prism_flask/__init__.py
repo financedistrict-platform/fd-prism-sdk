@@ -36,7 +36,7 @@ def prism_payment_middleware(
 
         prism_payment_middleware(
             app,
-            PrismMiddlewareConfig(api_key='dev-key-123'),
+            PrismMiddlewareConfig(api_key=os.environ['PRISM_API_KEY']),
             {
                 '/api/premium': RoutePaymentConfig(price=0.01, description='Premium API')
             }
@@ -73,11 +73,12 @@ def prism_payment_middleware(
             
             return response
         
-        # Payment verified - store info in g for after_request
+        # Payment verified - store in g with underscore prefix to avoid collision
         if result.payment_info:
-            g.prism_payment = result.payment_info['payment']
-            g.prism_payer = result.payment_info['payer']
-            g.prism_requirements = result.payment_info['payment_requirements']
+            g._prism_payment_verified = True
+            g._prism_payment = result.payment_info['payment']
+            g._prism_payer = result.payment_info['payer']
+            g._prism_requirements = result.payment_info['payment_requirements']
     
     @app.after_request
     def settle_payment(response):
@@ -85,11 +86,12 @@ def prism_payment_middleware(
         # Get protocol version from g (set in before_request)
         protocol_version = getattr(g, 'prism_protocol_version', config.x402_version)
 
-        if hasattr(g, 'prism_payment') and response.status_code < 400:
+        # Only settle if payment was verified
+        if getattr(g, '_prism_payment_verified', False) and response.status_code < 400:
             try:
                 settlement_result = core.settlement_callback(
-                    g.prism_payment,
-                    g.prism_requirements,
+                    g._prism_payment,
+                    g._prism_requirements,
                     response.status_code
                 )
                 if settlement_result.get('success') and settlement_result.get('transaction'):
@@ -111,8 +113,8 @@ def prism_payment_middleware(
                     }), 402)
                     return err
             except Exception as e:
-                if config.debug:
-                    print(f"[Prism] Settlement error: {e}")
+                print(f"[Prism] Settlement error: {e}")
+                # Settlement error - return generic 500 error
                 err = make_response(jsonify({
                     'x402Version': protocol_version,
                     'error': 'Settlement processing error',
@@ -130,7 +132,7 @@ def require_payment(price: float | str, description: str):
         @app.route('/api/premium')
         @require_payment(price=0.01, description='Premium API')
         def premium():
-            payer = g.prism_payer
+            payer = g._prism_payer
             return {'message': 'Premium content', 'payer': payer}
     """
     def decorator(f: Callable):
@@ -138,7 +140,9 @@ def require_payment(price: float | str, description: str):
         def decorated_function(*args, **kwargs):
             from flask import g
 
-            if not hasattr(g, 'prism_payer'):
+            # Use _prism_payment_verified flag (underscore-prefixed, set only by Prism middleware)
+            # to prevent bypass via accidental attribute collision with other middleware
+            if not getattr(g, '_prism_payment_verified', False):
                 return jsonify({
                     'error': 'Payment Required',
                     'message': description

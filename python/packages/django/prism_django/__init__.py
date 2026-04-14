@@ -111,10 +111,11 @@ class PrismPaymentMiddleware:
         
         # Payment verified or route not protected
         if result.payment_info:
-            # Store payment info in request for view access
-            request.prism_payment = result.payment_info['payment']
-            request.prism_payer = result.payment_info['payer']
-            request.prism_requirements = result.payment_info['payment_requirements']
+            # Use underscore-prefixed attributes to avoid collision with user-defined attributes
+            request._prism_payment_verified = True
+            request._prism_payment = result.payment_info['payment']
+            request._prism_payer = result.payment_info['payer']
+            request._prism_requirements = result.payment_info['payment_requirements']
         
         # Call the view
         response = self.get_response(request)
@@ -122,7 +123,7 @@ class PrismPaymentMiddleware:
         # Settlement callback after successful response
         if result.payment_info and response.status_code < 400:
             protocol_version = result.payment_info.get('protocol_version', self.config.x402_version)
-            
+
             try:
                 settlement_result = self.core.settlement_callback(
                     result.payment_info['payment'],
@@ -152,8 +153,7 @@ class PrismPaymentMiddleware:
                         'details': error_reason or 'Payment could not be settled. Please try again.'
                     }, status=402)
             except Exception as e:
-                if self.config.debug:
-                    print(f"[Prism] Settlement error: {e}")
+                print(f"[Prism] Settlement error: {e}")
                 # Settlement error - DO NOT send data, return 500 error
                 return JsonResponse({
                     'x402Version': protocol_version,
@@ -174,13 +174,14 @@ def require_payment(price: float | str, description: str):
         
         @require_payment(price=0.01, description='Premium API')
         def premium_view(request):
-            payer = getattr(request, 'prism_payer', None)
+            payer = getattr(request, '_prism_payer', None)
             return JsonResponse({'message': 'Premium content', 'payer': payer})
     """
     def decorator(view_func: Callable):
         def wrapped_view(request: HttpRequest, *args, **kwargs):
-            # Check if payment info exists
-            if not hasattr(request, 'prism_payer'):
+            # Use _prism_payment_verified flag (underscore-prefixed, set only by Prism middleware)
+            # to prevent bypass via accidental attribute collision with other middleware
+            if not getattr(request, '_prism_payment_verified', False):
                 return JsonResponse(
                     {
                         'error': 'Payment Required',
@@ -188,9 +189,9 @@ def require_payment(price: float | str, description: str):
                     },
                     status=402
                 )
-            
+
             return view_func(request, *args, **kwargs)
-        
+
         return wrapped_view
     return decorator
 

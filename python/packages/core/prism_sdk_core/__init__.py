@@ -45,6 +45,7 @@ class PrismMiddlewareConfig:
     debug: bool = False
     timeout: int = 30
     x402_version: Literal[1, 2] = 2  # Default to v2
+    allowed_versions: Optional[List[Literal[1, 2]]] = None  # Default [2]; rejects payloads outside whitelist
 
 
 class PaymentPayload(TypedDict, total=False):
@@ -297,18 +298,20 @@ class PrismMiddlewareCore:
         self.config = config
         self.routes = routes
         self.client = PrismClient(config)
+        self.allowed_versions: List[Literal[1, 2]] = config.allowed_versions if config.allowed_versions is not None else [2]
     
     def find_matching_route(self, path: str) -> Optional[RoutePaymentConfig]:
         """Find matching route configuration for path"""
         # Exact match
         if path in self.routes:
             return self.routes[path]
-        
-        # Prefix match
+
+        # Prefix match — require '/' segment boundary to prevent /api matching /api-v2
         for route_path, config in self.routes.items():
-            if path.startswith(route_path):
+            prefix = route_path.rstrip('/')
+            if path.startswith(prefix + '/'):
                 return config
-        
+
         return None
     
     def handle_request(
@@ -351,11 +354,12 @@ class PrismMiddlewareCore:
                 description=route_config.description
             )
         except Exception as e:
-            # Error getting requirements, return 500
+            # Always log server-side; never expose internal details to client
+            print(f"[Prism] Payment requirements error: {e}")
             return MiddlewareResult(
                 handled=True,
                 status_code=500,
-                body={'error': 'Failed to get payment requirements', 'details': str(e)}
+                body={'error': 'Failed to get payment requirements'}
             )
         
         # Transform requirements to target protocol version for response
@@ -390,14 +394,27 @@ class PrismMiddlewareCore:
             payment_data = self._decode_payment_header(payment_header)
             payload_version = payment_data.get('x402Version', protocol_version)
 
+            # Reject if client's protocol version is not in the server's allowed list
+            if payload_version != protocol_version and payload_version not in self.allowed_versions:
+                return MiddlewareResult(
+                    handled=True,
+                    status_code=400,
+                    body={'error': 'Invalid payment header'}
+                )
+            # Override to client's version only if whitelisted
+            if payload_version in self.allowed_versions:
+                protocol_version = payload_version
+
             # Normalize to v2 for internal processing
             if payload_version == 1:
                 payment_data = SchemaTransformer.upgrade_payment_payload(payment_data)
         except Exception as e:
+            # Always log server-side; never expose internal details to client
+            print(f"[Prism] Invalid payment header: {e}")
             return MiddlewareResult(
                 handled=True,
                 status_code=400,
-                body={'error': 'Invalid payment header', 'details': str(e)}
+                body={'error': 'Invalid payment header'}
             )
 
         # Verify payment — pass decoded payload and single requirement (not full envelope)
@@ -428,20 +445,29 @@ class PrismMiddlewareCore:
             )
 
         except Exception as e:
+            # Always log server-side; never expose internal details to client
+            print(f"[Prism] Payment verification error: {e}")
             return MiddlewareResult(
                 handled=True,
                 status_code=500,
-                body={'error': 'Payment verification failed', 'details': str(e)}
+                body={'error': 'Payment verification failed'}
             )
     
+    _MAX_PAYMENT_HEADER_BYTES = 8192  # ~10× real x402 payload size
+
     def _decode_payment_header(self, payment_header: str) -> Dict[str, Any]:
         """Decode payment header (base64 JSON)"""
+        # Reject oversized headers before decoding to prevent memory exhaustion
+        if len(payment_header) > self._MAX_PAYMENT_HEADER_BYTES:
+            raise ValueError(
+                f"Payment header exceeds maximum size ({len(payment_header)} > {self._MAX_PAYMENT_HEADER_BYTES} bytes)"
+            )
         try:
             # Try direct JSON parse
             return json.loads(payment_header)
         except (json.JSONDecodeError, ValueError):
             pass
-        
+
         try:
             # Try base64 decode then JSON parse
             decoded = base64.b64decode(payment_header).decode('utf-8')

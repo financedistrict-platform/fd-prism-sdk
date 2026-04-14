@@ -71,18 +71,19 @@ class PrismPaymentMiddleware(BaseHTTPMiddleware):
         
         # Payment verified or route not protected
         if result.payment_info:
-            # Store payment info in request state
-            request.state.prism_payment = result.payment_info['payment']
-            request.state.prism_payer = result.payment_info['payer']
-            request.state.prism_requirements = result.payment_info['payment_requirements']
-            request.state.prism_protocol_version = protocol_version
+            # Use underscore-prefixed attributes to avoid collision with user-defined state
+            request.state._prism_payment_verified = True
+            request.state._prism_payment = result.payment_info['payment']
+            request.state._prism_payer = result.payment_info['payer']
+            request.state._prism_requirements = result.payment_info['payment_requirements']
+            request.state._prism_protocol_version = protocol_version
         
         # Call the route handler
         response = await call_next(request)
         
         # Settlement callback after successful response
         if result.payment_info and response.status_code < 400:
-            protocol_version = getattr(request.state, 'prism_protocol_version', self.config.x402_version)
+            protocol_version = getattr(request.state, '_prism_protocol_version', self.config.x402_version)
             
             try:
                 settlement_result = await self.core.asettlement_callback(
@@ -115,8 +116,7 @@ class PrismPaymentMiddleware(BaseHTTPMiddleware):
                         }
                     )
             except Exception as e:
-                if self.config.debug:
-                    print(f"[Prism] Settlement error: {e}")
+                print(f"[Prism] Settlement error: {e}")
                 # Settlement error - DO NOT send data, return 500 error
                 return JSONResponse(
                     status_code=500,
@@ -147,7 +147,7 @@ def add_prism_middleware(
         
         add_prism_middleware(
             app,
-            PrismMiddlewareConfig(api_key='dev-key-123'),
+            PrismMiddlewareConfig(api_key=os.environ['PRISM_API_KEY']),
             {
                 '/api/premium': RoutePaymentConfig(price=0.01, description='Premium API')
             }
@@ -159,12 +159,12 @@ def add_prism_middleware(
 # Helper to get payer from request
 def get_payer(request: Request) -> Optional[str]:
     """Get payer address from request state"""
-    return getattr(request.state, 'prism_payer', None)
+    return getattr(request.state, '_prism_payer', None)
 
 
 def get_payment(request: Request) -> Optional[Dict]:
     """Get payment info from request state"""
-    return getattr(request.state, 'prism_payment', None)
+    return getattr(request.state, '_prism_payment', None)
 
 
 def require_payment(price: float | str, description: str):

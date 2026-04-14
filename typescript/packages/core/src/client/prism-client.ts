@@ -144,8 +144,12 @@ export class PrismClient {
   ): Promise<{ isValid: boolean; payer?: string; error?: string }> {
     try {
       if (this.debug) {
+        // Redact EIP-712 signature to prevent credential exposure in logs
+        const safePayload = paymentPayload?.payload
+          ? { ...paymentPayload, payload: { ...paymentPayload.payload, signature: '[REDACTED]' } }
+          : paymentPayload;
         console.log('[PrismClient] verifyPayment request:', {
-          paymentPayload,
+          paymentPayload: safePayload,
           paymentRequirements
         });
       }
@@ -188,8 +192,12 @@ export class PrismClient {
   }> {
     try {
       if (this.debug) {
+        // Redact EIP-712 signature to prevent credential exposure in logs
+        const safePayload = paymentPayload?.payload
+          ? { ...paymentPayload, payload: { ...paymentPayload.payload, signature: '[REDACTED]' } }
+          : paymentPayload;
         console.log('[PrismClient] settlePayment request:', {
-          paymentPayload,
+          paymentPayload: safePayload,
           paymentRequirements
         });
       }

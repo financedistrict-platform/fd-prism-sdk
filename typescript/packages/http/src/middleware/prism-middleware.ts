@@ -86,10 +86,11 @@ export function prismPaymentMiddleware(
     const pathname = parsedUrl.pathname || '/';
     req.path = pathname;
 
-    // Determine protocol and construct resource URL
+    // Construct resource URL — prefer config.resourceBaseUrl to avoid Host header injection
     const protocol = (req.socket as any).encrypted ? 'https' : 'http';
     const host = req.headers.host || 'localhost';
-    const resourceUrl = `${protocol}://${host}${req.url}`;
+    const base = (config.resourceBaseUrl ?? `${protocol}://${host}`).replace(/\/$/, '');
+    const resourceUrl = `${base}${req.url}`;
 
     // Get payment header (supports both v1 X-PAYMENT and v2 PAYMENT-SIGNATURE)
     const paymentHeader = HeaderAdapter.getPaymentPayload((name) => req.headers[name.toLowerCase()] as string | undefined || null);

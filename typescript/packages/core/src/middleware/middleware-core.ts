@@ -87,6 +87,8 @@ export class PrismMiddlewareCore {
   private readonly client: PrismClient;
   private readonly debug: boolean;
   private readonly defaultProtocolVersion: 1 | 2 = 2; // v2 is default
+  private readonly allowedVersions: (1 | 2)[];
+  private static readonly MAX_PAYMENT_HEADER_BYTES = 8192; // ~10× real x402 payload size
 
   constructor(
     private readonly config: PrismMiddlewareConfig,
@@ -99,6 +101,8 @@ export class PrismMiddlewareCore {
     if (config.x402Version === 1 || config.x402Version === 2) {
       this.defaultProtocolVersion = config.x402Version;
     }
+    // Allowed versions whitelist — default to v2 only
+    this.allowedVersions = config.allowedVersions ?? [2];
   }
 
   /**
@@ -246,10 +250,17 @@ export class PrismMiddlewareCore {
       // Detect actual protocol version from payload
       const payloadVersion = detectProtocolVersion(paymentPayload);
       if (payloadVersion && payloadVersion !== protocolVersion) {
-        if (this.debug) {
-          console.log(`[PrismMiddlewareCore] Protocol version mismatch: expected ${protocolVersion}, got ${payloadVersion}`);
+        // Reject if client's version is not in the server's allowed list
+        if (!this.allowedVersions.includes(payloadVersion)) {
+          if (this.debug) {
+            console.log(`[PrismMiddlewareCore] Protocol version ${payloadVersion} not in allowedVersions: [${this.allowedVersions}]`);
+          }
+          const response = buildInvalidPaymentHeaderResponse(this.defaultProtocolVersion);
+          return { handled: true, ...response };
         }
-        // Use payload version (client decides)
+        if (this.debug) {
+          console.log(`[PrismMiddlewareCore] Protocol version mismatch: expected ${protocolVersion}, using client version ${payloadVersion}`);
+        }
         protocolVersion = payloadVersion;
       }
 
@@ -339,6 +350,13 @@ export class PrismMiddlewareCore {
    * @returns Parsed PaymentPayload or null if invalid
    */
   private decodePaymentHeader(paymentHeader: string): PaymentPayload | PaymentPayloadV1 | null {
+    // Reject oversized headers before decoding to prevent memory exhaustion
+    if (paymentHeader.length > PrismMiddlewareCore.MAX_PAYMENT_HEADER_BYTES) {
+      if (this.debug) {
+        console.log(`[PrismMiddlewareCore] Payment header too large: ${paymentHeader.length} bytes (max ${PrismMiddlewareCore.MAX_PAYMENT_HEADER_BYTES})`);
+      }
+      return null;
+    }
     try {
       // Decode base64 to string, then parse JSON
       const decodedString = Buffer.from(paymentHeader, 'base64').toString('utf-8');
