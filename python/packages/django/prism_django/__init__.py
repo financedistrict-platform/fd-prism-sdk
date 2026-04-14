@@ -28,9 +28,9 @@ class PrismPaymentMiddleware:
         ]
         
         PRISM_CONFIG = {
-            'api_key': 'dev-key-123',
+            'api_key': os.environ['PRISM_API_KEY'],
             'base_url': 'https://prism-api.1stdigital.tech',
-            'debug': True
+            'debug': False
         }
         
         PRISM_ROUTES = {

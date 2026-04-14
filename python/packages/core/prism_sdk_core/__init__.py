@@ -78,6 +78,8 @@ class PrismClient:
     """HTTP client for Prism Gateway API — sync (httpx.Client) + async (httpx.AsyncClient)."""
 
     def __init__(self, config: PrismMiddlewareConfig):
+        if not config.api_key or not config.api_key.strip():
+            raise ValueError("PrismClient: api_key is required and cannot be empty")
         self.config = config
         self._headers = {
             'X-API-Key': config.api_key,  # gateway expects this exact casing

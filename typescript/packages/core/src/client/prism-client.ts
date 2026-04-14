@@ -25,15 +25,21 @@ export class PrismClient {
   private static readonly DEFAULT_BASE_URL = 'https://prism-gw.test.1stdigital.tech';
 
   constructor(config: PrismMiddlewareConfig) {
+    if (!config.apiKey?.trim()) {
+      throw new Error('PrismClient: apiKey is required and cannot be empty');
+    }
     this.apiKey = config.apiKey;
     this.debug = config.debug || false;
     this.protocolVersion = config.x402Version || 2; // Default to v2
 
-    // Use provided baseUrl or default to test environment
+    if (!config.baseUrl) {
+      console.warn('[PrismClient] No baseUrl configured — defaulting to test gateway. Set baseUrl for production.');
+    }
     const baseUrl = config.baseUrl || PrismClient.DEFAULT_BASE_URL;
 
     this.client = axios.create({
       baseURL: baseUrl,
+      timeout: 30_000,
       headers: {
         'X-API-Key': this.apiKey,
         'Content-Type': 'application/json',

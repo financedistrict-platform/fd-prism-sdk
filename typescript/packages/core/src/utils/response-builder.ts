@@ -111,7 +111,7 @@ export function buildErrorResponse(
       error: context === 'requirements'
         ? 'Failed to generate payment requirements'
         : 'Failed to process payment',
-      details: error.message || 'An unexpected error occurred',
+      details: 'An unexpected error occurred',
     },
   };
 }
