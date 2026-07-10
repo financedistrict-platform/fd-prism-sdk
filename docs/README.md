@@ -5,9 +5,9 @@ Welcome to the Prism SDK documentation. This documentation is shared across all 
 ## Quick Links
 
 - [Introduction](./introduction.md) - Start here for an overview
-- [TypeScript SDK](../typescript/README.md) - Available now ✅
-- [C# SDK](../csharp/README.md) - Coming soon 🔜
-- [Python SDK](../python/README.md) - Coming soon 🔜
+- [TypeScript SDK](../typescript/README.md) - Available now âœ…
+- [C# SDK](../csharp/README.md) - Coming soon ðŸ”œ
+- [Python SDK](../python/README.md) - Coming soon ðŸ”œ
 
 ## Core Concepts
 
@@ -120,9 +120,9 @@ The Python SDK will support Flask and FastAPI.
 
 Pick the SDK that matches your technology stack:
 
-- **TypeScript/Node.js** → [TypeScript SDK](../typescript/README.md)
-- **.NET/C#** → [C# SDK](../csharp/README.md) (coming soon)
-- **Python** → [Python SDK](../python/README.md) (coming soon)
+- **TypeScript/Node.js** â†’ [TypeScript SDK](../typescript/README.md)
+- **.NET/C#** â†’ [C# SDK](../csharp/README.md) (coming soon)
+- **Python** â†’ [Python SDK](../python/README.md) (coming soon)
 
 ### 2. Install the SDK
 
@@ -212,38 +212,38 @@ See the [Testing Guide](./guides/testing.md) for detailed testing instructions.
 ## Architecture Overview
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                         Client Application                       │
-│  (Makes requests with/without X-PAYMENT header)                  │
-└────────────────────────────┬────────────────────────────────────┘
-                             │
-                             ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                      Your API Server                             │
-│  ┌──────────────────────────────────────────────────────────┐  │
-│  │                  Prism SDK Middleware                     │  │
-│  │  • Intercepts requests                                    │  │
-│  │  • Checks for protected routes                            │  │
-│  │  • Validates X-PAYMENT header                             │  │
-│  │  • Returns 402 or allows access                           │  │
-│  └─────────────────────────┬────────────────────────────────┘  │
-│                             │                                    │
-│  ┌─────────────────────────▼────────────────────────────────┐  │
-│  │              Your Route Handlers                          │  │
-│  │  • Premium content                                        │  │
-│  │  • Protected APIs                                         │  │
-│  │  • Business logic                                         │  │
-│  └──────────────────────────────────────────────────────────┘  │
-└────────────────────────────┬────────────────────────────────────┘
-                             │
-                             ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    Prism Gateway API                             │
-│  • Generate payment requirements                                 │
-│  • Verify payment signatures                                     │
-│  • Settle payments                                               │
-│  • Manage API keys                                               │
-└─────────────────────────────────────────────────────────────────┘
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚                         Client Application                       â”‚
+â”‚  (Makes requests with/without X-PAYMENT header)                  â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+                             â”‚
+                             â–¼
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚                      Your API Server                             â”‚
+â”‚  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”  â”‚
+â”‚  â”‚                  Prism SDK Middleware                     â”‚  â”‚
+â”‚  â”‚  â€¢ Intercepts requests                                    â”‚  â”‚
+â”‚  â”‚  â€¢ Checks for protected routes                            â”‚  â”‚
+â”‚  â”‚  â€¢ Validates X-PAYMENT header                             â”‚  â”‚
+â”‚  â”‚  â€¢ Returns 402 or allows access                           â”‚  â”‚
+â”‚  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜  â”‚
+â”‚                             â”‚                                    â”‚
+â”‚  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â–¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”  â”‚
+â”‚  â”‚              Your Route Handlers                          â”‚  â”‚
+â”‚  â”‚  â€¢ Premium content                                        â”‚  â”‚
+â”‚  â”‚  â€¢ Protected APIs                                         â”‚  â”‚
+â”‚  â”‚  â€¢ Business logic                                         â”‚  â”‚
+â”‚  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜  â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+                             â”‚
+                             â–¼
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚                    Prism Gateway API                             â”‚
+â”‚  â€¢ Generate payment requirements                                 â”‚
+â”‚  â€¢ Verify payment signatures                                     â”‚
+â”‚  â€¢ Settle payments                                               â”‚
+â”‚  â€¢ Manage API keys                                               â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
 ```
 
 ## Payment Flow Summary

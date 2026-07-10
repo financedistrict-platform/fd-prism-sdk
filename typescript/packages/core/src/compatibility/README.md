@@ -43,10 +43,10 @@ import {
   normalizeNetwork,
 } from "@financedistrict/prism-x402-sdk";
 
-// v1 → v2
+// v1 â†’ v2
 const v2Network = networkV1ToV2("base-sepolia"); // "eip155:84532"
 
-// v2 → v1
+// v2 â†’ v1
 const v1Network = networkV2ToV1("eip155:84532"); // "base-sepolia"
 
 // Auto-normalize to target version
@@ -62,10 +62,10 @@ import {
   downgradePaymentPayload,
 } from "@financedistrict/prism-x402-sdk";
 
-// Upgrade v1 → v2
+// Upgrade v1 â†’ v2
 const v2Response = upgradePaymentRequiredResponse(v1Response);
 
-// Downgrade v2 → v1
+// Downgrade v2 â†’ v1
 const v1Payload = downgradePaymentPayload(v2Payload);
 
 // Generic transformation
@@ -158,14 +158,14 @@ npm test compatibility
 - `SchemaTransformer.transformPaymentRequired(payload, targetVersion)` - Transform requirements
 - `SchemaTransformer.transformPaymentPayload(payload, targetVersion, context)` - Transform payload
 - `SchemaTransformer.transformSettlementResponse(response, targetVersion)` - Transform settlement
-- `upgradePaymentRequirements(v1)` - v1 → v2
-- `downgradePaymentRequirements(v2, resource)` - v2 → v1
-- `upgradePaymentRequiredResponse(v1)` - v1 → v2
-- `downgradePaymentRequiredResponse(v2)` - v2 → v1
-- `upgradePaymentPayload(v1, accepted, resource)` - v1 → v2
-- `downgradePaymentPayload(v2)` - v2 → v1
-- `upgradeSettlementResponse(v1)` - v1 → v2
-- `downgradeSettlementResponse(v2)` - v2 → v1
+- `upgradePaymentRequirements(v1)` - v1 â†’ v2
+- `downgradePaymentRequirements(v2, resource)` - v2 â†’ v1
+- `upgradePaymentRequiredResponse(v1)` - v1 â†’ v2
+- `downgradePaymentRequiredResponse(v2)` - v2 â†’ v1
+- `upgradePaymentPayload(v1, accepted, resource)` - v1 â†’ v2
+- `downgradePaymentPayload(v2)` - v2 â†’ v1
+- `upgradeSettlementResponse(v1)` - v1 â†’ v2
+- `downgradeSettlementResponse(v2)` - v2 â†’ v1
 
 ## Examples
 
@@ -226,7 +226,7 @@ When adding new protocol features:
 
 1. Add types to both `v1.ts` and `v2.ts`
 2. Add transformation logic to `schema-transformer.ts`
-3. Add tests for both directions (v1→v2 and v2→v1)
+3. Add tests for both directions (v1â†’v2 and v2â†’v1)
 4. Update this README with examples
 
 ## License

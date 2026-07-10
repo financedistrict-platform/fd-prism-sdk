@@ -41,8 +41,9 @@ export function prismPaymentMiddleware(
   const core = new PrismMiddlewareCore(config, routes);
 
   return async function (req: Request, res: Response, next: NextFunction) {
-    // Construct resource URL
-    const resourceUrl = `${req.protocol}://${req.get('host')}${req.originalUrl}`;
+    // Construct resource URL — prefer config.resourceBaseUrl to avoid Host header injection
+    const base = (config.resourceBaseUrl ?? `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
+    const resourceUrl = `${base}${req.originalUrl}`;
 
     // Get payment header (supports both v1 X-PAYMENT and v2 PAYMENT-SIGNATURE)
     const paymentHeader = HeaderAdapter.getPaymentPayload((name) => req.header(name) || null);
@@ -134,7 +135,7 @@ export function prismPaymentMiddleware(
               res.setHeader('Content-Type', 'application/json');
             }
             return originalEnd(JSON.stringify({
-              x402Version: 1,
+              x402Version: protocolVersion,
               error: 'Settlement processing error',
               details: 'An error occurred while settling the payment. Please try again.',
             }));

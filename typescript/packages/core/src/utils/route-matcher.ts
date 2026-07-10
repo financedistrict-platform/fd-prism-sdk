@@ -33,7 +33,7 @@ export function findMatchingRoute(path: string, routes: RoutesConfig): string | 
   for (const route in routes) {
     if (route.endsWith('/*')) {
       const prefix = route.slice(0, -2);
-      if (path.startsWith(prefix)) {
+      if (path === prefix || path.startsWith(prefix + '/')) {
         return route;
       }
     }

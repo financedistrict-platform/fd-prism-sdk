@@ -6,9 +6,9 @@ Prism SDK supports different modes for generating payment requirements, each sui
 
 | Mode          | When to Use                             | Implementation Status |
 | ------------- | --------------------------------------- | --------------------- |
-| **On-Demand** | Dynamic pricing, real-time updates      | ✅ Implemented        |
-| **Cloud**     | Static config, CDN distribution         | 🔜 Coming Soon        |
-| **File**      | Offline deployments, air-gapped systems | 🔜 Coming Soon        |
+| **On-Demand** | Dynamic pricing, real-time updates      | âœ… Implemented        |
+| **Cloud**     | Static config, CDN distribution         | ðŸ”œ Coming Soon        |
+| **File**      | Offline deployments, air-gapped systems | ðŸ”œ Coming Soon        |
 
 ## Mode 1: On-Demand (Current)
 
@@ -63,21 +63,21 @@ app.get("/api/weather", (req, res) => {
 **Flow:**
 
 ```
-Request → SDK → Prism Gateway API → Payment Requirements → 402 Response
+Request â†’ SDK â†’ Prism Gateway API â†’ Payment Requirements â†’ 402 Response
 ```
 
 **Pros:**
 
-- ✅ Always up-to-date
-- ✅ Real-time asset/network availability
-- ✅ Dynamic pricing support
-- ✅ No local configuration needed
+- âœ… Always up-to-date
+- âœ… Real-time asset/network availability
+- âœ… Dynamic pricing support
+- âœ… No local configuration needed
 
 **Cons:**
 
-- ⚠️ Requires Gateway API call for each 402 response
-- ⚠️ Slight latency overhead (~50-100ms)
-- ⚠️ Depends on Gateway availability
+- âš ï¸ Requires Gateway API call for each 402 response
+- âš ï¸ Slight latency overhead (~50-100ms)
+- âš ï¸ Depends on Gateway availability
 
 ## Mode 2: Cloud Hosted Configuration (Coming Soon)
 
@@ -135,22 +135,22 @@ app.use(
 **Flow:**
 
 ```
-Startup → Load Config from Cloud → Cache Locally
-Request → SDK (uses cache) → 402 Response (no Gateway call)
+Startup â†’ Load Config from Cloud â†’ Cache Locally
+Request â†’ SDK (uses cache) â†’ 402 Response (no Gateway call)
 ```
 
 **Pros:**
 
-- ✅ No Gateway API calls for 402 responses
-- ✅ Lower latency (~5-10ms)
-- ✅ Reduced Gateway load
-- ✅ Works with CDN
+- âœ… No Gateway API calls for 402 responses
+- âœ… Lower latency (~5-10ms)
+- âœ… Reduced Gateway load
+- âœ… Works with CDN
 
 **Cons:**
 
-- ⚠️ Configuration updates require reload
-- ⚠️ Still needs Gateway for verification/settlement
-- ⚠️ Manual price updates
+- âš ï¸ Configuration updates require reload
+- âš ï¸ Still needs Gateway for verification/settlement
+- âš ï¸ Manual price updates
 
 ## Mode 3: Downloaded File (Coming Soon)
 
@@ -188,31 +188,31 @@ Same as cloud mode, but stored locally:
 
 ```
 project/
-├── config/
-│   └── prism-config.json  # Downloaded from Gateway
-├── src/
-└── package.json
+â”œâ”€â”€ config/
+â”‚   â””â”€â”€ prism-config.json  # Downloaded from Gateway
+â”œâ”€â”€ src/
+â””â”€â”€ package.json
 ```
 
 **Flow:**
 
 ```
-Startup → Load Config from File → Cache in Memory
-Request → SDK (uses cache) → 402 Response (no Gateway call)
+Startup â†’ Load Config from File â†’ Cache in Memory
+Request â†’ SDK (uses cache) â†’ 402 Response (no Gateway call)
 ```
 
 **Pros:**
 
-- ✅ No external calls for 402 responses
-- ✅ Works completely offline
-- ✅ Fastest response times
-- ✅ No CDN dependencies
+- âœ… No external calls for 402 responses
+- âœ… Works completely offline
+- âœ… Fastest response times
+- âœ… No CDN dependencies
 
 **Cons:**
 
-- ⚠️ Manual configuration updates
-- ⚠️ Still needs Gateway for verification/settlement
-- ⚠️ Configuration can become stale
+- âš ï¸ Manual configuration updates
+- âš ï¸ Still needs Gateway for verification/settlement
+- âš ï¸ Configuration can become stale
 
 ## Comparison
 
@@ -221,9 +221,9 @@ Request → SDK (uses cache) → 402 Response (no Gateway call)
 | **Gateway API calls (402)** | Every request | None          | None          |
 | **Latency (402)**           | ~100ms        | ~10ms         | ~5ms          |
 | **Config updates**          | Instant       | Manual reload | Manual reload |
-| **Offline capable**         | ❌            | ❌            | ✅            |
-| **Dynamic pricing**         | ✅            | ❌            | ❌            |
-| **CDN support**             | N/A           | ✅            | N/A           |
+| **Offline capable**         | âŒ            | âŒ            | âœ…            |
+| **Dynamic pricing**         | âœ…            | âŒ            | âŒ            |
+| **CDN support**             | N/A           | âœ…            | N/A           |
 
 ## Verification & Settlement
 

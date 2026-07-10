@@ -233,7 +233,7 @@ const routes = {
   "/cheap": { price: 0.001 }, // Number
   "/medium": { price: "0.01" }, // String
   "/expensive": { price: "$0.1" }, // String with currency
-  "/euro": { price: "€0.05" }, // Different currency
+  "/euro": { price: "â‚¬0.05" }, // Different currency
 };
 ```
 

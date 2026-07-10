@@ -10,19 +10,19 @@ The TypeScript package is automatically published to GitHub Packages via GitHub 
 2. Select **"Publish TypeScript Package"** workflow
 3. Click **"Run workflow"**
 4. Select version bump type:
-   - `patch` - Bug fixes (0.1.0 → 0.1.1)
-   - `minor` - New features (0.1.0 → 0.2.0)
-   - `major` - Breaking changes (0.1.0 → 1.0.0)
+   - `patch` - Bug fixes (0.1.0 â†’ 0.1.1)
+   - `minor` - New features (0.1.0 â†’ 0.2.0)
+   - `major` - Breaking changes (0.1.0 â†’ 1.0.0)
 5. Click **"Run workflow"**
 
 The workflow will:
 
-- ✅ Run tests
-- ✅ Build the package
-- ✅ Bump version in package.json
-- ✅ Create git tag
-- ✅ Publish to GitHub Packages
-- ✅ Create GitHub Release
+- âœ… Run tests
+- âœ… Build the package
+- âœ… Bump version in package.json
+- âœ… Create git tag
+- âœ… Publish to GitHub Packages
+- âœ… Create GitHub Release
 
 ### Local Development
 
@@ -58,12 +58,12 @@ Published package includes:
 
 ```
 dist/
-├── index.js          # Main entry point
-├── index.d.ts        # TypeScript definitions
-├── middleware/       # Middleware implementation
-├── client/          # Prism client
-├── config/          # Configuration
-└── types/           # Type definitions
+â”œâ”€â”€ index.js          # Main entry point
+â”œâ”€â”€ index.d.ts        # TypeScript definitions
+â”œâ”€â”€ middleware/       # Middleware implementation
+â”œâ”€â”€ client/          # Prism client
+â”œâ”€â”€ config/          # Configuration
+â””â”€â”€ types/           # Type definitions
 ```
 
 ### GitHub Packages Authentication

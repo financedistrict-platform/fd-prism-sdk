@@ -98,8 +98,14 @@ public class PrismMiddleware {
     /**
      * Add settlement header to response (called after response is generated).
      *
+     * <p>The settlement callback is performed synchronously (bounded by the
+     * {@link PrismClient}'s configured HTTP timeouts, the same pattern used by
+     * {@link #handleRequest(String, String)} for payment verification) so that a
+     * genuine settlement failure can be reported to the caller rather than being
+     * fired off in a detached thread whose outcome is never observed.
+     *
      * @param authorizationHeader The Authorization header from request
-     * @return Settlement header value, or null if not applicable
+     * @return Settlement header value, or null if not applicable or if settlement failed
      */
     public String getSettlementHeader(String authorizationHeader) {
         if (authorizationHeader == null || !authorizationHeader.startsWith("Bearer ")) {
@@ -107,13 +113,14 @@ public class PrismMiddleware {
         }
 
         String proof = authorizationHeader.substring(7).trim();
-        
-        // Submit settlement callback asynchronously (best-effort)
-        new Thread(() -> {
-            client.settlementCallback(proof, "completed", "Payment processed successfully");
-        }).start();
 
-        return "proof=" + proof;
+        try {
+            client.settlementCallback(proof, "completed", "Payment processed successfully");
+            return "proof=" + proof;
+        } catch (IOException e) {
+            System.err.println("Settlement failed for proof=" + proof + ": " + e.getMessage());
+            return null;
+        }
     }
 
     /**

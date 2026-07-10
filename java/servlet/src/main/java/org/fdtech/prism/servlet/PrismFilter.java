@@ -111,7 +111,7 @@ public class PrismFilter implements Filter {
                 httpResponse.setStatus(402);
                 httpResponse.setContentType("application/json");
                 httpResponse.getWriter().write(
-                    "{\"x402Version\":1," +
+                    "{\"x402Version\":2," +
                     "\"error\":\"Payment settlement failed\"," +
                     "\"details\":\"Payment could not be settled. Please try again.\"}"
                 );
