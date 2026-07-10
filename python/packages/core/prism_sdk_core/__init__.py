@@ -457,25 +457,83 @@ class PrismMiddlewareCore:
     
     _MAX_PAYMENT_HEADER_BYTES = 8192  # ~10× real x402 payload size
 
-    def _decode_payment_header(self, payment_header: str) -> Dict[str, Any]:
-        """Decode payment header (base64 JSON)"""
+    def _decode_payment_header(self, payment_header: str) -> Optional[Dict[str, Any]]:
+        """Decode payment header (base64 JSON) and validate its basic shape.
+
+        Returns None if the header does not decode to a dict, or if it is
+        missing required fields / has fields of the wrong type for its
+        declared x402Version.
+        """
         # Reject oversized headers before decoding to prevent memory exhaustion
         if len(payment_header) > self._MAX_PAYMENT_HEADER_BYTES:
             raise ValueError(
                 f"Payment header exceeds maximum size ({len(payment_header)} > {self._MAX_PAYMENT_HEADER_BYTES} bytes)"
             )
+
+        decoded: Any = None
         try:
             # Try direct JSON parse
-            return json.loads(payment_header)
+            decoded = json.loads(payment_header)
         except (json.JSONDecodeError, ValueError):
-            pass
+            try:
+                # Try base64 decode then JSON parse
+                raw = base64.b64decode(payment_header).decode('utf-8')
+                decoded = json.loads(raw)
+            except Exception as e:
+                raise ValueError(f"Failed to decode payment header: {e}")
 
-        try:
-            # Try base64 decode then JSON parse
-            decoded = base64.b64decode(payment_header).decode('utf-8')
-            return json.loads(decoded)
-        except Exception as e:
-            raise ValueError(f"Failed to decode payment header: {e}")
+        if not isinstance(decoded, dict):
+            return None
+
+        if not self._validate_payment_payload_shape(decoded):
+            return None
+
+        return decoded
+
+    @staticmethod
+    def _validate_payment_payload_shape(data: Dict[str, Any]) -> bool:
+        """Minimal structural validation of a decoded payment payload.
+
+        Rejects payloads that are missing required fields or have fields of
+        the wrong primitive type. This is intentionally pragmatic — it does
+        not attempt full schema validation, just enough to reject malformed
+        shapes before they reach the gateway.
+        """
+
+        def _is_str(v: Any) -> bool:
+            return isinstance(v, str)
+
+        def _authorization_ok(authorization: Any) -> bool:
+            if not isinstance(authorization, dict):
+                return False
+            required = ('from', 'to', 'value', 'validAfter', 'validBefore', 'nonce')
+            return all(_is_str(authorization.get(field)) for field in required)
+
+        def _payload_ok(payload: Any) -> bool:
+            if not isinstance(payload, dict):
+                return False
+            if not _is_str(payload.get('signature')):
+                return False
+            return _authorization_ok(payload.get('authorization'))
+
+        x402_version = data.get('x402Version')
+
+        if x402_version == 2:
+            accepted = data.get('accepted')
+            if not isinstance(accepted, dict):
+                return False
+            if not (
+                _is_str(accepted.get('scheme'))
+                and _is_str(accepted.get('network'))
+                and _is_str(accepted.get('asset'))
+            ):
+                return False
+            return _payload_ok(data.get('payload'))
+
+        # v1 (or unspecified/legacy) flat shape
+        if not (_is_str(data.get('scheme')) and _is_str(data.get('network'))):
+            return False
+        return _payload_ok(data.get('payload'))
     
     def settlement_callback(
         self,
@@ -518,9 +576,11 @@ class PrismMiddlewareCore:
                 description=route_config.description,
             )
         except Exception as e:
+            # Always log server-side; never expose internal details to client
+            print(f"[Prism] Payment requirements error: {e}")
             return MiddlewareResult(
                 handled=True, status_code=500,
-                body={'error': 'Failed to get payment requirements', 'details': str(e)},
+                body={'error': 'Failed to get payment requirements'},
             )
 
         requirements_for_client = SchemaTransformer.transform_payment_required_response(
@@ -545,12 +605,27 @@ class PrismMiddlewareCore:
         try:
             payment_data = self._decode_payment_header(payment_header)
             payload_version = payment_data.get('x402Version', protocol_version)
+
+            # Reject if client's protocol version is not in the server's allowed list
+            if payload_version != protocol_version and payload_version not in self.allowed_versions:
+                return MiddlewareResult(
+                    handled=True,
+                    status_code=400,
+                    body={'error': 'Invalid payment header'}
+                )
+            # Override to client's version only if whitelisted
+            if payload_version in self.allowed_versions:
+                protocol_version = payload_version
+
+            # Normalize to v2 for internal processing
             if payload_version == 1:
                 payment_data = SchemaTransformer.upgrade_payment_payload(payment_data)
         except Exception as e:
+            # Always log server-side; never expose internal details to client
+            print(f"[Prism] Invalid payment header: {e}")
             return MiddlewareResult(
                 handled=True, status_code=400,
-                body={'error': 'Invalid payment header', 'details': str(e)},
+                body={'error': 'Invalid payment header'},
             )
 
         try:
@@ -574,9 +649,11 @@ class PrismMiddlewareCore:
                 },
             )
         except Exception as e:
+            # Always log server-side; never expose internal details to client
+            print(f"[Prism] Payment verification error: {e}")
             return MiddlewareResult(
                 handled=True, status_code=500,
-                body={'error': 'Payment verification failed', 'details': str(e)},
+                body={'error': 'Payment verification failed'},
             )
 
     async def asettlement_callback(

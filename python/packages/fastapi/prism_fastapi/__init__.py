@@ -186,7 +186,7 @@ def require_payment(price: float | str, description: str):
                 (a for a in args if isinstance(a, Request)),
                 kwargs.get('request')
             )
-            if request is None or not hasattr(request.state, 'prism_payer'):
+            if request is None or not getattr(request.state, '_prism_payment_verified', False):
                 raise HTTPException(
                     status_code=402,
                     detail={'error': 'Payment Required', 'message': description}

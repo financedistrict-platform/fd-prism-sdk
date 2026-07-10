@@ -98,10 +98,27 @@ export function createPrismMiddleware(config: PrismNextConfig) {
       );
     }
 
-    // Payment verified or route not protected
-    const response = NextResponse.next();
+    // Payment verified or route not protected.
+    // Clone the incoming request headers and overwrite them with the verified
+    // values so the downstream Route Handler receives the verified payer/payment
+    // info rather than any client-forged x-prism-* headers on the original request.
+    const forwardedHeaders = new Headers(request.headers);
 
-    // Store payment info for route handler access via headers
+    if (result.paymentInfo) {
+      forwardedHeaders.set('x-prism-payer', result.paymentInfo.payer);
+      forwardedHeaders.set('x-prism-payment', JSON.stringify(result.paymentInfo.payment));
+    } else {
+      forwardedHeaders.delete('x-prism-payer');
+      forwardedHeaders.delete('x-prism-payment');
+    }
+
+    const response = NextResponse.next({
+      request: {
+        headers: forwardedHeaders,
+      },
+    });
+
+    // Also set on the outgoing response for clients that read these directly.
     if (result.paymentInfo) {
       response.headers.set('x-prism-payer', result.paymentInfo.payer);
       response.headers.set('x-prism-payment', JSON.stringify(result.paymentInfo.payment));
@@ -144,10 +161,6 @@ export function withPrismPayment(
   routeConfig: RoutePaymentConfig,
   middlewareConfig: PrismMiddlewareConfig
 ): (request: Request, context?: any) => Promise<Response> {
-  const core = new PrismMiddlewareCore(middlewareConfig, {
-    ['']: routeConfig // Single route config
-  });
-
   return async function wrappedHandler(request: Request, context?: any): Promise<Response> {
     // Get payment header
     const url = new URL(request.url);
@@ -161,6 +174,12 @@ export function withPrismPayment(
         protocolVersion = detected;
       }
     }
+
+    // Build a core keyed by the actual incoming pathname so the single route
+    // config always exact-matches for this handler-wrapper use case.
+    const core = new PrismMiddlewareCore(middlewareConfig, {
+      [url.pathname]: routeConfig,
+    });
 
     // Process request through middleware core
     const result: MiddlewareResult = await core.handleRequest({

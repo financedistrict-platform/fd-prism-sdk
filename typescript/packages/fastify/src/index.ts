@@ -47,10 +47,11 @@ const prismPluginCore: FastifyPluginAsync<PrismFastifyOptions> = async (fastify,
 
   // Add onRequest hook for payment verification
   fastify.addHook('onRequest', async (request: FastifyRequest, reply: FastifyReply) => {
-    // Construct resource URL
+    // Construct resource URL — prefer config.resourceBaseUrl to avoid Host header injection
     const protocol = request.protocol;
     const host = request.hostname;
-    const resourceUrl = `${protocol}://${host}${request.url}`;
+    const base = (config.resourceBaseUrl ?? `${protocol}://${host}`).replace(/\/$/, '');
+    const resourceUrl = `${base}${request.url}`;
 
     // Get payment header (supports both v1 X-PAYMENT and v2 PAYMENT-SIGNATURE)
     const paymentHeader = HeaderAdapter.getPaymentPayload((name) => request.headers[name.toLowerCase()] as string | undefined || null);

@@ -266,9 +266,12 @@ class AsyncPrismPaymentMiddleware:
             return response
 
         if result.payment_info:
-            request.prism_payment = result.payment_info['payment']
-            request.prism_payer = result.payment_info['payer']
-            request.prism_requirements = result.payment_info['payment_requirements']
+            # Use underscore-prefixed attributes to avoid collision with user-defined attributes,
+            # matching the sync PrismPaymentMiddleware and what require_payment gates on.
+            request._prism_payment_verified = True
+            request._prism_payment = result.payment_info['payment']
+            request._prism_payer = result.payment_info['payer']
+            request._prism_requirements = result.payment_info['payment_requirements']
 
         response = await self.get_response(request)
 

@@ -265,7 +265,11 @@ export class PrismMiddlewareCore {
       }
 
       if (this.debug) {
-        console.log('[PrismMiddlewareCore] Parsed payment payload (v' + protocolVersion + '):', paymentPayload);
+        // Redact EIP-712 signature to prevent credential exposure in logs
+        const safePayload = (paymentPayload as any)?.payload
+          ? { ...(paymentPayload as any), payload: { ...(paymentPayload as any).payload, signature: '[REDACTED]' } }
+          : paymentPayload;
+        console.log('[PrismMiddlewareCore] Parsed payment payload (v' + protocolVersion + '):', safePayload);
       }
 
       // Reconstruct payment requirements for verification
@@ -294,7 +298,11 @@ export class PrismMiddlewareCore {
 
       if (!paymentRequirements) {
         if (this.debug) {
-          console.log('[PrismMiddlewareCore] No matching payment requirement found for payment:', paymentPayload);
+          // Redact EIP-712 signature to prevent credential exposure in logs
+          const safePayload = (paymentPayload as any)?.payload
+            ? { ...(paymentPayload as any), payload: { ...(paymentPayload as any).payload, signature: '[REDACTED]' } }
+            : paymentPayload;
+          console.log('[PrismMiddlewareCore] No matching payment requirement found for payment:', safePayload);
         }
         const response = buildInvalidPaymentResponse('No matching payment requirement found for the provided payment', protocolVersion);
         return {
@@ -361,6 +369,14 @@ export class PrismMiddlewareCore {
       // Decode base64 to string, then parse JSON
       const decodedString = Buffer.from(paymentHeader, 'base64').toString('utf-8');
       const paymentPayload = JSON.parse(decodedString);
+
+      if (!this.isValidPaymentPayloadShape(paymentPayload)) {
+        if (this.debug) {
+          console.log('[PrismMiddlewareCore] Payment header failed structural validation');
+        }
+        return null;
+      }
+
       return paymentPayload;
     } catch (error: any) {
       if (this.debug) {
@@ -368,6 +384,67 @@ export class PrismMiddlewareCore {
       }
       return null;
     }
+  }
+
+  /**
+   * Validate the structural shape of a decoded payment payload (v1 or v2)
+   * before it is trusted anywhere downstream.
+   *
+   * @param obj - Parsed JSON value from the payment header
+   * @returns true if the shape is a valid v1 or v2 payment payload
+   */
+  private isValidPaymentPayloadShape(obj: unknown): boolean {
+    if (typeof obj !== 'object' || obj === null || Array.isArray(obj)) {
+      return false;
+    }
+
+    const candidate = obj as Record<string, any>;
+
+    const isNonEmptyString = (value: unknown): boolean =>
+      typeof value === 'string' && value.length > 0;
+
+    const isValidAuthorization = (authorization: unknown): boolean => {
+      if (typeof authorization !== 'object' || authorization === null || Array.isArray(authorization)) {
+        return false;
+      }
+      const auth = authorization as Record<string, any>;
+      return (
+        isNonEmptyString(auth.from) &&
+        isNonEmptyString(auth.to) &&
+        isNonEmptyString(auth.value) &&
+        isNonEmptyString(auth.validAfter) &&
+        isNonEmptyString(auth.validBefore) &&
+        isNonEmptyString(auth.nonce)
+      );
+    };
+
+    const isValidPayload = (payload: unknown): boolean => {
+      if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
+        return false;
+      }
+      const p = payload as Record<string, any>;
+      return isNonEmptyString(p.signature) && isValidAuthorization(p.authorization);
+    };
+
+    if (candidate.x402Version === 2) {
+      const accepted = candidate.accepted;
+      if (typeof accepted !== 'object' || accepted === null || Array.isArray(accepted)) {
+        return false;
+      }
+      return (
+        isNonEmptyString(accepted.scheme) &&
+        isNonEmptyString(accepted.network) &&
+        isNonEmptyString(accepted.asset) &&
+        isValidPayload(candidate.payload)
+      );
+    }
+
+    // v1 (flat shape)
+    return (
+      isNonEmptyString(candidate.scheme) &&
+      isNonEmptyString(candidate.network) &&
+      isValidPayload(candidate.payload)
+    );
   }
 
   /**

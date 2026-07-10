@@ -85,37 +85,49 @@ public class PrismClient {
     /**
      * Submit a settlement callback.
      *
+     * <p>Unlike the previous best-effort implementation, this method now surfaces
+     * failures to the caller (via {@link IOException}) instead of silently
+     * swallowing them, so callers can decide whether a failed settlement should
+     * block a response. Failures are still logged here for operator visibility.
+     *
      * @param paymentHash The payment hash
      * @param status The settlement status
      * @param details Additional details
-     * @throws IOException if the request fails (non-critical)
+     * @throws IOException if the settlement callback receives a non-2xx response
+     *         or a network error occurs while performing the request
      */
-    public void settlementCallback(String paymentHash, String status, String details) {
+    public void settlementCallback(String paymentHash, String status, String details) throws IOException {
+        JsonObject requestBody = new JsonObject();
+        requestBody.addProperty("paymentHash", paymentHash);
+        requestBody.addProperty("status", status);
+        requestBody.addProperty("details", details);
+
+        Request request = new Request.Builder()
+                .url(baseUrl + "/v1/settlement-callback")
+                .header("Authorization", "Bearer " + apiKey)
+                .header("Content-Type", "application/json")
+                .post(RequestBody.create(
+                        gson.toJson(requestBody),
+                        MediaType.parse("application/json")
+                ))
+                .build();
+
+        Response response;
         try {
-            JsonObject requestBody = new JsonObject();
-            requestBody.addProperty("paymentHash", paymentHash);
-            requestBody.addProperty("status", status);
-            requestBody.addProperty("details", details);
-
-            Request request = new Request.Builder()
-                    .url(baseUrl + "/v1/settlement-callback")
-                    .header("Authorization", "Bearer " + apiKey)
-                    .header("Content-Type", "application/json")
-                    .post(RequestBody.create(
-                            gson.toJson(requestBody),
-                            MediaType.parse("application/json")
-                    ))
-                    .build();
-
-            try (Response response = httpClient.newCall(request).execute()) {
-                // Don't throw - settlement failure shouldn't block response
-                if (!response.isSuccessful()) {
-                    System.err.println("Settlement callback failed: " + response.code());
-                }
-            }
+            response = httpClient.newCall(request).execute();
         } catch (IOException e) {
-            // Don't propagate - settlement is best-effort
             System.err.println("Settlement callback error: " + e.getMessage());
+            throw e;
+        }
+
+        try {
+            if (!response.isSuccessful()) {
+                String message = "Settlement callback failed: " + response.code();
+                System.err.println(message);
+                throw new IOException(message);
+            }
+        } finally {
+            response.close();
         }
     }
 }

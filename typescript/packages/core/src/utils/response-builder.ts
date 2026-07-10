@@ -60,13 +60,15 @@ export function buildErrorResponse(
 ): MiddlewareResponse {
   // Handle PrismGatewayError
   if (error instanceof PrismGatewayError) {
+    // Log the raw gateway-provided detail server-side only — never forward it
+    // verbatim to the untrusted HTTP client.
+    console.error('[buildErrorResponse] Gateway error details:', error.details);
     return {
       statusCode: error.statusCode,
       headers: { 'Content-Type': 'application/json' },
       body: {
         x402Version: protocolVersion,
         error: context === 'requirements' ? error.message : 'Payment processing failed',
-        details: error.details,
         gateway: {
           traceId: error.traceId,
           timestamp: error.timestamp,

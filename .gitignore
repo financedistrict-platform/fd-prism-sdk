@@ -21,6 +21,13 @@ venv/
 target/
 *.class
 
+# .NET / C#
+bin/
+obj/
+*.user
+.vs/
+TestResults/
+
 # Misc
 *.bak
 *.swp

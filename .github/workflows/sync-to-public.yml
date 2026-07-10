@@ -38,18 +38,21 @@ jobs:
           git config user.email "actions@github.com"
 
       - name: Run sync script
+        env:
+          COMMIT_MESSAGE: ${{ github.event.inputs.commit_message }}
+          PUSH_INPUT: ${{ github.event.inputs.push }}
         run: |
           chmod +x scripts/sync-to-public.sh
 
-          ARGS=""
-          if [ -n "${{ github.event.inputs.commit_message }}" ]; then
-            ARGS="${{ github.event.inputs.commit_message }}"
+          ARGS=()
+          if [ -n "$COMMIT_MESSAGE" ]; then
+            ARGS+=("$COMMIT_MESSAGE")
           fi
-          if [ "${{ github.event.inputs.push }}" = "true" ]; then
-            ARGS="$ARGS --push"
+          if [ "$PUSH_INPUT" = "true" ]; then
+            ARGS+=(--push)
           fi
 
-          ./scripts/sync-to-public.sh $ARGS
+          ./scripts/sync-to-public.sh "${ARGS[@]}"
 
       - name: Show sync result
         run: |
