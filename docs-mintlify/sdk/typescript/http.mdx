@@ -94,6 +94,7 @@ interface PrismMiddlewareConfig {
   apiKey: string;
   baseUrl?: string;
   debug?: boolean;
+  maxHeldResponseBytes?: number; // default: 8388608 (8 MiB)
 }
 
 interface RoutePaymentConfig {
@@ -169,29 +170,33 @@ const server = http.createServer((req, res) => {
 
 ## Settlement Validation
 
-HTTP middleware intercepts `res.end()` to validate settlement:
+The HTTP middleware **holds the whole response** until settlement succeeds. `res.write()`, `res.writeHead()`, `res.flushHeaders()` and `res.end()` are intercepted, so `stream.pipe(res)` output is held as well:
 
 ```javascript
 // Internal implementation (automatic!)
-const originalEnd = res.end.bind(res);
+res.write = (chunk) => { held.push(chunk); return true; };
+res.writeHead = (status, headers) => { /* record status and headers only */ };
 
-res.end = async function(chunk, encoding, callback) {
-  const settlementResult = await core.settlementCallback(...);
-
-  if (!settlementResult || !settlementResult.success) {
-    // ❌ Settlement failed
-    res.statusCode = 402;
-    res.setHeader('Content-Type', 'application/json');
-    return originalEnd(JSON.stringify({
-      error: 'Payment settlement failed'
-    }));
-  }
-
-  // ✅ Settlement succeeded
-  res.setHeader('X-PAYMENT-RESPONSE', settlementResult.transaction);
-  return originalEnd(chunk, encoding, callback);
+res.end = (chunk) => {
+  held.push(chunk);
+  settle().then((settlementResult) => {
+    if (!settlementResult?.success || !settlementResult.transaction) {
+      // ❌ Settlement failed - drop held data, send 402 instead
+      return sendError(402);
+    }
+    // ✅ Settlement succeeded - set X-PAYMENT-RESPONSE, then release held data
+    release(held);
+  });
 };
 ```
+
+**Key Points:**
+
+- No header or body byte reaches the client before settlement succeeds
+- The buffer is capped at `maxHeldResponseBytes` (default 8 MiB). A larger response is discarded, the payment is **not** settled, and the client receives `500` with `Response too large to settle`
+- If the client disconnects before the response ends, nothing is settled
+- `res.end()` now returns the response object instead of a promise
+- Writing directly to `res.socket` bypasses the middleware and must not be used on paid routes
 
 ---
 

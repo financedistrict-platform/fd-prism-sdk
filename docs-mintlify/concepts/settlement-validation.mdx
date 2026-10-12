@@ -92,6 +92,9 @@ res.end = (chunk) => {
 - Intercepts `res.write()`, `res.writeHead()`, `res.flushHeaders()` and `res.end()`, so `res.json()`, `res.send()`, `res.sendFile()` and `stream.pipe(res)` are all covered
 - Settlement completes **before** any header or body byte is sent to the client
 - Held data is replaced with error JSON if settlement fails
+- The held data is capped at `maxHeldResponseBytes` (default 8 MiB). A larger response is discarded, the payment is **not** settled, and the client receives `500` with `Response too large to settle`
+- If the client disconnects before the response ends, nothing is settled
+- The plain Node HTTP adapter (`@financedistrict/prism-x402-sdk-http`) uses the same hold and the same limit
 
 ---
 
@@ -123,6 +126,7 @@ fastify.addHook('onSend', async (request, reply, payload) => {
 - `onSend` hook runs **after** route handler but **before** sending to client
 - Can modify both status code and payload
 - Returns new payload to replace original if settlement fails
+- **Open gap:** `onSend` does not run for `reply.raw` writes or after `reply.hijack()`, so output written that way reaches the client before settlement. Do not use either on paid routes. `maxHeldResponseBytes` does not apply to Fastify
 
 ---
 
@@ -159,6 +163,7 @@ export class SettlementInterceptor implements NestInterceptor {
 - Interceptor runs **after** route handler completes
 - Can transform response or throw exceptions
 - NestJS exception filters handle error responses
+- **Open gap:** the interceptor and global middleware paths intercept `res.end()` only, so output sent with `res.write()`, `stream.pipe(res)` or `res.sendFile()` can reach the client before settlement. Holding of streamed output for NestJS ships separately; until it lands, return data from the handler instead of writing to the response. `maxHeldResponseBytes` does not apply to NestJS
 
 ---
 

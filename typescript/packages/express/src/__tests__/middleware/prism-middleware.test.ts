@@ -372,10 +372,13 @@ describe('prismPaymentMiddleware', () => {
   describe('Streaming settlement', () => {
     const SECRET = 'PAID-CONTENT-SECRET';
 
-    const mountProtected = (handler: (req: Request, res: Response) => void) => {
+    const mountProtected = (
+      handler: (req: Request, res: Response) => void,
+      extraConfig: { maxHeldResponseBytes?: number } = {}
+    ) => {
       app.use(
         prismPaymentMiddleware(
-          { apiKey: 'test-api-key', client: createMockClient() },
+          { apiKey: 'test-api-key', client: createMockClient(), ...extraConfig },
           { '/api/premium': { price: '10000', description: 'Premium API access' } }
         )
       );
@@ -593,6 +596,207 @@ describe('prismPaymentMiddleware', () => {
       expect(response.status).toBe(500);
       expect(response.text).toBe('boom');
       expect(mockSettlePayment).not.toHaveBeenCalled();
+    });
+
+    describe('hold limit', () => {
+      const expectTooLarge = (response: request.Response) => {
+        expect(response.status).toBe(500);
+        expect(response.text).not.toContain(SECRET);
+        expect(response.body.error).toBe('Response too large to settle');
+        expect(mockSettlePayment).not.toHaveBeenCalled();
+      };
+
+      it('fails closed when res.write exceeds the configured limit', async () => {
+        allowSettlement();
+        mountProtected(
+          (_req, res) => {
+            for (let i = 0; i < 4; i += 1) {
+              res.write(`${SECRET}-`.padEnd(512, 'x'));
+            }
+            res.end();
+          },
+          { maxHeldResponseBytes: 1024 }
+        );
+
+        expectTooLarge(await pay());
+      });
+
+      it('fails closed when res.end(chunk) crosses the configured limit', async () => {
+        allowSettlement();
+        mountProtected(
+          (_req, res) => {
+            res.write('a'.repeat(600));
+            res.end(`${SECRET}${'b'.repeat(600)}`);
+          },
+          { maxHeldResponseBytes: 1024 }
+        );
+
+        expectTooLarge(await pay());
+      });
+
+      it('fails closed for a piped stream larger than the limit and lets the source finish', async () => {
+        allowSettlement();
+        let sourceEnded = false;
+        mountProtected(
+          (_req, res) => {
+            const source = Readable.from(Array.from({ length: 64 }, () => Buffer.alloc(1024, 0x41)));
+            source.on('end', () => {
+              sourceEnded = true;
+            });
+            source.pipe(res);
+          },
+          { maxHeldResponseBytes: 8 * 1024 }
+        );
+
+        const response = await pay();
+
+        expect(response.status).toBe(500);
+        expect(response.body.error).toBe('Response too large to settle');
+        expect(mockSettlePayment).not.toHaveBeenCalled();
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        expect(sourceEnded).toBe(true);
+      });
+
+      it('applies a default limit when none is configured', async () => {
+        allowSettlement();
+        mountProtected((_req, res) => {
+          for (let i = 0; i < 9; i += 1) {
+            res.write(Buffer.alloc(1024 * 1024, 0x41));
+          }
+          res.end();
+        });
+
+        const response = await pay();
+
+        expect(response.status).toBe(500);
+        expect(response.body.error).toBe('Response too large to settle');
+        expect(mockSettlePayment).not.toHaveBeenCalled();
+      });
+
+      it('still delivers and settles a response exactly at the limit', async () => {
+        allowSettlement();
+        mountProtected(
+          (_req, res) => {
+            res.setHeader('Content-Type', 'text/plain');
+            res.write('a'.repeat(512));
+            res.end('b'.repeat(512));
+          },
+          { maxHeldResponseBytes: 1024 }
+        );
+
+        const response = await pay();
+
+        expect(response.status).toBe(200);
+        expect(response.text).toHaveLength(1024);
+        expect(mockSettlePayment).toHaveBeenCalledTimes(1);
+      });
+
+      it.each([0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY])(
+        'rejects an invalid maxHeldResponseBytes of %p at construction',
+        (maxHeldResponseBytes) => {
+          expect(() =>
+            prismPaymentMiddleware(
+              { apiKey: 'test-api-key', client: createMockClient(), maxHeldResponseBytes },
+              {}
+            )
+          ).toThrow('maxHeldResponseBytes');
+        }
+      );
+    });
+
+    describe('client disconnect', () => {
+      const getPaid = (port: number) =>
+        http.get(
+          { port, path: '/api/premium', headers: { 'X-Payment': validPaymentHeader() } },
+          () => undefined
+        );
+
+      it('does not settle when the client disconnects before the handler finishes', async () => {
+        allowSettlement();
+        mountProtected((_req, res) => {
+          res.setHeader('Content-Type', 'text/plain');
+          res.write('partial-');
+          setTimeout(() => res.end(SECRET), 150);
+        });
+
+        const server = app.listen(0);
+        try {
+          const { port } = server.address() as AddressInfo;
+          const clientReq = getPaid(port);
+          clientReq.on('error', () => undefined);
+          await new Promise((resolve) => setTimeout(resolve, 30));
+          clientReq.destroy();
+
+          await new Promise((resolve) => setTimeout(resolve, 300));
+
+          expect(mockSettlePayment).not.toHaveBeenCalled();
+        } finally {
+          server.close();
+        }
+      });
+
+      it('does not settle when res.end is called after the client already left', async () => {
+        allowSettlement();
+        let handlerEnded: () => void = () => undefined;
+        const handlerDone = new Promise<void>((resolve) => {
+          handlerEnded = resolve;
+        });
+        mountProtected((_req, res) => {
+          res.on('close', () => {
+            res.end(SECRET);
+            handlerEnded();
+          });
+        });
+
+        const server = app.listen(0);
+        try {
+          const { port } = server.address() as AddressInfo;
+          const clientReq = getPaid(port);
+          clientReq.on('error', () => undefined);
+          await new Promise((resolve) => setTimeout(resolve, 30));
+          clientReq.destroy();
+
+          await handlerDone;
+          await new Promise((resolve) => setTimeout(resolve, 100));
+
+          expect(mockSettlePayment).not.toHaveBeenCalled();
+        } finally {
+          server.close();
+        }
+      });
+
+      it('destroys the connection instead of hanging when releasing the response throws', async () => {
+        allowPayment();
+        mockSettlePayment.mockResolvedValue({ success: false, errorReason: 'insufficient_funds' });
+        mountProtected((_req, res) => {
+          res.removeHeader = () => {
+            throw new Error('header removal failed');
+          };
+          res.end(SECRET);
+        });
+
+        const server = app.listen(0);
+        try {
+          const { port } = server.address() as AddressInfo;
+          const outcome = await new Promise<string>((resolve) => {
+            const clientReq = http.get(
+              { port, path: '/api/premium', headers: { 'X-Payment': validPaymentHeader() } },
+              (clientRes) => {
+                clientRes.on('data', () => undefined);
+                clientRes.on('end', () => resolve('completed'));
+                clientRes.on('error', () => resolve('destroyed'));
+                clientRes.on('aborted', () => resolve('destroyed'));
+              }
+            );
+            clientReq.on('error', () => resolve('destroyed'));
+            setTimeout(() => resolve('hung'), 1500);
+          });
+
+          expect(outcome).toBe('destroyed');
+        } finally {
+          server.close();
+        }
+      });
     });
   });
 });
