@@ -4,6 +4,7 @@ export const DEFAULT_MAX_TRACKED_PROOFS = 10_000;
 interface GuardEntry {
   expiresAt: number;
   consumed: boolean;
+  settlement?: unknown;
 }
 
 export function paymentProofKey(payment: any): string | null {
@@ -41,12 +42,20 @@ export class PaymentReplayGuard {
     return true;
   }
 
-  markConsumed(key: string, validBeforeSeconds: number): void {
+  settlementFor<T>(key: string): T | undefined {
+    const entry = this.entries.get(key);
+    if (entry && entry.consumed && entry.expiresAt > Date.now()) {
+      return entry.settlement as T | undefined;
+    }
+    return undefined;
+  }
+
+  markConsumed(key: string, validBeforeSeconds: number, settlement?: unknown): void {
     const now = Date.now();
     const validBeforeMs = validBeforeSeconds * 1000;
     const expiresAt = Number.isFinite(validBeforeMs) && validBeforeMs > now ? validBeforeMs : now + this.inFlightTtlMs;
     this.entries.delete(key);
-    this.entries.set(key, { expiresAt, consumed: true });
+    this.entries.set(key, { expiresAt, consumed: true, settlement });
   }
 
   release(key: string): void {

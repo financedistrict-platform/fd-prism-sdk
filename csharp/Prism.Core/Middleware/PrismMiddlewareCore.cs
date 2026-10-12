@@ -195,6 +195,17 @@ public class PrismMiddlewareCore
 
             LogDebug($"[PrismMiddlewareCore] Payment verified. Payer: {verificationResult.Payer}");
 
+            if (routeConfig.SettleBeforeHandler)
+            {
+                var settlement = await SettlementCallbackAsync(payload, paymentRequirements, 200).ConfigureAwait(false);
+                if (settlement is not { Success: true })
+                {
+                    return ToResult(ResponseBuilder.BuildInvalidPaymentResponse(
+                        string.IsNullOrEmpty(settlement?.ErrorReason) ? "Payment settlement failed" : settlement.ErrorReason,
+                        protocolVersion));
+                }
+            }
+
             return new MiddlewareResult
             {
                 Handled = false,
@@ -339,6 +350,12 @@ public class PrismMiddlewareCore
     {
         var proofKey = PaymentReplayGuard.ProofKey(payment);
 
+        var alreadySettled = proofKey is null ? null : _replayGuard.SettlementFor<SettlePaymentResult>(proofKey);
+        if (alreadySettled is not null)
+        {
+            return statusCode >= 400 ? null : alreadySettled;
+        }
+
         if (statusCode >= 400)
         {
             ReleaseProof(proofKey);
@@ -361,7 +378,7 @@ public class PrismMiddlewareCore
             {
                 if (result.Success)
                 {
-                    _replayGuard.MarkConsumed(proofKey, PaymentReplayGuard.ValidBefore(payment));
+                    _replayGuard.MarkConsumed(proofKey, PaymentReplayGuard.ValidBefore(payment), result);
                 }
                 else
                 {

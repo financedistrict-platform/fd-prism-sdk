@@ -130,6 +130,10 @@ export interface RoutePaymentConfig {
 
   // Custom resource URL (defaults to request URL)
   resource?: string;
+
+  // Settle the payment before the protected handler runs. Use for routes with
+  // side effects: the handler is reached only after the payment has settled.
+  settleBeforeHandler?: boolean;
 }
 
 /**

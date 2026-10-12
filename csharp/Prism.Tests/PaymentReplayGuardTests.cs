@@ -229,4 +229,129 @@ public class PaymentReplayGuardTests
         Assert.Equal(10_000, results.Count(r => r.PaymentInfo is not null));
         Assert.Equal(50, results.Count(r => r.Handled));
     }
+
+    private static PrismMiddlewareCore NewSettlingCore(FakePrismClient client) =>
+        new(
+            new PrismMiddlewareConfig { ApiKey = "test-key", BaseUrl = "https://gateway.test" },
+            new Dictionary<string, RoutePaymentConfig> { [Path] = new() { Price = "$0.01", Description = "Premium", SettleBeforeHandler = true } },
+            client);
+
+    [Fact]
+    public async Task DefaultRoutes_DoNotSettleWhileHandlingTheRequest()
+    {
+        var settleCalls = 0;
+        var client = new FakePrismClient
+        {
+            OnSettlePayment = (_, _) =>
+            {
+                Interlocked.Increment(ref settleCalls);
+                return Task.FromResult(new SettlePaymentResult { Success = true, Transaction = "0xTx" });
+            },
+        };
+
+        var result = await Submit(NewCore(client), Header("0xdefault"));
+
+        Assert.NotNull(result.PaymentInfo);
+        Assert.Equal(0, settleCalls);
+    }
+
+    [Fact]
+    public async Task SettleBeforeHandler_SettlesBeforeReturningControl_AndReusesTheSettlementAfterwards()
+    {
+        var settleCalls = 0;
+        var client = new FakePrismClient
+        {
+            OnSettlePayment = (_, _) =>
+            {
+                Interlocked.Increment(ref settleCalls);
+                return Task.FromResult(new SettlePaymentResult { Success = true, Transaction = "0xTx" });
+            },
+        };
+        var core = NewSettlingCore(client);
+
+        var admitted = await Submit(core, Header("0xsettle-first"));
+        Assert.NotNull(admitted.PaymentInfo);
+        Assert.Equal(1, settleCalls);
+
+        var settlement = await Settle(core, admitted, 200);
+
+        Assert.Equal("0xTx", settlement!.Transaction);
+        Assert.Equal(1, settleCalls);
+    }
+
+    [Fact]
+    public async Task SettleBeforeHandler_ParallelRequestsSettleExactlyOnce()
+    {
+        var settleCalls = 0;
+        var client = new FakePrismClient
+        {
+            OnVerifyPayment = async (_, _) =>
+            {
+                await Task.Delay(50);
+                return new VerifyPaymentResult { IsValid = true, Payer = "0xPayer" };
+            },
+            OnSettlePayment = (_, _) =>
+            {
+                Interlocked.Increment(ref settleCalls);
+                return Task.FromResult(new SettlePaymentResult { Success = true, Transaction = "0xTx" });
+            },
+        };
+        var core = NewSettlingCore(client);
+        var header = Header("0xsettle-parallel");
+
+        var results = await Task.WhenAll(Enumerable.Range(0, 20).Select(_ => Task.Run(() => Submit(core, header))));
+
+        Assert.Single(results, r => r.PaymentInfo is not null);
+        Assert.Equal(1, settleCalls);
+    }
+
+    [Fact]
+    public async Task SettleBeforeHandler_RejectsTheRequestAndReleasesTheProof_WhenSettlementFails()
+    {
+        var fail = true;
+        var client = new FakePrismClient
+        {
+            OnSettlePayment = (_, _) => Task.FromResult(fail
+                ? new SettlePaymentResult { Success = false, ErrorReason = "insufficient funds" }
+                : new SettlePaymentResult { Success = true, Transaction = "0xTx" }),
+        };
+        var core = NewSettlingCore(client);
+
+        var failed = await Submit(core, Header("0xsettle-first-fails"));
+        fail = false;
+        var retried = await Submit(core, Header("0xsettle-first-fails"));
+
+        Assert.True(failed.Handled);
+        Assert.Equal(402, failed.StatusCode);
+        Assert.Null(failed.PaymentInfo);
+        Assert.NotNull(retried.PaymentInfo);
+    }
+
+    [Fact]
+    public async Task SettleBeforeHandler_RejectsTheRequest_WhenSettlementThrows()
+    {
+        var client = new FakePrismClient
+        {
+            OnSettlePayment = (_, _) => throw new InvalidOperationException("gateway down"),
+        };
+
+        var failed = await Submit(NewSettlingCore(client), Header("0xsettle-first-throws"));
+
+        Assert.True(failed.Handled);
+        Assert.Equal(402, failed.StatusCode);
+        Assert.Null(failed.PaymentInfo);
+    }
+
+    [Fact]
+    public async Task SettleBeforeHandler_ProofStaysConsumed_WhenTheHandlerFailsAfterSettlement()
+    {
+        var core = NewSettlingCore(new FakePrismClient());
+
+        var admitted = await Submit(core, Header("0xsettled-handler-fails"));
+        await Settle(core, admitted, 500);
+        var replay = await Submit(core, Header("0xsettled-handler-fails"));
+
+        Assert.True(replay.Handled);
+        Assert.Equal(402, replay.StatusCode);
+    }
 }

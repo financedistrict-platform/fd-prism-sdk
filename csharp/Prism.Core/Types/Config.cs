@@ -41,6 +41,7 @@ public class RoutePaymentConfig
     public string? MimeType { get; set; }
     public int? MaxTimeoutSeconds { get; set; }
     public string? Resource { get; set; }
+    public bool SettleBeforeHandler { get; set; }
 }
 
 /// <summary>

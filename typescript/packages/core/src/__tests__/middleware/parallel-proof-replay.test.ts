@@ -250,4 +250,91 @@ describe('PrismMiddlewareCore parallel proof replay', () => {
     expect(admitted).toBe(10_000);
     expect(results.filter((r) => r.handled)).toHaveLength(50);
   });
+
+  describe('routes that settle before the handler', () => {
+    const settlingRoutes: RoutesConfig = {
+      [ROUTE_PATH]: { price: 0.01, description: 'Premium API', settleBeforeHandler: true },
+    };
+
+    const createSettlingCore = () =>
+      new PrismMiddlewareCore({ apiKey: 'test-key', client: mockClient as any }, settlingRoutes);
+
+    it('does not settle during request handling by default', async () => {
+      const result = await submit(createCore(), buildPayload('0xdefault'));
+
+      expect(result.paymentInfo).toBeDefined();
+      expect(mockClient.settlePayment).not.toHaveBeenCalled();
+    });
+
+    it('settles before returning control to the handler', async () => {
+      const core = createSettlingCore();
+
+      const result = await submit(core, buildPayload('0xsettle-first'));
+
+      expect(result.handled).toBe(false);
+      expect(result.paymentInfo).toBeDefined();
+      expect(mockClient.settlePayment).toHaveBeenCalledTimes(1);
+    });
+
+    it('reuses the settlement instead of settling again after the handler', async () => {
+      const core = createSettlingCore();
+      const admitted = await submit(core, buildPayload('0xsettle-once'));
+
+      const settled = await core.settlementCallback(
+        admitted.paymentInfo!.payment,
+        admitted.paymentInfo!.paymentRequirements,
+        200
+      );
+
+      expect(settled?.transaction).toBe('0xtx');
+      expect(mockClient.settlePayment).toHaveBeenCalledTimes(1);
+    });
+
+    it('admits and settles exactly once under parallel requests', async () => {
+      const core = createSettlingCore();
+      const payload = buildPayload('0xsettle-parallel');
+
+      const results = await Promise.all(Array.from({ length: 20 }, () => submit(core, payload)));
+
+      expect(results.filter((r) => r.paymentInfo)).toHaveLength(1);
+      expect(mockClient.settlePayment).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects the request and releases the proof when settlement fails', async () => {
+      const core = createSettlingCore();
+      const payload = buildPayload('0xsettle-first-fails');
+      mockClient.settlePayment.mockResolvedValueOnce({ success: false, errorReason: 'insufficient funds' });
+
+      const failed = await submit(core, payload);
+      const retried = await submit(core, payload);
+
+      expect(failed.handled).toBe(true);
+      expect(failed.statusCode).toBe(402);
+      expect(failed.paymentInfo).toBeUndefined();
+      expect(retried.paymentInfo).toBeDefined();
+    });
+
+    it('rejects the request when settlement throws', async () => {
+      const core = createSettlingCore();
+      mockClient.settlePayment.mockRejectedValueOnce(new Error('gateway down'));
+
+      const failed = await submit(core, buildPayload('0xsettle-first-throws'));
+
+      expect(failed.handled).toBe(true);
+      expect(failed.statusCode).toBe(402);
+      expect(failed.paymentInfo).toBeUndefined();
+    });
+
+    it('keeps the proof consumed when the handler fails after settlement', async () => {
+      const core = createSettlingCore();
+      const payload = buildPayload('0xsettled-handler-fails');
+
+      const admitted = await submit(core, payload);
+      await core.settlementCallback(admitted.paymentInfo!.payment, admitted.paymentInfo!.paymentRequirements, 500);
+      const replay = await submit(core, payload);
+
+      expect(replay.handled).toBe(true);
+      expect(replay.statusCode).toBe(402);
+    });
+  });
 });

@@ -50,7 +50,14 @@ class PaymentReplayGuard:
             self._entries[key] = {'expires_at': now + self._in_flight_ttl, 'consumed': False}
             return True
 
-    def mark_consumed(self, key: str, valid_before: Any) -> None:
+    def settlement_for(self, key: str) -> Optional[Dict[str, Any]]:
+        with self._lock:
+            entry = self._entries.get(key)
+            if entry is not None and entry['consumed'] and entry['expires_at'] > time.time():
+                return entry['settlement']
+            return None
+
+    def mark_consumed(self, key: str, valid_before: Any, settlement: Optional[Dict[str, Any]] = None) -> None:
         now = time.time()
         try:
             expires_at = float(valid_before)
@@ -60,7 +67,7 @@ class PaymentReplayGuard:
             expires_at = now + self._in_flight_ttl
         with self._lock:
             self._entries.pop(key, None)
-            self._entries[key] = {'expires_at': expires_at, 'consumed': True}
+            self._entries[key] = {'expires_at': expires_at, 'consumed': True, 'settlement': settlement}
 
     def release(self, key: str) -> None:
         with self._lock:

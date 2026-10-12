@@ -8,7 +8,7 @@ public sealed class PaymentReplayGuard
     public const int DefaultMaxEntries = 10_000;
     public static readonly TimeSpan DefaultInFlightTtl = TimeSpan.FromSeconds(60);
 
-    private sealed record Entry(DateTimeOffset ExpiresAt, bool Consumed, long Sequence);
+    private sealed record Entry(DateTimeOffset ExpiresAt, bool Consumed, long Sequence, object? Settlement = null);
 
     private readonly object _gate = new();
     private readonly Dictionary<string, Entry> _entries = new();
@@ -85,13 +85,24 @@ public sealed class PaymentReplayGuard
         }
     }
 
-    public void MarkConsumed(string key, DateTimeOffset? validBefore)
+    public T? SettlementFor<T>(string key) where T : class
+    {
+        var now = _utcNow();
+        lock (_gate)
+        {
+            return _entries.TryGetValue(key, out var entry) && entry.Consumed && entry.ExpiresAt > now
+                ? entry.Settlement as T
+                : null;
+        }
+    }
+
+    public void MarkConsumed(string key, DateTimeOffset? validBefore, object? settlement = null)
     {
         var now = _utcNow();
         var expiresAt = validBefore is { } limit && limit > now ? limit : now + _inFlightTtl;
         lock (_gate)
         {
-            _entries[key] = new Entry(expiresAt, true, ++_sequence);
+            _entries[key] = new Entry(expiresAt, true, ++_sequence, settlement);
         }
     }
 

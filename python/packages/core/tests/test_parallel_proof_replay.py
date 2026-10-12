@@ -246,3 +246,93 @@ class TestParallelProofReplay:
 
         assert len([r for r in results if r.payment_info is not None]) == 10_000
         assert len([r for r in results if r.handled]) == 50
+
+
+@pytest.fixture
+def settling_core(client):
+    config = PrismMiddlewareConfig(api_key='test-key')
+    routes = {
+        ROUTE_PATH: RoutePaymentConfig(price=0.01, description='Premium API', settle_before_handler=True)
+    }
+    return PrismMiddlewareCore(config, routes)
+
+
+class TestSettleBeforeHandler:
+    @pytest.mark.parametrize('submit', SUBMITTERS)
+    def test_default_routes_do_not_settle_while_handling_the_request(self, submit, core, client):
+        result = submit(core, v2_payload('0xdefault'))
+
+        assert result.payment_info is not None
+        client.settle_payment.assert_not_called()
+        client.asettle_payment.assert_not_called()
+
+    def test_settles_before_returning_control_to_the_handler(self, settling_core, client):
+        result = submit_sync(settling_core, v2_payload('0xsettle-first'))
+
+        assert result.handled is False
+        assert result.payment_info is not None
+        client.settle_payment.assert_called_once()
+
+    def test_async_settles_before_returning_control_to_the_handler(self, settling_core, client):
+        result = submit_async(settling_core, v2_payload('0xsettle-first-async'))
+
+        assert result.payment_info is not None
+        client.asettle_payment.assert_awaited_once()
+
+    @pytest.mark.parametrize('is_async', [False, True], ids=['sync', 'async'])
+    def test_reuses_the_settlement_instead_of_settling_after_the_handler(self, is_async, settling_core, client):
+        submit = submit_async if is_async else submit_sync
+        admitted = submit(settling_core, v2_payload('0xsettle-once'))
+
+        settled = settle(settling_core, admitted, 200, is_async)
+
+        assert settled['transaction'] == '0xtx'
+        assert client.settle_payment.call_count + client.asettle_payment.await_count == 1
+
+    def test_threads_sharing_one_proof_settle_exactly_once(self, settling_core, client):
+        payload = v2_payload('0xsettle-parallel')
+        barrier = threading.Barrier(20)
+        results = []
+        lock = threading.Lock()
+
+        def worker():
+            barrier.wait()
+            outcome = submit_sync(settling_core, payload)
+            with lock:
+                results.append(outcome)
+
+        threads = [threading.Thread(target=worker) for _ in range(20)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        assert len([r for r in results if r.payment_info is not None]) == 1
+        assert client.settle_payment.call_count == 1
+
+    @pytest.mark.parametrize('is_async', [False, True], ids=['sync', 'async'])
+    def test_rejects_the_request_and_releases_the_proof_when_settlement_fails(self, is_async, settling_core, client):
+        submit = submit_async if is_async else submit_sync
+        client.settle_payment.return_value = {'success': False, 'errorReason': 'insufficient funds'}
+        client.asettle_payment.return_value = {'success': False, 'errorReason': 'insufficient funds'}
+        failed = submit(settling_core, v2_payload('0xsettle-first-fails'))
+
+        client.settle_payment.return_value = {'success': True, 'transaction': '0xtx'}
+        client.asettle_payment.return_value = {'success': True, 'transaction': '0xtx'}
+        retried = submit(settling_core, v2_payload('0xsettle-first-fails'))
+
+        assert failed.handled is True
+        assert failed.status_code == 402
+        assert failed.payment_info is None
+        assert retried.payment_info is not None
+
+    @pytest.mark.parametrize('is_async', [False, True], ids=['sync', 'async'])
+    def test_proof_stays_consumed_when_the_handler_fails_after_settlement(self, is_async, settling_core):
+        submit = submit_async if is_async else submit_sync
+        admitted = submit(settling_core, v2_payload('0xsettled-handler-fails'))
+
+        settle(settling_core, admitted, 500, is_async)
+        replay = submit(settling_core, v2_payload('0xsettled-handler-fails'))
+
+        assert replay.handled is True
+        assert replay.status_code == 402

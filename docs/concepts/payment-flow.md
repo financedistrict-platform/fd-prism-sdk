@@ -164,6 +164,18 @@ At most 10,000 proofs are tracked. Expired entries are dropped first, then the o
 
 The guard lives in the process. Share one `PrismMiddlewareCore` / middleware instance for the whole app (in TypeScript, cores built from the same config object share one guard). Running several instances behind a load balancer does not coordinate reservations across instances.
 
+#### Routes with side effects: settle before the handler
+
+Reserving the proof guarantees the handler runs once per proof, but by default the payment settles after the handler. For routes whose handler has side effects, set the route option so the payment settles first and the handler runs only after settlement succeeded:
+
+| Language | Route option |
+|----------|--------------|
+| TypeScript | `settleBeforeHandler: true` in the route config |
+| Python | `RoutePaymentConfig(..., settle_before_handler=True)` |
+| C# | `SettleBeforeHandler = true` on `RoutePaymentConfig` |
+
+If settlement fails, the request is rejected with `402`, the handler never runs, and the proof is released for a retry. The adapter's own post-handler settlement call reuses the stored result instead of settling a second time, so adapters need no change. If the handler then fails, the payment has already been taken and the proof stays consumed; the option trades that risk for never running a side effect on an unsettled payment. Java does not support the option.
+
 ### Step 7-8: Verify Payment
 
 Server verifies the payment signature with Gateway:

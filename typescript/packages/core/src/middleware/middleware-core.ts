@@ -48,6 +48,14 @@ export interface MiddlewareResult {
   };
 }
 
+export interface SettlementOutcome {
+  success: boolean;
+  transaction?: string;
+  payer?: string;
+  network?: string;
+  errorReason?: string;
+}
+
 /**
  * Request data for middleware processing
  */
@@ -371,6 +379,20 @@ export class PrismMiddlewareCore {
         console.log('[PrismMiddlewareCore] Payment verified successfully, payer:', verificationResult.payer);
       }
 
+      if (routeConfig.settleBeforeHandler) {
+        const settlement = await this.settlementCallback(paymentPayload as any, paymentRequirements, 200);
+        if (!settlement || !settlement.success) {
+          const response = buildInvalidPaymentResponse(
+            settlement?.errorReason || 'Payment settlement failed',
+            protocolVersion
+          );
+          return {
+            handled: true,
+            ...response,
+          };
+        }
+      }
+
       // Payment is valid, allow request to continue
       return {
         handled: false,
@@ -503,8 +525,13 @@ export class PrismMiddlewareCore {
     paymentPayload: PaymentPayload,
     paymentRequirements: any,
     statusCode: number
-  ): Promise<{ success: boolean; transaction?: string; payer?: string; network?: string; errorReason?: string } | null> {
+  ): Promise<SettlementOutcome | null> {
     const proofKey = paymentProofKey(paymentPayload);
+
+    const alreadySettled = proofKey ? this.replayGuard.settlementFor<SettlementOutcome>(proofKey) : undefined;
+    if (alreadySettled) {
+      return statusCode >= 400 ? null : alreadySettled;
+    }
 
     // Only settle if response was successful (< 400)
     if (statusCode >= 400) {
@@ -530,7 +557,8 @@ export class PrismMiddlewareCore {
         if (settlementResult.success) {
           this.replayGuard.markConsumed(
             proofKey,
-            Number((paymentPayload as any)?.payload?.authorization?.validBefore)
+            Number((paymentPayload as any)?.payload?.authorization?.validBefore),
+            settlementResult
           );
         } else {
           this.replayGuard.release(proofKey);
