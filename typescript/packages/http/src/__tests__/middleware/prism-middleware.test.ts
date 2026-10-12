@@ -236,15 +236,15 @@ describe('prismPaymentMiddleware (HTTP)', () => {
         network: '1',
         asset: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
         payload: {
-          from: '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb',
-          to: '0x1234567890123456789012345678901234567890',
-          value: '10000',
-          validAfter: '0',
-          validBefore: '999999999999',
-          nonce: '0x1234',
-          v: 27,
-          r: '0xabc',
-          s: '0xdef',
+          signature: '0xsignature123',
+          authorization: {
+            from: '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb',
+            to: '0x1234567890123456789012345678901234567890',
+            value: '10000',
+            validAfter: '0',
+            validBefore: '999999999999',
+            nonce: '0x1234',
+          },
         },
       };
 
@@ -263,6 +263,7 @@ describe('prismPaymentMiddleware (HTTP)', () => {
       const middleware = prismPaymentMiddleware(
         {
           apiKey: 'test-api-key',
+          allowedVersions: [1, 2],
           client: createMockClient(),
         },
         {
@@ -355,7 +356,17 @@ describe('prismPaymentMiddleware (HTTP)', () => {
             scheme: 'eip3009',
             network: '1',
             asset: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
-            payload: { authorization: '0xinvalidsignature' },
+            payload: {
+              signature: '0xinvalidsignature',
+              authorization: {
+                from: '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb',
+                to: '0x1234567890123456789012345678901234567890',
+                value: '10000',
+                validAfter: '0',
+                validBefore: '999999999999',
+                nonce: '0x1234',
+              },
+            },
           })).toString('base64'),
         },
       });
