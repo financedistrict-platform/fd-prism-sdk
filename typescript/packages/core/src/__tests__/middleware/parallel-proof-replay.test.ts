@@ -1,5 +1,7 @@
 import { PrismMiddlewareCore } from '../../middleware/middleware-core';
+import { PaymentReplayGuard } from '../../utils';
 import { RoutesConfig } from '../../types';
+import { PrismGatewayError } from '../../types/errors';
 
 const ROUTE_PATH = '/api/premium';
 const RESOURCE_URL = 'https://example.com' + ROUTE_PATH;
@@ -55,9 +57,9 @@ describe('PrismMiddlewareCore parallel proof replay', () => {
     settlePayment: jest.fn(),
   };
 
-  const createCore = () =>
+  const createCore = (options: { replayReservationSeconds?: number } = {}) =>
     new PrismMiddlewareCore(
-      { apiKey: 'test-key', client: mockClient as any },
+      { apiKey: 'test-key', client: mockClient as any, ...options },
       routes
     );
 
@@ -193,10 +195,10 @@ describe('PrismMiddlewareCore parallel proof replay', () => {
     expect(retried.paymentInfo).toBeDefined();
   });
 
-  it('releases the proof when settlement throws', async () => {
+  it('keeps the proof reserved when settlement throws without a gateway answer', async () => {
     const core = createCore();
     const payload = buildPayload('0xsettle-throws');
-    mockClient.settlePayment.mockRejectedValueOnce(new Error('gateway down'));
+    mockClient.settlePayment.mockRejectedValueOnce(new Error('request timed out'));
 
     const first = await submit(core, payload);
     const settled = await core.settlementCallback(
@@ -207,6 +209,34 @@ describe('PrismMiddlewareCore parallel proof replay', () => {
     const retried = await submit(core, payload);
 
     expect(settled).toBeNull();
+    expect(retried.handled).toBe(true);
+    expect(retried.statusCode).toBe(402);
+    expect(retried.paymentInfo).toBeUndefined();
+    expect(mockClient.verifyPayment).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the proof reserved when the gateway fails with a server error during settlement', async () => {
+    const core = createCore();
+    const payload = buildPayload('0xsettle-server-error');
+    mockClient.settlePayment.mockRejectedValueOnce(new PrismGatewayError('Bad gateway', 502));
+
+    const first = await submit(core, payload);
+    await core.settlementCallback(first.paymentInfo!.payment, first.paymentInfo!.paymentRequirements, 200);
+    const retried = await submit(core, payload);
+
+    expect(retried.statusCode).toBe(402);
+    expect(retried.paymentInfo).toBeUndefined();
+  });
+
+  it('releases the proof when the gateway refuses settlement with a client error', async () => {
+    const core = createCore();
+    const payload = buildPayload('0xsettle-refused');
+    mockClient.settlePayment.mockRejectedValueOnce(new PrismGatewayError('Settlement refused', 400));
+
+    const first = await submit(core, payload);
+    await core.settlementCallback(first.paymentInfo!.payment, first.paymentInfo!.paymentRequirements, 200);
+    const retried = await submit(core, payload);
+
     expect(retried.paymentInfo).toBeDefined();
   });
 
@@ -227,17 +257,56 @@ describe('PrismMiddlewareCore parallel proof replay', () => {
     expect(replay.statusCode).toBe(402);
   });
 
-  it('expires an abandoned in-flight reservation', async () => {
+  it('keeps an in-flight reservation while a slow handler is still running', async () => {
     const core = createCore();
+    const payload = buildPayload('0xslow-handler', { validBefore: NOW_SECONDS + 3600 });
+
+    await submit(core, payload);
+    (Date.now as jest.Mock).mockReturnValue(NOW_SECONDS * 1000 + 90_000);
+    const whileHandlerRuns = await submit(core, payload);
+
+    expect(whileHandlerRuns.handled).toBe(true);
+    expect(whileHandlerRuns.statusCode).toBe(402);
+    expect(whileHandlerRuns.paymentInfo).toBeUndefined();
+    expect(mockClient.verifyPayment).toHaveBeenCalledTimes(1);
+  });
+
+  it('expires an abandoned in-flight reservation after the configured reservation time', async () => {
+    const core = createCore({ replayReservationSeconds: 120 });
     const payload = buildPayload('0xabandoned', { validBefore: NOW_SECONDS + 3600 });
 
     await submit(core, payload);
+    (Date.now as jest.Mock).mockReturnValue(NOW_SECONDS * 1000 + 119_000);
     const beforeExpiry = await submit(core, payload);
-    (Date.now as jest.Mock).mockReturnValue(NOW_SECONDS * 1000 + 61_000);
+    (Date.now as jest.Mock).mockReturnValue(NOW_SECONDS * 1000 + 121_000);
     const afterExpiry = await submit(core, payload);
 
     expect(beforeExpiry.handled).toBe(true);
     expect(afterExpiry.paymentInfo).toBeDefined();
+  });
+
+  it('expires an abandoned in-flight reservation after ten minutes by default', async () => {
+    const core = createCore();
+    const payload = buildPayload('0xabandoned-default', { validBefore: NOW_SECONDS + 3600 });
+
+    await submit(core, payload);
+    (Date.now as jest.Mock).mockReturnValue(NOW_SECONDS * 1000 + 599_000);
+    const beforeExpiry = await submit(core, payload);
+    (Date.now as jest.Mock).mockReturnValue(NOW_SECONDS * 1000 + 601_000);
+    const afterExpiry = await submit(core, payload);
+
+    expect(beforeExpiry.handled).toBe(true);
+    expect(afterExpiry.paymentInfo).toBeDefined();
+  });
+
+  it('never holds a reservation past the authorization validBefore', () => {
+    const guard = new PaymentReplayGuard();
+
+    expect(guard.tryReserve('key', NOW_SECONDS + 30)).toBe(true);
+    (Date.now as jest.Mock).mockReturnValue(NOW_SECONDS * 1000 + 29_000);
+    expect(guard.tryReserve('key', NOW_SECONDS + 30)).toBe(false);
+    (Date.now as jest.Mock).mockReturnValue(NOW_SECONDS * 1000 + 31_000);
+    expect(guard.tryReserve('key', NOW_SECONDS + 30)).toBe(true);
   });
 
   it('stays bounded and fails closed when every slot is an active reservation', async () => {
@@ -314,15 +383,20 @@ describe('PrismMiddlewareCore parallel proof replay', () => {
       expect(retried.paymentInfo).toBeDefined();
     });
 
-    it('rejects the request when settlement throws', async () => {
+    it('rejects the request and keeps the proof reserved when settlement throws', async () => {
       const core = createSettlingCore();
-      mockClient.settlePayment.mockRejectedValueOnce(new Error('gateway down'));
+      const payload = buildPayload('0xsettle-first-throws');
+      mockClient.settlePayment.mockRejectedValueOnce(new Error('request timed out'));
 
-      const failed = await submit(core, buildPayload('0xsettle-first-throws'));
+      const failed = await submit(core, payload);
+      const retried = await submit(core, payload);
 
       expect(failed.handled).toBe(true);
       expect(failed.statusCode).toBe(402);
       expect(failed.paymentInfo).toBeUndefined();
+      expect(retried.handled).toBe(true);
+      expect(retried.statusCode).toBe(402);
+      expect(retried.paymentInfo).toBeUndefined();
     });
 
     it('keeps the proof consumed when the handler fails after settlement', async () => {

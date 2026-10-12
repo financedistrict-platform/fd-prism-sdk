@@ -55,6 +55,7 @@ class PrismMiddlewareConfig:
     timeout: int = 30
     x402_version: Literal[1, 2] = 2  # Default to v2
     allowed_versions: Optional[List[Literal[1, 2]]] = None  # Default [2]; rejects payloads outside whitelist
+    replay_reservation_seconds: float = 600  # Longest an admitted proof stays reserved while its request runs
 
 
 class PaymentPayload(TypedDict, total=False):
@@ -197,6 +198,8 @@ class PrismClient:
                 self._api_url('settle'),
                 json={'paymentPayload': payment_payload, 'paymentRequirements': requirements},
             )
+            if response.status_code >= 500:
+                response.raise_for_status()
             data = response.json()
             if self.config.debug:
                 print(f"[Prism] settle response ({response.status_code}): {data}")
@@ -211,7 +214,7 @@ class PrismClient:
         except Exception as e:
             if self.config.debug:
                 print(f"[Prism] Settlement error: {e}")
-            return {'success': False, 'errorReason': str(e)}
+            raise
 
     # ------------------------------------------------------------------
     # Async methods
@@ -279,6 +282,8 @@ class PrismClient:
                 self._api_url('settle'),
                 json={'paymentPayload': payment_payload, 'paymentRequirements': requirements},
             )
+            if response.status_code >= 500:
+                response.raise_for_status()
             data = response.json()
             if self.config.debug:
                 print(f"[Prism] settle response ({response.status_code}): {data}")
@@ -292,7 +297,12 @@ class PrismClient:
         except Exception as e:
             if self.config.debug:
                 print(f"[Prism] Settlement error: {e}")
-            return {'success': False, 'errorReason': str(e)}
+            raise
+
+
+def _valid_before(payment: Dict[str, Any]) -> Any:
+    authorization = (payment.get('payload') or {}).get('authorization') or {}
+    return authorization.get('validBefore')
 
 
 class PrismMiddlewareCore:
@@ -309,7 +319,7 @@ class PrismMiddlewareCore:
         self.config = config
         self.routes = routes
         self.client = PrismClient(config)
-        self.replay_guard = PaymentReplayGuard()
+        self.replay_guard = PaymentReplayGuard(in_flight_ttl_seconds=config.replay_reservation_seconds)
         self.allowed_versions: List[Literal[1, 2]] = config.allowed_versions if config.allowed_versions is not None else [2]
     
     def find_matching_route(self, path: str) -> Optional[RoutePaymentConfig]:
@@ -530,7 +540,7 @@ class PrismMiddlewareCore:
 
     def _reserve_proof(self, submitted_payment: Dict[str, Any]) -> Optional[str]:
         proof_key = payment_proof_key(submitted_payment)
-        if proof_key is None or not self.replay_guard.try_reserve(proof_key):
+        if proof_key is None or not self.replay_guard.try_reserve(proof_key, _valid_before(submitted_payment)):
             return None
         return proof_key
 
@@ -552,10 +562,16 @@ class PrismMiddlewareCore:
         if proof_key is None:
             return
         if result.get('success'):
-            authorization = payment['payload']['authorization']
-            self.replay_guard.mark_consumed(proof_key, authorization.get('validBefore'), result)
+            self.replay_guard.mark_consumed(proof_key, _valid_before(payment), result)
         else:
             self.replay_guard.release(proof_key)
+
+    def _settlement_outcome_unknown(self, payment: Dict[str, Any], error: Exception) -> Dict[str, Any]:
+        print(f"[Prism] Settlement outcome unknown: {error}")
+        proof_key = payment_proof_key(payment)
+        if proof_key is not None:
+            self.replay_guard.mark_consumed(proof_key, _valid_before(payment))
+        return {'success': False, 'errorReason': 'Settlement outcome unknown'}
 
     def _already_settled(self, payment: Dict[str, Any], status_code: int) -> Optional[Dict[str, Any]]:
         proof_key = payment_proof_key(payment)
@@ -682,7 +698,10 @@ class PrismMiddlewareCore:
             self._release_proof(payment)
             print(f"[Prism] Settlement refused: {mismatch}")
             return {'success': False, 'errorReason': mismatch}
-        result = self.client.settle_payment(payment, requirements, status_code)
+        try:
+            result = self.client.settle_payment(payment, requirements, status_code)
+        except Exception as e:
+            return self._settlement_outcome_unknown(payment, e)
         self._finish_settlement(payment, result)
         return result
 
@@ -813,7 +832,10 @@ class PrismMiddlewareCore:
             self._release_proof(payment)
             print(f"[Prism] Settlement refused: {mismatch}")
             return {'success': False, 'errorReason': mismatch}
-        result = await self.client.asettle_payment(payment, requirements, status_code)
+        try:
+            result = await self.client.asettle_payment(payment, requirements, status_code)
+        except Exception as e:
+            return self._settlement_outcome_unknown(payment, e)
         self._finish_settlement(payment, result)
         return result
 

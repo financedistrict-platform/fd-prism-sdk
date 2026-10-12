@@ -79,6 +79,10 @@ export interface PrismMiddlewareConfig {
   // Set to [1, 2] to accept legacy v1 clients.
   allowedVersions?: (1 | 2)[];
 
+  // Seconds an admitted payment proof stays reserved while its request is being handled
+  // (default: 600). A reservation never outlives the proof's own validBefore.
+  replayReservationSeconds?: number;
+
   // Base URL for constructing resourceUrl in middleware (e.g. "https://api.myapp.com").
   // When set, middleware uses this instead of the incoming Host header, preventing
   // Host header injection attacks. Recommended for production deployments.

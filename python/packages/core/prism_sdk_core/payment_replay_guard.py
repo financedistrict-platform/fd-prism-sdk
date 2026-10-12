@@ -5,7 +5,7 @@ import time
 from collections import OrderedDict
 from typing import Any, Dict, Optional
 
-DEFAULT_IN_FLIGHT_TTL_SECONDS = 60
+DEFAULT_IN_FLIGHT_TTL_SECONDS = 600
 DEFAULT_MAX_TRACKED_PROOFS = 10_000
 
 
@@ -23,6 +23,13 @@ def payment_proof_key(payment: Any) -> Optional[str]:
     return f'{sender}:{nonce}'.lower()
 
 
+def _epoch_seconds(value: Any) -> Optional[float]:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 class PaymentReplayGuard:
     def __init__(
         self,
@@ -34,7 +41,7 @@ class PaymentReplayGuard:
         self._entries: "OrderedDict[str, Dict[str, Any]]" = OrderedDict()
         self._lock = threading.Lock()
 
-    def try_reserve(self, key: str) -> bool:
+    def try_reserve(self, key: str, valid_before: Any = None) -> bool:
         now = time.time()
         with self._lock:
             existing = self._entries.get(key)
@@ -47,7 +54,11 @@ class PaymentReplayGuard:
             if len(self._entries) >= self._max_entries and not self._evict_oldest_consumed():
                 return False
 
-            self._entries[key] = {'expires_at': now + self._in_flight_ttl, 'consumed': False}
+            expires_at = now + self._in_flight_ttl
+            limit = _epoch_seconds(valid_before)
+            if limit is not None:
+                expires_at = min(expires_at, limit)
+            self._entries[key] = {'expires_at': expires_at, 'consumed': False}
             return True
 
     def settlement_for(self, key: str) -> Optional[Dict[str, Any]]:
@@ -59,11 +70,8 @@ class PaymentReplayGuard:
 
     def mark_consumed(self, key: str, valid_before: Any, settlement: Optional[Dict[str, Any]] = None) -> None:
         now = time.time()
-        try:
-            expires_at = float(valid_before)
-        except (TypeError, ValueError):
-            expires_at = now + self._in_flight_ttl
-        if expires_at <= now:
+        expires_at = _epoch_seconds(valid_before)
+        if expires_at is None or expires_at <= now:
             expires_at = now + self._in_flight_ttl
         with self._lock:
             self._entries.pop(key, None)

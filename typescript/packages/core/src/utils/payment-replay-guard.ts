@@ -1,4 +1,4 @@
-export const DEFAULT_IN_FLIGHT_TTL_MS = 60_000;
+export const DEFAULT_IN_FLIGHT_TTL_MS = 600_000;
 export const DEFAULT_MAX_TRACKED_PROOFS = 10_000;
 
 interface GuardEntry {
@@ -15,6 +15,10 @@ export function paymentProofKey(payment: any): string | null {
   return `${authorization.from}:${authorization.nonce}`.toLowerCase();
 }
 
+export function paymentValidBefore(payment: any): number {
+  return Number(payment?.payload?.authorization?.validBefore);
+}
+
 export class PaymentReplayGuard {
   private readonly entries = new Map<string, GuardEntry>();
 
@@ -23,7 +27,7 @@ export class PaymentReplayGuard {
     private readonly inFlightTtlMs: number = DEFAULT_IN_FLIGHT_TTL_MS
   ) {}
 
-  tryReserve(key: string): boolean {
+  tryReserve(key: string, validBeforeSeconds?: number): boolean {
     const now = Date.now();
     const existing = this.entries.get(key);
     if (existing && existing.expiresAt > now) {
@@ -38,7 +42,9 @@ export class PaymentReplayGuard {
       return false;
     }
 
-    this.entries.set(key, { expiresAt: now + this.inFlightTtlMs, consumed: false });
+    const validBeforeMs = (validBeforeSeconds ?? NaN) * 1000;
+    const expiresAt = Number.isFinite(validBeforeMs) ? Math.min(now + this.inFlightTtlMs, validBeforeMs) : now + this.inFlightTtlMs;
+    this.entries.set(key, { expiresAt, consumed: false });
     return true;
   }
 
@@ -86,10 +92,12 @@ export class PaymentReplayGuard {
 
 const guardsByConfig = new WeakMap<object, PaymentReplayGuard>();
 
-export function replayGuardFor(config: object): PaymentReplayGuard {
+export function replayGuardFor(config: { replayReservationSeconds?: number }): PaymentReplayGuard {
   let guard = guardsByConfig.get(config);
   if (!guard) {
-    guard = new PaymentReplayGuard();
+    const seconds = config.replayReservationSeconds;
+    const ttlMs = seconds !== undefined && Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : DEFAULT_IN_FLIGHT_TTL_MS;
+    guard = new PaymentReplayGuard(DEFAULT_MAX_TRACKED_PROOFS, ttlMs);
     guardsByConfig.set(config, guard);
   }
   return guard;

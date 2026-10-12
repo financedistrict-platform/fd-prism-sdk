@@ -14,6 +14,7 @@ export {
 export {
   PaymentReplayGuard,
   paymentProofKey,
+  paymentValidBefore,
   replayGuardFor,
 } from './payment-replay-guard';
 export {

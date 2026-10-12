@@ -38,7 +38,9 @@ public class PrismMiddlewareCore
         Func<DateTimeOffset>? utcNow = null)
     {
         _utcNow = utcNow ?? (() => DateTimeOffset.UtcNow);
-        _replayGuard = new PaymentReplayGuard(_utcNow);
+        _replayGuard = new PaymentReplayGuard(
+            _utcNow,
+            inFlightTtl: config.ReplayReservationSeconds > 0 ? TimeSpan.FromSeconds(config.ReplayReservationSeconds) : null);
         _debug = config.Debug;
         _client = client ?? new PrismClient(config);
         _defaultProtocolVersion = config.X402Version is 1 or 2 ? config.X402Version : 2;
@@ -399,7 +401,18 @@ public class PrismMiddlewareCore
         }
         catch (Exception error)
         {
-            ReleaseProof(proofKey);
+            if (proofKey is not null)
+            {
+                if (error is PrismGatewayError { StatusCode: >= 400 and < 500 })
+                {
+                    _replayGuard.Release(proofKey);
+                }
+                else
+                {
+                    _replayGuard.MarkConsumed(proofKey, PaymentReplayGuard.ValidBefore(payment));
+                }
+            }
+
             LogError($"Error during settlement: {error}");
             return null;
         }

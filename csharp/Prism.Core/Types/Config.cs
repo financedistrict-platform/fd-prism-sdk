@@ -23,6 +23,8 @@ public class PrismMiddlewareConfig
     /// </summary>
     public int[]? AllowedVersions { get; set; }
 
+    public int ReplayReservationSeconds { get; set; } = 600;
+
     /// <summary>
     /// Overrides the Host-header-derived resource URL. Always prefer this over the raw
     /// Host header in production to prevent Host-header injection.

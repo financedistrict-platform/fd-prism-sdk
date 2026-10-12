@@ -6,7 +6,7 @@ namespace Prism.Core.Utils;
 public sealed class PaymentReplayGuard
 {
     public const int DefaultMaxEntries = 10_000;
-    public static readonly TimeSpan DefaultInFlightTtl = TimeSpan.FromSeconds(60);
+    public static readonly TimeSpan DefaultInFlightTtl = TimeSpan.FromMinutes(10);
 
     private sealed record Entry(DateTimeOffset ExpiresAt, bool Consumed, long Sequence, object? Settlement = null);
 
@@ -58,7 +58,7 @@ public sealed class PaymentReplayGuard
         return null;
     }
 
-    public bool TryReserve(string key)
+    public bool TryReserve(string key, DateTimeOffset? validBefore = null)
     {
         var now = _utcNow();
         lock (_gate)
@@ -80,7 +80,13 @@ public sealed class PaymentReplayGuard
                 return false;
             }
 
-            _entries[key] = new Entry(now + _inFlightTtl, false, ++_sequence);
+            var expiresAt = now + _inFlightTtl;
+            if (validBefore is { } limit && limit < expiresAt)
+            {
+                expiresAt = limit;
+            }
+
+            _entries[key] = new Entry(expiresAt, false, ++_sequence);
             return true;
         }
     }

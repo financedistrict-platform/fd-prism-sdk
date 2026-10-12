@@ -4,6 +4,7 @@ using Prism.Core.Client;
 using Prism.Core.Middleware;
 using Prism.Core.Types;
 using Prism.Core.Types.V2;
+using Prism.Core.Utils;
 using Xunit;
 
 namespace Prism.Tests;
@@ -19,9 +20,14 @@ public class PaymentReplayGuardTests
             $"\"payload\":{{\"signature\":\"{signature}\",\"authorization\":{{\"from\":\"0xFrom\",\"to\":\"0xPayTo\",\"value\":\"1000000\"," +
             $"\"validAfter\":\"0\",\"validBefore\":\"{validBefore}\",\"nonce\":\"{nonce}\"}}}}}}"));
 
-    private static PrismMiddlewareCore NewCore(FakePrismClient client, Func<DateTimeOffset>? utcNow = null) =>
+    private static PrismMiddlewareCore NewCore(FakePrismClient client, Func<DateTimeOffset>? utcNow = null, int? replayReservationSeconds = null) =>
         new(
-            new PrismMiddlewareConfig { ApiKey = "test-key", BaseUrl = "https://gateway.test" },
+            new PrismMiddlewareConfig
+            {
+                ApiKey = "test-key",
+                BaseUrl = "https://gateway.test",
+                ReplayReservationSeconds = replayReservationSeconds ?? new PrismMiddlewareConfig().ReplayReservationSeconds,
+            },
             new Dictionary<string, RoutePaymentConfig> { [Path] = new() { Price = "$0.01", Description = "Premium" } },
             client,
             utcNow: utcNow);
@@ -168,12 +174,13 @@ public class PaymentReplayGuardTests
         Assert.NotNull(retried.PaymentInfo);
     }
 
-    [Fact]
-    public async Task ProofIsReleased_WhenSettlementThrows()
+    [Theory]
+    [MemberData(nameof(UnknownSettlementFailures))]
+    public async Task ProofStaysReserved_WhenSettlementThrowsWithoutADefiniteRefusal(Exception failure)
     {
         var client = new FakePrismClient
         {
-            OnSettlePayment = (_, _) => throw new InvalidOperationException("gateway down"),
+            OnSettlePayment = (_, _) => throw failure,
         };
         var core = NewCore(client);
 
@@ -182,6 +189,33 @@ public class PaymentReplayGuardTests
         var retried = await Submit(core, Header("0xsettle-throws"));
 
         Assert.Null(settlement);
+        Assert.True(retried.Handled);
+        Assert.Equal(402, retried.StatusCode);
+        Assert.Null(retried.PaymentInfo);
+        Assert.Equal(1, client.VerifyCalls);
+    }
+
+    public static IEnumerable<object[]> UnknownSettlementFailures() =>
+        new[]
+        {
+            new object[] { new TimeoutException("request timed out") },
+            new object[] { new PrismNetworkError("Failed to reach Prism Gateway") },
+            new object[] { new PrismGatewayError("Bad gateway", 502) },
+        };
+
+    [Fact]
+    public async Task ProofIsReleased_WhenGatewayRefusesSettlementWithAClientError()
+    {
+        var client = new FakePrismClient
+        {
+            OnSettlePayment = (_, _) => throw new PrismGatewayError("Settlement refused", 400),
+        };
+        var core = NewCore(client);
+
+        var first = await Submit(core, Header("0xsettle-refused"));
+        await Settle(core, first, 200);
+        var retried = await Submit(core, Header("0xsettle-refused"));
+
         Assert.NotNull(retried.PaymentInfo);
     }
 
@@ -200,19 +234,69 @@ public class PaymentReplayGuardTests
     }
 
     [Fact]
-    public async Task AbandonedReservation_Expires()
+    public async Task Reservation_IsKept_WhileASlowHandlerIsStillRunning()
     {
         var now = DateTimeOffset.FromUnixTimeSeconds(1_800_000_000);
-        var core = NewCore(new FakePrismClient(), () => now);
+        var client = new FakePrismClient();
+        var core = NewCore(client, () => now);
+        var header = Header("0xslow-handler");
+
+        await Submit(core, header);
+        now = now.AddSeconds(90);
+        var whileHandlerRuns = await Submit(core, header);
+
+        Assert.True(whileHandlerRuns.Handled);
+        Assert.Equal(402, whileHandlerRuns.StatusCode);
+        Assert.Null(whileHandlerRuns.PaymentInfo);
+        Assert.Equal(1, client.VerifyCalls);
+    }
+
+    [Fact]
+    public async Task AbandonedReservation_Expires_AfterTheConfiguredTime()
+    {
+        var now = DateTimeOffset.FromUnixTimeSeconds(1_800_000_000);
+        var core = NewCore(new FakePrismClient(), () => now, replayReservationSeconds: 120);
         var header = Header("0xabandoned");
 
         await Submit(core, header);
+        now = now.AddSeconds(119);
         var beforeExpiry = await Submit(core, header);
-        now = now.AddSeconds(61);
+        now = now.AddSeconds(2);
         var afterExpiry = await Submit(core, header);
 
         Assert.True(beforeExpiry.Handled);
         Assert.NotNull(afterExpiry.PaymentInfo);
+    }
+
+    [Fact]
+    public async Task AbandonedReservation_Expires_AfterTenMinutesByDefault()
+    {
+        var now = DateTimeOffset.FromUnixTimeSeconds(1_800_000_000);
+        var core = NewCore(new FakePrismClient(), () => now);
+        var header = Header("0xabandoned-default");
+
+        await Submit(core, header);
+        now = now.AddSeconds(599);
+        var beforeExpiry = await Submit(core, header);
+        now = now.AddSeconds(2);
+        var afterExpiry = await Submit(core, header);
+
+        Assert.True(beforeExpiry.Handled);
+        Assert.NotNull(afterExpiry.PaymentInfo);
+    }
+
+    [Fact]
+    public void Reservation_NeverOutlivesTheAuthorizationValidBefore()
+    {
+        var now = DateTimeOffset.FromUnixTimeSeconds(1_800_000_000);
+        var guard = new PaymentReplayGuard(() => now);
+        var validBefore = now.AddSeconds(30);
+
+        Assert.True(guard.TryReserve("key", validBefore));
+        now = now.AddSeconds(29);
+        Assert.False(guard.TryReserve("key", validBefore));
+        now = now.AddSeconds(2);
+        Assert.True(guard.TryReserve("key", validBefore));
     }
 
     [Fact]
@@ -328,18 +412,24 @@ public class PaymentReplayGuardTests
     }
 
     [Fact]
-    public async Task SettleBeforeHandler_RejectsTheRequest_WhenSettlementThrows()
+    public async Task SettleBeforeHandler_RejectsTheRequestAndKeepsTheProofReserved_WhenSettlementThrows()
     {
         var client = new FakePrismClient
         {
-            OnSettlePayment = (_, _) => throw new InvalidOperationException("gateway down"),
+            OnSettlePayment = (_, _) => throw new TimeoutException("request timed out"),
         };
+        var core = NewSettlingCore(client);
 
-        var failed = await Submit(NewSettlingCore(client), Header("0xsettle-first-throws"));
+        var failed = await Submit(core, Header("0xsettle-first-throws"));
+        client.OnSettlePayment = null;
+        var retried = await Submit(core, Header("0xsettle-first-throws"));
 
         Assert.True(failed.Handled);
         Assert.Equal(402, failed.StatusCode);
         Assert.Null(failed.PaymentInfo);
+        Assert.True(retried.Handled);
+        Assert.Equal(402, retried.StatusCode);
+        Assert.Null(retried.PaymentInfo);
     }
 
     [Fact]

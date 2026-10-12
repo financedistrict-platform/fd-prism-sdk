@@ -18,6 +18,7 @@ import {
   validatePaymentWindow,
   validatePaymentResource,
   paymentProofKey,
+  paymentValidBefore,
   replayGuardFor,
   type PaymentReplayGuard,
   type MiddlewareResponse,
@@ -26,6 +27,7 @@ import {
   detectProtocolVersion,
   getDeclaredProtocolVersion,
 } from '../compatibility';
+import { PrismGatewayError } from '../types/errors';
 import type { PaymentPayloadV1 } from '../types/v1';
 import type { PaymentPayload as PaymentPayloadV2 } from '../types/v2';
 
@@ -349,7 +351,7 @@ export class PrismMiddlewareCore {
       }
 
       const proofKey = paymentProofKey(paymentPayload);
-      if (!proofKey || !this.replayGuard.tryReserve(proofKey)) {
+      if (!proofKey || !this.replayGuard.tryReserve(proofKey, paymentValidBefore(paymentPayload))) {
         const response = buildInvalidPaymentResponse(
           'Payment proof is already being processed or has already been used',
           protocolVersion
@@ -556,11 +558,7 @@ export class PrismMiddlewareCore {
 
       if (proofKey) {
         if (settlementResult.success) {
-          this.replayGuard.markConsumed(
-            proofKey,
-            Number((paymentPayload as any)?.payload?.authorization?.validBefore),
-            settlementResult
-          );
+          this.replayGuard.markConsumed(proofKey, paymentValidBefore(paymentPayload), settlementResult);
         } else {
           this.replayGuard.release(proofKey);
         }
@@ -577,10 +575,18 @@ export class PrismMiddlewareCore {
       return settlementResult;
     } catch (error: any) {
       if (proofKey) {
-        this.replayGuard.release(proofKey);
+        if (this.isDefiniteSettlementRefusal(error)) {
+          this.replayGuard.release(proofKey);
+        } else {
+          this.replayGuard.markConsumed(proofKey, paymentValidBefore(paymentPayload));
+        }
       }
       console.error('Error during settlement:', error);
       return null;
     }
+  }
+
+  private isDefiniteSettlementRefusal(error: unknown): boolean {
+    return error instanceof PrismGatewayError && error.statusCode >= 400 && error.statusCode < 500;
   }
 }

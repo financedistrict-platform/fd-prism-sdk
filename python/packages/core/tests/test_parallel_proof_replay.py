@@ -7,9 +7,11 @@ import threading
 from copy import deepcopy
 from unittest.mock import AsyncMock, patch
 
+import httpx
 import pytest
 
-from prism_sdk_core import PrismMiddlewareConfig, PrismMiddlewareCore, RoutePaymentConfig
+from prism_sdk_core import PrismClient, PrismMiddlewareConfig, PrismMiddlewareCore, RoutePaymentConfig
+from prism_sdk_core.payment_replay_guard import PaymentReplayGuard
 
 ROUTE_PATH = '/api/premium'
 RESOURCE_URL = 'https://example.com/api/premium'
@@ -74,10 +76,14 @@ def client():
         yield instance
 
 
+def make_core(**config_options):
+    config = PrismMiddlewareConfig(api_key='test-key', **config_options)
+    return PrismMiddlewareCore(config, {ROUTE_PATH: RoutePaymentConfig(price=0.01, description='Premium API')})
+
+
 @pytest.fixture
 def core(client):
-    config = PrismMiddlewareConfig(api_key='test-key')
-    return PrismMiddlewareCore(config, {ROUTE_PATH: RoutePaymentConfig(price=0.01, description='Premium API')})
+    return make_core()
 
 
 def submit_sync(core, payload):
@@ -219,6 +225,22 @@ class TestParallelProofReplay:
         assert retried.payment_info is not None
 
     @pytest.mark.parametrize('is_async', [False, True], ids=['sync', 'async'])
+    def test_proof_stays_reserved_when_settlement_raises(self, is_async, core, client):
+        client.settle_payment.side_effect = httpx.ReadTimeout('timed out')
+        client.asettle_payment.side_effect = httpx.ReadTimeout('timed out')
+        submit = submit_async if is_async else submit_sync
+        first = submit(core, v2_payload('0xsettle-raises'))
+
+        settled = settle(core, first, 200, is_async)
+        retried = submit(core, v2_payload('0xsettle-raises'))
+
+        assert settled['success'] is False
+        assert retried.handled is True
+        assert retried.status_code == 402
+        assert retried.payment_info is None
+        assert client.verify_payment.call_count + client.averify_payment.call_count == 1
+
+    @pytest.mark.parametrize('is_async', [False, True], ids=['sync', 'async'])
     def test_proof_stays_consumed_after_a_successful_settlement(self, is_async, core):
         submit = submit_async if is_async else submit_sync
         first = submit(core, v2_payload('0xsettled'))
@@ -230,16 +252,51 @@ class TestParallelProofReplay:
         assert replay.handled is True
         assert replay.status_code == 402
 
-    def test_abandoned_reservation_expires(self, core, frozen_clock):
+    def test_reservation_is_kept_while_a_slow_handler_is_still_running(self, core, client, frozen_clock):
+        payload = v2_payload('0xslow-handler', valid_before=NOW + 3600)
+        submit_sync(core, payload)
+
+        frozen_clock.return_value = NOW + 90
+        while_handler_runs = submit_sync(core, payload)
+
+        assert while_handler_runs.handled is True
+        assert while_handler_runs.status_code == 402
+        assert while_handler_runs.payment_info is None
+        assert client.verify_payment.call_count == 1
+
+    def test_abandoned_reservation_expires_after_the_configured_time(self, client, frozen_clock):
+        core = make_core(replay_reservation_seconds=120)
         payload = v2_payload('0xabandoned', valid_before=NOW + 3600)
         submit_sync(core, payload)
-        before_expiry = submit_sync(core, payload)
 
-        frozen_clock.return_value = NOW + 61
+        frozen_clock.return_value = NOW + 119
+        before_expiry = submit_sync(core, payload)
+        frozen_clock.return_value = NOW + 121
         after_expiry = submit_sync(core, payload)
 
         assert before_expiry.handled is True
         assert after_expiry.payment_info is not None
+
+    def test_abandoned_reservation_expires_after_ten_minutes_by_default(self, core, frozen_clock):
+        payload = v2_payload('0xabandoned-default', valid_before=NOW + 3600)
+        submit_sync(core, payload)
+
+        frozen_clock.return_value = NOW + 599
+        before_expiry = submit_sync(core, payload)
+        frozen_clock.return_value = NOW + 601
+        after_expiry = submit_sync(core, payload)
+
+        assert before_expiry.handled is True
+        assert after_expiry.payment_info is not None
+
+    def test_reservation_never_outlives_the_authorization_valid_before(self, frozen_clock):
+        guard = PaymentReplayGuard()
+
+        assert guard.try_reserve('key', str(NOW + 30)) is True
+        frozen_clock.return_value = NOW + 29
+        assert guard.try_reserve('key', str(NOW + 30)) is False
+        frozen_clock.return_value = NOW + 31
+        assert guard.try_reserve('key', str(NOW + 30)) is True
 
     def test_tracked_proofs_are_bounded_and_fail_closed(self, core):
         results = [submit_sync(core, v2_payload(f'0xflood-{i}')) for i in range(10_050)]
@@ -327,6 +384,24 @@ class TestSettleBeforeHandler:
         assert retried.payment_info is not None
 
     @pytest.mark.parametrize('is_async', [False, True], ids=['sync', 'async'])
+    def test_rejects_the_request_and_keeps_the_proof_reserved_when_settlement_raises(self, is_async, settling_core, client):
+        submit = submit_async if is_async else submit_sync
+        client.settle_payment.side_effect = httpx.ReadTimeout('timed out')
+        client.asettle_payment.side_effect = httpx.ReadTimeout('timed out')
+        failed = submit(settling_core, v2_payload('0xsettle-first-raises'))
+
+        client.settle_payment.side_effect = None
+        client.asettle_payment.side_effect = None
+        retried = submit(settling_core, v2_payload('0xsettle-first-raises'))
+
+        assert failed.handled is True
+        assert failed.status_code == 402
+        assert failed.payment_info is None
+        assert retried.handled is True
+        assert retried.status_code == 402
+        assert retried.payment_info is None
+
+    @pytest.mark.parametrize('is_async', [False, True], ids=['sync', 'async'])
     def test_proof_stays_consumed_when_the_handler_fails_after_settlement(self, is_async, settling_core):
         submit = submit_async if is_async else submit_sync
         admitted = submit(settling_core, v2_payload('0xsettled-handler-fails'))
@@ -336,3 +411,41 @@ class TestSettleBeforeHandler:
 
         assert replay.handled is True
         assert replay.status_code == 402
+
+
+def response(status_code, body):
+    return httpx.Response(status_code, json=body, request=httpx.Request('POST', 'https://gateway.test/settle'))
+
+
+class TestSettleClientOutcomes:
+    @pytest.fixture
+    def prism_client(self):
+        return PrismClient(PrismMiddlewareConfig(api_key='test-key', base_url='https://gateway.test'))
+
+    def test_transport_failure_is_raised_instead_of_reported_as_a_refusal(self, prism_client):
+        with patch.object(prism_client._sync_client, 'post', side_effect=httpx.ReadTimeout('timed out')):
+            with pytest.raises(httpx.ReadTimeout):
+                prism_client.settle_payment({}, {}, 200)
+
+    def test_async_transport_failure_is_raised_instead_of_reported_as_a_refusal(self, prism_client):
+        with patch.object(prism_client._async_client, 'post', AsyncMock(side_effect=httpx.ReadTimeout('timed out'))):
+            with pytest.raises(httpx.ReadTimeout):
+                asyncio.run(prism_client.asettle_payment({}, {}, 200))
+
+    def test_gateway_server_error_is_raised_because_the_outcome_is_unknown(self, prism_client):
+        with patch.object(prism_client._sync_client, 'post', return_value=response(502, {'error': 'bad gateway'})):
+            with pytest.raises(httpx.HTTPStatusError):
+                prism_client.settle_payment({}, {}, 200)
+
+    def test_gateway_client_error_is_a_definite_refusal(self, prism_client):
+        with patch.object(prism_client._sync_client, 'post', return_value=response(400, {'errorReason': 'insufficient funds'})):
+            result = prism_client.settle_payment({}, {}, 200)
+
+        assert result['success'] is False
+        assert result['errorReason'] == 'insufficient funds'
+
+    def test_gateway_refusal_in_a_success_response_is_a_definite_refusal(self, prism_client):
+        with patch.object(prism_client._sync_client, 'post', return_value=response(200, {'success': False, 'errorReason': 'nonce used'})):
+            result = prism_client.settle_payment({}, {}, 200)
+
+        assert result == {'success': False, 'errorReason': 'nonce used'}
