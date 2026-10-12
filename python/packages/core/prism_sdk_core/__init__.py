@@ -10,6 +10,7 @@ from dataclasses import dataclass
 import httpx
 import json
 import base64
+import time
 from enum import Enum
 
 # Import compatibility layer components
@@ -19,6 +20,12 @@ from .header_adapter import HeaderAdapter
 from .version_detector import detect_protocol_version, get_default_protocol_version
 from .schema_transformer import SchemaTransformer
 from .network_mapper import normalize_network
+from .payment_validator import (
+    find_requirement_for_payment,
+    validate_payment_binding,
+    validate_payment_resource,
+    validate_payment_window,
+)
 
 
 class ConfigurationMode(str, Enum):
@@ -370,12 +377,6 @@ class PrismMiddlewareCore:
             protocol_version
         )
 
-        # Extract single PaymentRequirements item for verify/settle calls.
-        # Gateway /verify and /settle expect paymentRequirements = accepts[0],
-        # not the full PaymentRequiredResponse envelope.
-        accepts = requirements.get('accepts', [])
-        single_requirement = accepts[0] if accepts else requirements
-
         # If no payment provided, return 402
         if not payment_header:
             # Set X-PAYMENT-REQUIREMENTS (v1) or PAYMENT-REQUIRED (v2) header
@@ -407,6 +408,8 @@ class PrismMiddlewareCore:
             if payload_version in self.allowed_versions:
                 protocol_version = payload_version
 
+            submitted_payment = payment_data
+
             # Normalize to v2 for internal processing
             if payload_version == 1:
                 payment_data = SchemaTransformer.upgrade_payment_payload(payment_data)
@@ -419,7 +422,20 @@ class PrismMiddlewareCore:
                 body={'error': 'Invalid payment header'}
             )
 
-        # Verify payment — pass decoded payload and single requirement (not full envelope)
+        single_requirement, mismatch = self._match_payment(submitted_payment, requirements, resource_url)
+        if mismatch:
+            return MiddlewareResult(
+                handled=True,
+                status_code=402,
+                headers={'Content-Type': 'application/json'},
+                body={
+                    'error': 'Invalid Payment',
+                    'message': mismatch,
+                    'payment': requirements_for_client
+                }
+            )
+
+        # Verify payment — pass decoded payload and the matched requirement (not full envelope)
         try:
             verification = self.client.verify_payment(payment_data, single_requirement)
 
@@ -455,6 +471,29 @@ class PrismMiddlewareCore:
                 body={'error': 'Payment verification failed'}
             )
     
+    @staticmethod
+    def _match_payment(
+        payment: Dict[str, Any],
+        requirements: Dict[str, Any],
+        resource_url: str,
+    ) -> tuple[Optional[Dict[str, Any]], Optional[str]]:
+        accepts = requirements.get('accepts')
+        requirement = find_requirement_for_payment(accepts if isinstance(accepts, list) else [], payment)
+        if requirement is None:
+            return None, 'No matching payment requirement found for the provided payment'
+
+        resource = requirements.get('resource')
+        expected_resource_url = (resource.get('url') if isinstance(resource, dict) else None) or resource_url
+
+        reason = (
+            validate_payment_binding(payment, requirement)
+            or validate_payment_resource(payment, expected_resource_url)
+            or validate_payment_window(payment, int(time.time()))
+        )
+        if reason:
+            return None, reason
+        return requirement, None
+
     _MAX_PAYMENT_HEADER_BYTES = 8192  # ~10× real x402 payload size
 
     def _decode_payment_header(self, payment_header: str) -> Optional[Dict[str, Any]]:
@@ -544,6 +583,10 @@ class PrismMiddlewareCore:
         """Settlement callback after successful response (sync)."""
         if status_code >= 400:
             return {'success': False, 'reason': 'Status code >= 400'}
+        mismatch = validate_payment_binding(payment, requirements)
+        if mismatch:
+            print(f"[Prism] Settlement refused: {mismatch}")
+            return {'success': False, 'errorReason': mismatch}
         return self.client.settle_payment(payment, requirements, status_code)
 
     # ------------------------------------------------------------------
@@ -587,10 +630,6 @@ class PrismMiddlewareCore:
             requirements, protocol_version
         )
 
-        # Extract single PaymentRequirements item for verify/settle calls
-        accepts = requirements.get('accepts', [])
-        single_requirement = accepts[0] if accepts else requirements
-
         if not payment_header:
             req_header_name = 'PAYMENT-REQUIRED' if protocol_version == 2 else 'X-PAYMENT-REQUIREMENTS'
             return MiddlewareResult(
@@ -617,6 +656,8 @@ class PrismMiddlewareCore:
             if payload_version in self.allowed_versions:
                 protocol_version = payload_version
 
+            submitted_payment = payment_data
+
             # Normalize to v2 for internal processing
             if payload_version == 1:
                 payment_data = SchemaTransformer.upgrade_payment_payload(payment_data)
@@ -626,6 +667,17 @@ class PrismMiddlewareCore:
             return MiddlewareResult(
                 handled=True, status_code=400,
                 body={'error': 'Invalid payment header'},
+            )
+
+        single_requirement, mismatch = self._match_payment(submitted_payment, requirements, resource_url)
+        if mismatch:
+            return MiddlewareResult(
+                handled=True, status_code=402,
+                body={
+                    'error': 'Invalid Payment',
+                    'message': mismatch,
+                    'payment': requirements_for_client,
+                },
             )
 
         try:
@@ -665,6 +717,10 @@ class PrismMiddlewareCore:
         """Async settlement callback."""
         if status_code >= 400:
             return {'success': False, 'reason': 'Status code >= 400'}
+        mismatch = validate_payment_binding(payment, requirements)
+        if mismatch:
+            print(f"[Prism] Settlement refused: {mismatch}")
+            return {'success': False, 'errorReason': mismatch}
         return await self.client.asettle_payment(payment, requirements, status_code)
 
 

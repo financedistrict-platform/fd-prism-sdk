@@ -134,6 +134,20 @@ X-PAYMENT: eyJ4NDAyVmVyc2lvbiI6MSwic2NoZW1lIjoiZXhhY3QiLi4ufQ==
 
 The `X-PAYMENT` header contains base64-encoded JSON with the signed transaction.
 
+### Step 6b: Local Payment Checks
+
+Before any call to the Gateway, the SDK compares the payment with the payment requirements it just requested for this route. The payment is rejected with `402` and the Gateway is never called when any of these checks fail:
+
+| Check | Rule |
+|-------|------|
+| Accepted requirement | `scheme`, `network`, `asset`, `payTo` and `amount` in the payload's `accepted` block must equal one of the server-built requirements (addresses compare case-insensitively, amounts as exact integers) |
+| Recipient | `authorization.to` must equal the requirement's `payTo` |
+| Amount | `authorization.value` must equal the requirement's `amount` |
+| Resource | if the payload carries `resource.url`, it must equal the requested resource URL |
+| Validity window | `validAfter <= now < validBefore`, both as Unix seconds |
+
+The same recipient, amount and `accepted` checks run again before settlement. The Gateway still performs signature and balance checks.
+
 ### Step 7-8: Verify Payment
 
 Server verifies the payment signature with Gateway:

@@ -4,7 +4,6 @@ import {
   RoutesConfig,
   PaymentRequirementsRequest,
   PaymentPayload,
-  PaymentRequirements,
   ConfigurationMode,
 } from '../types';
 import {
@@ -14,6 +13,10 @@ import {
   buildErrorResponse,
   buildInvalidPaymentHeaderResponse,
   buildInvalidPaymentResponse,
+  findRequirementForPayment,
+  validatePaymentBinding,
+  validatePaymentWindow,
+  validatePaymentResource,
   type MiddlewareResponse,
 } from '../utils';
 import {
@@ -290,10 +293,9 @@ export class PrismMiddlewareCore {
       const paymentRequirementsResponse = await this.client.getPaymentRequirements(request);
 
       // Find the payment requirement that matches the client's payment
-      const paymentRequirements = this.findMatchingPaymentRequirement(
+      const paymentRequirements = findRequirementForPayment(
         paymentRequirementsResponse.accepts,
-        paymentPayload,
-        protocolVersion
+        paymentPayload as any
       );
 
       if (!paymentRequirements) {
@@ -311,6 +313,24 @@ export class PrismMiddlewareCore {
         };
       }
 
+      const mismatch =
+        validatePaymentBinding(paymentPayload as any, paymentRequirements) ??
+        validatePaymentResource(
+          paymentPayload as any,
+          paymentRequirementsResponse.resource?.url ?? resourceUrl
+        ) ??
+        validatePaymentWindow(paymentPayload as any, Math.floor(Date.now() / 1000));
+
+      if (mismatch) {
+        if (this.debug) {
+          console.log('[PrismMiddlewareCore] Payment rejected locally:', mismatch);
+        }
+        const response = buildInvalidPaymentResponse(mismatch, protocolVersion);
+        return {
+          handled: true,
+          ...response,
+        };
+      }
 
       // Verify payment with Gateway
       const verificationResult = await this.client.verifyPayment(paymentPayload as any, paymentRequirements);
@@ -448,45 +468,6 @@ export class PrismMiddlewareCore {
   }
 
   /**
-   * Find the payment requirement that matches the client's payment
-   * 
-   * @param paymentRequirements - Array of accepted payment requirements
-   * @param paymentPayload - Payment payload from client (v1 or v2)
-   * @param protocolVersion - Protocol version
-   * @returns Matching payment requirement or undefined if no match
-   */
-  private findMatchingPaymentRequirement(
-    paymentRequirements: PaymentRequirements[],
-    paymentPayload: PaymentPayload | PaymentPayloadV1,
-    protocolVersion: 1 | 2
-  ): PaymentRequirements | undefined {
-    // Extract scheme, network, asset from payload based on version
-    let scheme: string;
-    let network: string;
-    let asset: string | undefined;
-
-    if (protocolVersion === 1) {
-      const v1Payload = paymentPayload as PaymentPayloadV1;
-      scheme = v1Payload.scheme;
-      network = v1Payload.network;
-      asset = undefined; // v1 doesn't have asset in payload
-    } else {
-      const v2Payload = paymentPayload as unknown as PaymentPayloadV2;
-      scheme = v2Payload.accepted.scheme;
-      network = v2Payload.accepted.network;
-      asset = v2Payload.accepted.asset;
-    }
-
-    return paymentRequirements.find((req) => {
-      const schemeMatch = req.scheme === scheme;
-      const networkMatch = req.network === network;
-      const assetMatch = !asset || req.asset === asset;
-
-      return schemeMatch && networkMatch && assetMatch;
-    });
-  }
-
-  /**
    * Settlement callback - call this after successful response
    * 
    * @param paymentPayload - Payment payload
@@ -502,6 +483,12 @@ export class PrismMiddlewareCore {
     // Only settle if response was successful (< 400)
     if (statusCode >= 400) {
       return null;
+    }
+
+    const mismatch = validatePaymentBinding(paymentPayload as any, paymentRequirements);
+    if (mismatch) {
+      console.error('Settlement refused:', mismatch);
+      return { success: false, errorReason: mismatch };
     }
 
     try {

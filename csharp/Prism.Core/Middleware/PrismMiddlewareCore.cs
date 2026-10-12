@@ -27,13 +27,16 @@ public class PrismMiddlewareCore
     private readonly int[] _allowedVersions;
     private readonly IReadOnlyDictionary<string, RoutePaymentConfig> _routes;
     private readonly ILogger<PrismMiddlewareCore>? _logger;
+    private readonly Func<DateTimeOffset> _utcNow;
 
     public PrismMiddlewareCore(
         PrismMiddlewareConfig config,
         IReadOnlyDictionary<string, RoutePaymentConfig> routes,
         IPrismClient? client = null,
-        ILogger<PrismMiddlewareCore>? logger = null)
+        ILogger<PrismMiddlewareCore>? logger = null,
+        Func<DateTimeOffset>? utcNow = null)
     {
+        _utcNow = utcNow ?? (() => DateTimeOffset.UtcNow);
         _debug = config.Debug;
         _client = client ?? new PrismClient(config);
         _defaultProtocolVersion = config.X402Version is 1 or 2 ? config.X402Version : 2;
@@ -150,12 +153,24 @@ public class PrismMiddlewareCore
             };
 
             var paymentRequirementsResponse = await _client.GetPaymentRequirementsAsync(request).ConfigureAwait(false);
-            var paymentRequirements = FindMatchingPaymentRequirement(paymentRequirementsResponse.Accepts, payload, protocolVersion);
+            var paymentRequirements = PaymentValidator.FindRequirementForPayment(paymentRequirementsResponse.Accepts, payload);
 
             if (paymentRequirements is null)
             {
                 LogDebug($"[PrismMiddlewareCore] No matching payment requirement found for payment: {RedactSignature(payload)}");
                 return ToResult(ResponseBuilder.BuildInvalidPaymentResponse("No matching payment requirement found for the provided payment", protocolVersion));
+            }
+
+            var expectedResourceUrl = string.IsNullOrEmpty(paymentRequirementsResponse.Resource?.Url)
+                ? resourceUrl
+                : paymentRequirementsResponse.Resource.Url;
+            var mismatch = PaymentValidator.ValidateBinding(payload, paymentRequirements)
+                ?? PaymentValidator.ValidateResource(payload, expectedResourceUrl)
+                ?? PaymentValidator.ValidateWindow(payload, _utcNow());
+            if (mismatch is not null)
+            {
+                LogDebug($"[PrismMiddlewareCore] Payment rejected locally: {mismatch}");
+                return ToResult(ResponseBuilder.BuildInvalidPaymentResponse(mismatch, protocolVersion));
             }
 
             var verificationResult = await _client.VerifyPaymentAsync(payload, paymentRequirements).ConfigureAwait(false);
@@ -297,37 +312,6 @@ public class PrismMiddlewareCore
             && !string.IsNullOrEmpty(prop.GetString());
     }
 
-    private static string? GetOptionalString(JsonElement obj, string propertyName)
-    {
-        return obj.ValueKind == JsonValueKind.Object && obj.TryGetProperty(propertyName, out var prop) && prop.ValueKind == JsonValueKind.String
-            ? prop.GetString()
-            : null;
-    }
-
-    private static PaymentRequirements? FindMatchingPaymentRequirement(List<PaymentRequirements> requirements, JsonElement payload, int protocolVersion)
-    {
-        string? scheme, network, asset;
-
-        if (protocolVersion == 1)
-        {
-            scheme = GetOptionalString(payload, "scheme");
-            network = GetOptionalString(payload, "network");
-            asset = null;
-        }
-        else if (payload.TryGetProperty("accepted", out var accepted) && accepted.ValueKind == JsonValueKind.Object)
-        {
-            scheme = GetOptionalString(accepted, "scheme");
-            network = GetOptionalString(accepted, "network");
-            asset = GetOptionalString(accepted, "asset");
-        }
-        else
-        {
-            scheme = network = asset = null;
-        }
-
-        return requirements.FirstOrDefault(r => r.Scheme == scheme && r.Network == network && (string.IsNullOrEmpty(asset) || r.Asset == asset));
-    }
-
     /// <summary>
     /// Attempts settlement for a verified payment. Returns null (never throws) without calling
     /// the gateway when <paramref name="statusCode"/> is an error status — settlement is only
@@ -338,6 +322,13 @@ public class PrismMiddlewareCore
         if (statusCode >= 400)
         {
             return null;
+        }
+
+        var mismatch = PaymentValidator.ValidateBinding(payment, paymentRequirements);
+        if (mismatch is not null)
+        {
+            LogError($"Settlement refused: {mismatch}");
+            return new SettlePaymentResult { Success = false, ErrorReason = mismatch };
         }
 
         try
