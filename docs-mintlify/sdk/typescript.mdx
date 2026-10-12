@@ -327,8 +327,12 @@ interface RoutePaymentConfig {
 Matches:
 
 - ✅ `/api/weather`
+- ✅ `/API/Weather` (matching is case-insensitive)
+- ✅ `/api/weather/` (trailing slashes are ignored)
 - ❌ `/api/weather/forecast`
 - ❌ `/api/weather-data`
+
+Route keys and request paths are normalised the same way (lower-cased, trailing slashes removed), so a protected route cannot be reached through a different spelling that Express or NestJS would still route to the same handler.
 
 ### Wildcard Routes
 
