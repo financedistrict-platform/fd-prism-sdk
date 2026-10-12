@@ -47,6 +47,22 @@ public class PrismMiddlewareCoreTests
         Assert.Empty(client.RequirementsRequests);
     }
 
+    [Theory]
+    [InlineData("/API/premium")]
+    [InlineData("/api/premium/")]
+    [InlineData("/Api/Premium/")]
+    public async Task CaseAndTrailingSlashVariants_AreStillProtected(string path)
+    {
+        var client = new FakePrismClient();
+        var core = new PrismMiddlewareCore(Config(), Routes(), client);
+
+        var result = await core.HandleRequestAsync(new MiddlewareRequestData { Path = path, ResourceUrl = "https://api.test" + path });
+
+        Assert.True(result.Handled);
+        Assert.Equal(402, result.StatusCode);
+        Assert.Single(client.RequirementsRequests);
+    }
+
     [Fact]
     public async Task NoPaymentHeader_Returns402WithRequirements()
     {

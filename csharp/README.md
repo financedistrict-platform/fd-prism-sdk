@@ -86,6 +86,8 @@ app.MapGet("/api/weather", (HttpContext context) =>
 app.Run();
 ```
 
+Route paths are matched ignoring case and trailing slashes, the same way ASP.NET Core resolves endpoints: `/api/weather` also protects `/API/Weather` and `/api/weather/`. Registering two paths that differ only by case or trailing slash throws an `ArgumentException`.
+
 Works identically in an MVC controller — the verified payment is available via the same `HttpContext` extension methods (`GetPrismPayer()`, `GetPrismPayment()`, `GetPrismPaymentInfo()`) regardless of how the route is defined.
 
 ### Dependency injection
