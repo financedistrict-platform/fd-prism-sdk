@@ -14,7 +14,6 @@ public class PrismMiddleware {
     private final PrismConfig config;
     private final PrismClient client;
     private final Map<String, RoutePaymentConfig> routeMap;
-    private final PaymentReplayGuard replayGuard = new PaymentReplayGuard();
 
     public PrismMiddleware(PrismConfig config) {
         this.config = config;
@@ -80,21 +79,11 @@ public class PrismMiddleware {
                 return requestPayment(routeConfig);
             }
 
-            if (!replayGuard.tryReserve(proof)) {
+            JsonObject verification = client.verifyPayment(proof);
+            boolean isValid = verification.has("valid") && verification.get("valid").getAsBoolean();
+
+            if (!isValid) {
                 return requestPayment(routeConfig);
-            }
-
-            try {
-                JsonObject verification = client.verifyPayment(proof);
-                boolean isValid = verification.has("valid") && verification.get("valid").getAsBoolean();
-
-                if (!isValid) {
-                    replayGuard.release(proof);
-                    return requestPayment(routeConfig);
-                }
-            } catch (IOException | RuntimeException e) {
-                replayGuard.release(proof);
-                throw e;
             }
 
             // Payment verified - continue
@@ -127,10 +116,8 @@ public class PrismMiddleware {
 
         try {
             client.settlementCallback(proof, "completed", "Payment processed successfully");
-            replayGuard.markConsumed(proof);
             return "proof=" + proof;
         } catch (IOException e) {
-            replayGuard.release(proof);
             System.err.println("Settlement failed for proof=" + proof + ": " + e.getMessage());
             return null;
         }
