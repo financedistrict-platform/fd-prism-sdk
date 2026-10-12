@@ -595,4 +595,138 @@ describe('prismPaymentMiddleware', () => {
       expect(mockSettlePayment).not.toHaveBeenCalled();
     });
   });
+
+  describe('Stacked payment middleware', () => {
+    const SECRET = 'PAID-CONTENT-SECRET';
+    const config = () => ({ apiKey: 'test-api-key', client: createMockClient() });
+    const globalRoutes = { '/api/*': { price: '10000', description: 'API' } };
+    const overrideRoutes = { '/api/expensive': { price: '10000', description: 'Expensive operation' } };
+
+    const mountStacked = (handler: (req: Request, res: Response) => void) => {
+      app.use(prismPaymentMiddleware(config(), globalRoutes));
+      app.get('/api/expensive', prismPaymentMiddleware(config(), overrideRoutes), handler);
+    };
+
+    const pay = () => request(app).get('/api/expensive').set('X-Payment', validPaymentHeader());
+
+    const allowPayment = () => {
+      mockGetPaymentRequirements.mockResolvedValue(paidRequirements);
+      mockVerifyPayment.mockResolvedValue({ isValid: true, payer: '0xabcdef1234567890' });
+    };
+
+    const settlementResult = {
+      success: true,
+      payer: '0xabcdef1234567890',
+      transaction: '0xtxhash123',
+      network: '1',
+    };
+
+    it('settles exactly once when a route-level middleware overrides a global one', async () => {
+      allowPayment();
+      mockSettlePayment.mockResolvedValue(settlementResult);
+      mountStacked((_req, res) => {
+        res.json({ result: SECRET });
+      });
+
+      const response = await pay();
+
+      expect(response.status).toBe(200);
+      expect(response.body.result).toBe(SECRET);
+      expect(response.headers['x-payment-response'] || response.headers['payment-response']).toBeDefined();
+      expect(mockSettlePayment).toHaveBeenCalledTimes(1);
+    });
+
+    it('still delivers the paid content when the same middleware is mounted twice', async () => {
+      allowPayment();
+      mockSettlePayment.mockResolvedValue(settlementResult);
+      const shared = prismPaymentMiddleware(config(), globalRoutes);
+      app.use(shared);
+      app.get('/api/expensive', shared, (_req, res) => {
+        res.json({ result: SECRET });
+      });
+
+      const response = await pay();
+
+      expect(response.status).toBe(200);
+      expect(response.body.result).toBe(SECRET);
+      expect(mockSettlePayment).toHaveBeenCalledTimes(1);
+    });
+
+    it('settles once and withholds the content when the single settlement fails', async () => {
+      allowPayment();
+      mockSettlePayment.mockResolvedValue({ success: false, errorReason: 'insufficient_funds' });
+      mountStacked((_req, res) => {
+        res.json({ result: SECRET });
+      });
+
+      const response = await pay();
+
+      expect(response.status).toBe(402);
+      expect(response.text).not.toContain(SECRET);
+      expect(response.body.error).toBe('Payment settlement failed');
+      expect(mockSettlePayment).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not settle when the route-level middleware rejects the payment', async () => {
+      mockGetPaymentRequirements.mockResolvedValue(paidRequirements);
+      mockVerifyPayment
+        .mockResolvedValueOnce({ isValid: true, payer: '0xabcdef1234567890' })
+        .mockResolvedValueOnce({ isValid: false, error: 'insufficient_amount' });
+      mockSettlePayment.mockResolvedValue(settlementResult);
+      const handler = jest.fn((_req: Request, res: Response) => {
+        res.json({ result: SECRET });
+      });
+      mountStacked(handler);
+
+      const response = await pay();
+
+      expect(response.status).toBe(402);
+      expect(response.text).not.toContain(SECRET);
+      expect(handler).not.toHaveBeenCalled();
+      expect(mockSettlePayment).not.toHaveBeenCalled();
+    });
+
+    it('settles against the route-level requirements, not the global ones', async () => {
+      const globalRequirements = {
+        ...paidRequirements,
+        accepts: [{ ...paidRequirements.accepts[0], maxAmountRequired: '10000' }],
+      };
+      const overrideRequirements = {
+        ...paidRequirements,
+        accepts: [{ ...paidRequirements.accepts[0], maxAmountRequired: '10000', description: 'override' }],
+      };
+      mockGetPaymentRequirements
+        .mockResolvedValueOnce(globalRequirements)
+        .mockResolvedValueOnce(overrideRequirements);
+      mockVerifyPayment.mockResolvedValue({ isValid: true, payer: '0xabcdef1234567890' });
+      mockSettlePayment.mockResolvedValue(settlementResult);
+      mountStacked((_req, res) => {
+        res.json({ result: SECRET });
+      });
+
+      await pay();
+
+      expect(mockSettlePayment).toHaveBeenCalledTimes(1);
+      expect(mockSettlePayment.mock.calls[0][1].description).toBe('override');
+    });
+
+    it('fails closed when a payment middleware runs after settlement has begun', async () => {
+      allowPayment();
+      mockSettlePayment.mockResolvedValue(settlementResult);
+      const late = prismPaymentMiddleware(config(), globalRoutes);
+      const lateNext = jest.fn();
+      app.use(prismPaymentMiddleware(config(), globalRoutes));
+      app.get('/api/expensive', async (req, res) => {
+        res.end(SECRET);
+        await late(req, res, lateNext);
+      });
+
+      const response = await pay();
+
+      expect(response.status).toBe(200);
+      expect(lateNext).toHaveBeenCalledTimes(1);
+      expect(lateNext.mock.calls[0][0]).toBeInstanceOf(Error);
+      expect(mockSettlePayment).toHaveBeenCalledTimes(1);
+    });
+  });
 });

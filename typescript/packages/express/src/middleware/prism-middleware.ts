@@ -12,6 +12,14 @@ interface SettlementRejection {
   body: Record<string, unknown>;
 }
 
+type Settle = () => Promise<SettlementRejection | null>;
+
+interface ResponseHold {
+  replaceSettle(settle: Settle): boolean;
+}
+
+const responseHolds = new WeakMap<Response, ResponseHold>();
+
 const BODY_DESCRIBING_HEADERS = [
   'content-length',
   'content-encoding',
@@ -59,10 +67,13 @@ function applyHeaders(res: Response, headers: unknown): void {
   });
 }
 
-function holdResponseUntilSettled(
-  res: Response,
-  settle: () => Promise<SettlementRejection | null>
-): void {
+function holdResponseUntilSettled(res: Response, initialSettle: Settle): boolean {
+  const existing = responseHolds.get(res);
+  if (existing) {
+    return existing.replaceSettle(initialSettle);
+  }
+
+  let settle = initialSettle;
   const originalWrite = res.write.bind(res) as (...args: any[]) => boolean;
   const originalEnd = res.end.bind(res) as (...args: any[]) => Response;
   const originalWriteHead = res.writeHead.bind(res) as (...args: any[]) => Response;
@@ -70,6 +81,16 @@ function holdResponseUntilSettled(
   const held: Buffer[] = [];
   let released = false;
   let ending = false;
+
+  responseHolds.set(res, {
+    replaceSettle(next: Settle): boolean {
+      if (ending || released) {
+        return false;
+      }
+      settle = next;
+      return true;
+    },
+  });
 
   res.writeHead = function (statusCode: number, reasonOrHeaders?: any, headers?: any) {
     if (released) {
@@ -145,6 +166,8 @@ function holdResponseUntilSettled(
     void finish(done);
     return res;
   } as any;
+
+  return true;
 }
 
 /**
@@ -223,7 +246,7 @@ export function prismPaymentMiddleware(
       res.locals.payment = result.paymentInfo.payment;
       res.locals.payer = result.paymentInfo.payer;
 
-      holdResponseUntilSettled(res, async () => {
+      const registered = holdResponseUntilSettled(res, async () => {
         if (res.statusCode >= 400) {
           return null;
         }
@@ -269,6 +292,10 @@ export function prismPaymentMiddleware(
           };
         }
       });
+
+      if (!registered) {
+        return next(new Error('Payment middleware ran after the response had already started settling'));
+      }
     }
 
     // Execute the route handler

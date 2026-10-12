@@ -207,6 +207,10 @@ app.get(
 );
 ```
 
+When middleware instances are stacked on one request, the response is held and settled **exactly once**. The last middleware to verify the payment decides what is settled, so the payment is settled against the route-level price, never both. The payment must pass verification in every middleware that matches the route. If the route-level middleware rejects it, the request ends with a 402 and nothing is settled. A payment middleware that runs after the response has started settling fails closed with an error passed to `next()`.
+
+To avoid depending on stacking, you can also list the specific route next to the wildcard in a single middleware, or mount the global middleware on a path that excludes the override route.
+
 ---
 
 ## Accessing Payment Information
