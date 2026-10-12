@@ -248,36 +248,35 @@ app.get("/api/premium", (req, res) => {
 
 ## Settlement Validation
 
-The Express middleware uses **res.end() interception** to validate settlement before sending data:
+The Express middleware **holds the whole response** until settlement succeeds. `res.write()`, `res.writeHead()`, `res.flushHeaders()` and `res.end()` are intercepted. Nothing reaches the client until `res.end()` is called and settlement has succeeded:
 
 ```javascript
 // Internal implementation (you don't need to write this!)
-const originalEnd = res.end.bind(res);
+res.write = (chunk) => { held.push(chunk); return true; };
+res.writeHead = (status, headers) => { /* record status and headers only */ };
+res.flushHeaders = () => { /* no-op until settled */ };
 
-res.end = async function (chunk, encoding, callback) {
-  // Perform settlement BEFORE sending response
-  const settlementResult = await core.settlementCallback(...);
-
-  if (!settlementResult || !settlementResult.success) {
-    // ❌ Settlement failed - send error instead of data
-    res.status(402);
-    return originalEnd(JSON.stringify({
-      error: 'Payment settlement failed',
-      details: settlementResult?.errorReason
-    }));
-  }
-
-  // ✅ Settlement succeeded - send original data with transaction hash
-  res.setHeader('X-PAYMENT-RESPONSE', settlementResult.transaction);
-  return originalEnd(chunk, encoding, callback);
+res.end = (chunk) => {
+  held.push(chunk);
+  settle().then((settlementResult) => {
+    if (!settlementResult?.success || !settlementResult.transaction) {
+      // ❌ Settlement failed - drop held data, send 402 instead
+      return sendError(402);
+    }
+    // ✅ Settlement succeeded - set X-PAYMENT-RESPONSE, then release held data
+    release(held);
+  });
 };
 ```
 
 **Key Points:**
 
-- Works with `res.json()`, `res.send()`, `res.sendFile()`, etc.
-- Settlement happens **before** data reaches the client
-- Original response is replaced with 402 error if settlement fails
+- Works with `res.json()`, `res.send()`, `res.sendFile()`, `res.write()`, `stream.pipe(res)` and `res.writeHead()`
+- No byte of the body, and no headers, reach the client before settlement succeeds
+- Held data is dropped and replaced with a 402 error if settlement fails, or a 500 error if settlement throws
+- Responses with a status of 400 or higher are not settled and are sent as the handler wrote them
+- The response is buffered in memory until `res.end()` is called, so open-ended streams (endless SSE, long-polling) deliver nothing on a paid route. Keep paid responses finite, and end the response once per paid unit
+- Writing directly to `res.socket` bypasses the middleware and must not be used on paid routes
 
 See [Settlement Validation](/concepts/settlement-validation) for details.
 

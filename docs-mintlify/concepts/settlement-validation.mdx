@@ -66,36 +66,32 @@ sequenceDiagram
 
 Each framework implements settlement validation using its native response interception mechanism:
 
-### Express.js - `res.end()` Override
+### Express.js - Held Response
 
 ```javascript
-// Intercept res.end() to perform settlement before sending
-const originalEnd = res.end.bind(res);
+// Hold every write until settlement succeeds
+res.write = (chunk) => { held.push(chunk); return true; };
+res.writeHead = (status, headers) => { /* record status and headers only */ };
+res.flushHeaders = () => { /* no-op until settled */ };
 
-res.end = async function (chunk, encoding, callback) {
-  // Perform settlement BEFORE sending response
-  const settlementResult = await core.settlementCallback(...);
-
-  if (!settlementResult || !settlementResult.success) {
-    // ❌ Settlement failed - send error instead of data
-    res.status(402);
-    return originalEnd(JSON.stringify({
-      error: 'Payment settlement failed',
-      details: settlementResult?.errorReason || 'Settlement processing failed'
-    }));
-  }
-
-  // ✅ Settlement succeeded - send original data
-  res.setHeader('X-PAYMENT-RESPONSE', settlementResult.transaction);
-  return originalEnd(chunk, encoding, callback);
+res.end = (chunk) => {
+  held.push(chunk);
+  settle().then((settlementResult) => {
+    if (!settlementResult?.success || !settlementResult.transaction) {
+      // ❌ Settlement failed - drop held data, send error instead
+      return sendError(402);
+    }
+    // ✅ Settlement succeeded - set X-PAYMENT-RESPONSE, then release held data
+    release(held);
+  });
 };
 ```
 
 **Key Points:**
 
-- Intercepts `res.end()` which is called by all Express response methods (`res.json()`, `res.send()`, etc.)
-- Settlement happens **synchronously before** data is flushed to the client
-- Original response data (`chunk`) is replaced with error JSON if settlement fails
+- Intercepts `res.write()`, `res.writeHead()`, `res.flushHeaders()` and `res.end()`, so `res.json()`, `res.send()`, `res.sendFile()` and `stream.pipe(res)` are all covered
+- Settlement completes **before** any header or body byte is sent to the client
+- Held data is replaced with error JSON if settlement fails
 
 ---
 

@@ -14,7 +14,7 @@ This document summarizes the TypeScript framework integrations implemented for F
 
 - Middleware function: `prismPaymentMiddleware(config, routes)`
 - Uses `PrismMiddlewareCore` for payment logic
-- Intercepts `res.end()` for settlement callback
+- Holds `res.write()`/`res.end()` output until the settlement callback succeeds
 - Payment info stored in `res.locals.payment` and `res.locals.payer`
 
 **Example:** `typescript/packages/express/examples/basic-server.js`
@@ -392,7 +392,7 @@ Each integration uses the framework's native patterns:
 
 All integrations call `settlementCallback()` AFTER successful response (status < 400):
 
-- Express: Intercepts `res.end()`
+- Express: Holds `res.write()`/`res.end()` output until settled
 - Fastify: Uses `onSend` hook
 - NestJS: Intercepts in guard after route handler
 - Next.js: Calls after route handler in wrapper
