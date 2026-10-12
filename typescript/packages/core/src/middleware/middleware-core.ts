@@ -71,6 +71,7 @@ export interface MiddlewareRequestData {
   resourceUrl: string;
   /** Protocol version (1 or 2, auto-detected if not provided) */
   protocolVersion?: 1 | 2;
+  requestScope?: object;
 }
 
 /**
@@ -181,7 +182,7 @@ export class PrismMiddlewareCore {
     if (this.debug) {
       console.log('[PrismMiddlewareCore] Payment header present, verifying...');
     }
-    return this.handlePaymentVerification(paymentHeader, routeConfig, resourceUrl, protocolVersion);
+    return this.handlePaymentVerification(paymentHeader, routeConfig, resourceUrl, protocolVersion, requestData.requestScope);
   }
 
   /**
@@ -253,7 +254,8 @@ export class PrismMiddlewareCore {
     paymentHeader: string,
     routeConfig: any,
     resourceUrl: string,
-    protocolVersion: 1 | 2
+    protocolVersion: 1 | 2,
+    requestScope?: object
   ): Promise<MiddlewareResult> {
     let reservedKey: string | null = null;
     try {
@@ -351,7 +353,7 @@ export class PrismMiddlewareCore {
       }
 
       const proofKey = paymentProofKey(paymentPayload);
-      if (!proofKey || !this.replayGuard.tryReserve(proofKey, paymentValidBefore(paymentPayload))) {
+      if (!proofKey || !this.replayGuard.tryReserve(proofKey, paymentValidBefore(paymentPayload), requestScope)) {
         const response = buildInvalidPaymentResponse(
           'Payment proof is already being processed or has already been used',
           protocolVersion

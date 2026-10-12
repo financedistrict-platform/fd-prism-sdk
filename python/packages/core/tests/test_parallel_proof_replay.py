@@ -53,6 +53,15 @@ def v2_payload(nonce='0xnonce', signature='0xsignature', valid_before=NOW + 60):
     }
 
 
+def v1_payload(nonce='0xv1nonce'):
+    return {
+        'x402Version': 1,
+        'scheme': 'exact',
+        'network': 'base-sepolia',
+        'payload': v2_payload(nonce)['payload'],
+    }
+
+
 def encode(value) -> str:
     return base64.b64encode(json.dumps(value).encode('utf-8')).decode('ascii')
 
@@ -345,6 +354,22 @@ class TestSettleBeforeHandler:
 
         assert settled['transaction'] == '0xtx'
         assert client.settle_payment.call_count + client.asettle_payment.await_count == 1
+
+    @pytest.mark.parametrize('is_async', [False, True], ids=['sync', 'async'])
+    def test_settles_the_submitted_v1_payload_before_the_handler(self, is_async, client):
+        core = PrismMiddlewareCore(
+            PrismMiddlewareConfig(api_key='test-key', allowed_versions=[1, 2]),
+            {ROUTE_PATH: RoutePaymentConfig(price=0.01, description='Premium API', settle_before_handler=True)},
+        )
+        payload = v1_payload('0xv1-settle-first')
+        submit = submit_async if is_async else submit_sync
+
+        result = submit(core, payload)
+
+        assert result.payment_info is not None
+        settle_call = client.asettle_payment.await_args if is_async else client.settle_payment.call_args
+        assert settle_call.args[0] == payload
+        assert result.payment_info['payment'] == payload
 
     def test_threads_sharing_one_proof_settle_exactly_once(self, settling_core, client):
         payload = v2_payload('0xsettle-parallel')

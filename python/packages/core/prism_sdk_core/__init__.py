@@ -504,7 +504,7 @@ class PrismMiddlewareCore:
                 )
 
             if route_config.settle_before_handler:
-                settlement = self.settlement_callback(payment_data, single_requirement, 200)
+                settlement = self.settlement_callback(submitted_payment, single_requirement, 200)
                 if not settlement.get('success'):
                     return self._settlement_rejection(settlement, requirements_for_client)
 
@@ -851,7 +851,7 @@ class PrismMiddlewareCore:
                     },
                 )
             if route_config.settle_before_handler:
-                settlement = await self.asettlement_callback(payment_data, single_requirement, 200)
+                settlement = await self.asettlement_callback(submitted_payment, single_requirement, 200)
                 if not settlement.get('success'):
                     return self._settlement_rejection(settlement, requirements_for_client)
 

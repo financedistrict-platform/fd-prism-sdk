@@ -15,8 +15,8 @@ pytestmark = pytest.mark.asyncio
 CONFIG = PrismMiddlewareConfig(api_key='test-key')
 ROUTES = {'/api/*': RoutePaymentConfig(price=0.01, description='Cheap API')}
 
-def payment_headers(price=None):
-    return {'payment-signature': header_for(price)}
+def payment_headers(price=None, nonce='0x01'):
+    return {'payment-signature': header_for(price, nonce)}
 
 
 PAYMENT_HEADERS = payment_headers()
@@ -162,7 +162,7 @@ async def test_decorator_price_follows_the_http_method(client_mock):
     app = build_app()
     async with client_for(app) as client:
         read = await client.get('/api/versioned', headers=PAYMENT_HEADERS)
-        write = await client.post('/api/versioned', headers=payment_headers(0.07))
+        write = await client.post('/api/versioned', headers=payment_headers(0.07, nonce='0x02'))
 
     assert read.status_code == 200
     assert write.status_code == 200

@@ -4,6 +4,7 @@ export const DEFAULT_MAX_TRACKED_PROOFS = 10_000;
 interface GuardEntry {
   expiresAt: number;
   consumed: boolean;
+  owner?: object;
   settlement?: unknown;
 }
 
@@ -27,11 +28,11 @@ export class PaymentReplayGuard {
     private readonly inFlightTtlMs: number = DEFAULT_IN_FLIGHT_TTL_MS
   ) {}
 
-  tryReserve(key: string, validBeforeSeconds?: number): boolean {
+  tryReserve(key: string, validBeforeSeconds?: number, owner?: object): boolean {
     const now = Date.now();
     const existing = this.entries.get(key);
     if (existing && existing.expiresAt > now) {
-      return false;
+      return !existing.consumed && owner !== undefined && existing.owner === owner;
     }
     this.entries.delete(key);
 
@@ -44,7 +45,7 @@ export class PaymentReplayGuard {
 
     const validBeforeMs = (validBeforeSeconds ?? NaN) * 1000;
     const expiresAt = Number.isFinite(validBeforeMs) ? Math.min(now + this.inFlightTtlMs, validBeforeMs) : now + this.inFlightTtlMs;
-    this.entries.set(key, { expiresAt, consumed: false });
+    this.entries.set(key, { expiresAt, consumed: false, owner });
     return true;
   }
 

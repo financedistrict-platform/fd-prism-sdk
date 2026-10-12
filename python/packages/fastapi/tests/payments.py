@@ -10,6 +10,7 @@ ASSET = '0xASSET'
 PAY_TO = '0xTEST'
 PAYER = '0xPAYER'
 DEFAULT_AMOUNT = '10000'
+DEFAULT_NONCE = '0x01'
 
 
 def amount_for(price: Any) -> str:
@@ -32,7 +33,7 @@ def requirements_for(price: Any = None) -> Dict[str, Any]:
     return {'x402Version': 2, 'accepts': [requirement(amount)]}
 
 
-def _payload(amount: str) -> Dict[str, Any]:
+def _payload(amount: str, nonce: str = DEFAULT_NONCE) -> Dict[str, Any]:
     return {
         'signature': '0xSIG',
         'authorization': {
@@ -41,13 +42,13 @@ def _payload(amount: str) -> Dict[str, Any]:
             'value': amount,
             'validAfter': '0',
             'validBefore': '9999999999',
-            'nonce': '0x01',
+            'nonce': nonce,
         },
     }
 
 
-def payment(amount: str = DEFAULT_AMOUNT) -> Dict[str, Any]:
-    return {'x402Version': 2, 'accepted': requirement(amount), 'payload': _payload(amount)}
+def payment(amount: str = DEFAULT_AMOUNT, nonce: str = DEFAULT_NONCE) -> Dict[str, Any]:
+    return {'x402Version': 2, 'accepted': requirement(amount), 'payload': _payload(amount, nonce)}
 
 
 def v1_payment(amount: str = DEFAULT_AMOUNT) -> Dict[str, Any]:
@@ -63,6 +64,6 @@ def encode(data: Dict[str, Any]) -> str:
     return base64.b64encode(json.dumps(data).encode()).decode()
 
 
-def header_for(price: Any = None) -> str:
+def header_for(price: Any = None, nonce: str = DEFAULT_NONCE) -> str:
     amount = DEFAULT_AMOUNT if price is None else amount_for(price)
-    return encode(payment(amount))
+    return encode(payment(amount, nonce))

@@ -147,6 +147,38 @@ describe('PrismMiddlewareCore parallel proof replay', () => {
     expect(second.handled).toBe(true);
   });
 
+  it('admits a proof again for the same request scope but not for another request', async () => {
+    const core = createCore();
+    const scope = {};
+    const header = encode(buildPayload('0xscoped'));
+    const handle = (requestScope: object) =>
+      core.handleRequest({ path: ROUTE_PATH, paymentHeader: header, resourceUrl: RESOURCE_URL, requestScope });
+
+    const first = await handle(scope);
+    const again = await handle(scope);
+    const other = await handle({});
+
+    expect(first.paymentInfo).toBeDefined();
+    expect(again.paymentInfo).toBeDefined();
+    expect(other.handled).toBe(true);
+    expect(other.statusCode).toBe(402);
+  });
+
+  it('does not let a request scope reuse a proof that was already settled', async () => {
+    const core = createCore();
+    const scope = {};
+    const payload = buildPayload('0xscoped-settled');
+    const handle = () =>
+      core.handleRequest({ path: ROUTE_PATH, paymentHeader: encode(payload), resourceUrl: RESOURCE_URL, requestScope: scope });
+
+    const first = await handle();
+    await core.settlementCallback(first.paymentInfo!.payment, first.paymentInfo!.paymentRequirements, 200);
+    const again = await handle();
+
+    expect(again.handled).toBe(true);
+    expect(again.statusCode).toBe(402);
+  });
+
   it('releases the proof when gateway verification rejects it', async () => {
     const core = createCore();
     const payload = buildPayload('0xinvalid');
