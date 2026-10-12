@@ -17,16 +17,24 @@ echo "@financedistrict:registry=https://npm.pkg.github.com" >> .npmrc
 npm install @financedistrict/prism-x402-sdk-express
 ```
 
-### C# / .NET _(coming soon)_
+### C# / .NET
 
-```bash
-dotnet add package Prism.AspNetCore
-```
+Not yet published to NuGet — build from source (see [csharp/README.md](./csharp/README.md)).
 
-### Python / Flask _(coming soon)_
+### Python / Flask
 
 ```bash
 pip install prism-flask
+```
+
+### Java / Spring Boot
+
+```xml
+<dependency>
+  <groupId>org.fdtech.prism</groupId>
+  <artifactId>prism-spring-boot-starter</artifactId>
+  <version>1.0.0-SNAPSHOT</version>
+</dependency>
 ```
 
 ## 📦 Available SDKs
@@ -34,20 +42,28 @@ pip install prism-flask
 ### TypeScript / JavaScript
 
 - **[@financedistrict/prism-x402-sdk-express](./typescript/)** - Express.js middleware ✅
-- [@financedistrict/prism-x402-sdk-fastify](./typescript/) - Fastify plugin _(coming soon)_
-- [@financedistrict/prism-x402-sdk-nestjs](./typescript/) - NestJS module _(coming soon)_
-- [@financedistrict/prism-x402-sdk-nextjs](./typescript/) - Next.js middleware _(coming soon)_
+- **[@financedistrict/prism-x402-sdk-fastify](./typescript/)** - Fastify plugin ✅
+- **[@financedistrict/prism-x402-sdk-http](./typescript/)** - Framework-agnostic Node HTTP middleware ✅
+- **[@financedistrict/prism-x402-sdk-nestjs](./typescript/)** - NestJS module (guard + middleware) ✅
+- **[@financedistrict/prism-x402-sdk-nextjs](./typescript/)** - Next.js middleware ✅
 
 ### C# / .NET
 
-- **Prism.AspNetCore** - ASP.NET Core middleware _(coming soon)_
-- **Prism.Minimal** - Minimal APIs _(coming soon)_
+- **[Prism.Core](./csharp/)** - Core types and HTTP client ✅
+- **[Prism.AspNetCore](./csharp/)** - ASP.NET Core middleware ✅
 
 ### Python
 
-- **prism-flask** - Flask middleware _(coming soon)_
-- **prism-fastapi** - FastAPI middleware _(coming soon)_
-- **prism-django** - Django middleware _(coming soon)_
+- **[prism-sdk-core](./python/)** - Core types and HTTP client ✅
+- **[prism-flask](./python/)** - Flask middleware ✅
+- **[prism-fastapi](./python/)** - FastAPI middleware ✅
+- **[prism-django](./python/)** - Django middleware (sync + ASGI) ✅
+
+### Java
+
+- **[prism-sdk-core](./java/)** - Core types and HTTP client ✅
+- **[prism-sdk-servlet](./java/)** - Servlet filter ✅
+- **[prism-spring-boot-starter](./java/)** - Spring Boot auto-configuration ✅
 
 ## 🚀 Quick Start
 
@@ -107,25 +123,80 @@ See [TypeScript SDK documentation](./typescript/README.md) for details.
 
 ### C# / .NET
 
-```bash
-cd csharp
-# Coming soon
+```csharp
+// Program.cs
+using Prism.AspNetCore.Extensions;
+using Prism.Core.Types;
+
+var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddPrism(options => options.ApiKey = builder.Configuration["Prism:ApiKey"]!);
+
+var app = builder.Build();
+app.UsePrism(routes =>
+{
+    routes.AddRoute("/api/weather", new RoutePaymentConfig { Price = "$0.001", Description = "Weather API access" });
+});
+
+app.MapGet("/api/weather", (HttpContext context) =>
+    Results.Ok(new { location = "San Francisco", temperature = 72, payer = context.GetPrismPayer() }));
+
+app.Run();
 ```
 
-### Python
+See [C# SDK documentation](./csharp/README.md) for details.
 
-```bash
-cd python
-# Coming soon
+### Python / Flask
+
+```python
+from flask import Flask, jsonify
+from prism_sdk_core import PrismMiddlewareConfig, RoutePaymentConfig
+from prism_flask import prism_payment_middleware
+
+app = Flask(__name__)
+
+prism_payment_middleware(
+    app,
+    PrismMiddlewareConfig(api_key="dev-key-123"),
+    {"/api/weather": RoutePaymentConfig(price=0.001, description="Weather API access")},
+)
+
+@app.route("/api/weather")
+def weather():
+    return jsonify({"location": "San Francisco", "temperature": 72})
+
+app.run(port=3000)
 ```
+
+See [Python SDK documentation](./python/README.md) for details.
+
+### Java / Spring Boot
+
+```properties
+# application.properties
+prism.api-key=dev-key-123
+prism.base-url=https://prism-gw.test.1stdigital.tech
+
+prism.routes[0].path=/api/weather
+prism.routes[0].price=1000
+prism.routes[0].description=Weather API access
+```
+
+The `prism-spring-boot-starter` auto-configures the payment filter from these properties — no code changes needed in your application.
+
+See [Java SDK documentation](./java/README.md) for details.
 
 ## 📚 Documentation
 
-- [Introduction](./docs/introduction.md)
-- [x402 Protocol](./docs/concepts/x402-protocol.md)
-- [Authentication](./docs/concepts/authentication.md)
-- [Payment Flow](./docs/concepts/payment-flow.md)
-- [Configuration Modes](./docs/concepts/configuration-modes.md)
+Full guides, API reference, and framework-specific quick starts live on the **[Finance District Developer Hub](https://developers.fd.xyz/prism/overview)**:
+
+- [Prism Overview](https://developers.fd.xyz/prism/overview)
+- [Quick Start](https://developers.fd.xyz/prism/quickstart)
+- [SDK Overview](https://developers.fd.xyz/prism/sdk/overview) - per-framework guides for TypeScript, Python, and Java
+- [x402 Protocol](https://developers.fd.xyz/prism/integrations/x402)
+- [API Reference](https://developers.fd.xyz/prism/api-reference/introduction)
+- [Architecture](https://developers.fd.xyz/prism/architecture/overview)
+
+This repo also has language-agnostic reference docs under [`./docs/`](./docs/introduction.md).
 
 ## 🏗️ Repository Structure
 
@@ -135,6 +206,7 @@ Prism-SDK/
 ├── typescript/        # TypeScript/JavaScript SDKs
 ├── csharp/            # C#/.NET SDKs
 ├── python/            # Python SDKs
+├── java/              # Java SDKs
 ├── website/           # Documentation website (Docusaurus)
 └── README.md          # This file
 ```
@@ -144,8 +216,9 @@ Prism-SDK/
 Each SDK follows the language-specific conventions:
 
 - **TypeScript**: ESLint, Prettier, TSDoc
-- **C#**: StyleCop, XML documentation
+- **C#**: Nullable reference types, XML documentation
 - **Python**: Black, pylint, docstrings
+- **Java**: Standard Maven conventions, Javadoc
 
 ## 📄 License
 

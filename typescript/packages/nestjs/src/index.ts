@@ -108,8 +108,9 @@ export class PrismPaymentGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<Request>();
     const response = context.switchToHttp().getResponse<Response>();
 
-    // Construct resource URL
-    const resourceUrl = `${request.protocol}://${request.get('host')}${request.originalUrl}`;
+    // Construct resource URL — prefer config.resourceBaseUrl to avoid Host header injection
+    const guardBase = ((this.core as any).config.resourceBaseUrl ?? `${request.protocol}://${request.get('host')}`).replace(/\/$/, '');
+    const resourceUrl = `${guardBase}${request.originalUrl}`;
 
     // Get payment header (supports both v1 X-PAYMENT and v2 PAYMENT-SIGNATURE)
     const paymentHeader = HeaderAdapter.getPaymentPayload((name) => request.header(name) || null);
@@ -234,7 +235,9 @@ export class PrismPaymentMiddleware implements NestMiddleware {
   constructor(@Inject('PRISM_CORE') private core: PrismMiddlewareCore) { }
 
   async use(req: Request, res: Response, next: NextFunction) {
-    const resourceUrl = `${req.protocol}://${req.get('host')}${req.originalUrl}`;
+    // Construct resource URL — prefer config.resourceBaseUrl to avoid Host header injection
+    const middlewareBase = ((this.core as any).config.resourceBaseUrl ?? `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
+    const resourceUrl = `${middlewareBase}${req.originalUrl}`;
     const paymentHeader = HeaderAdapter.getPaymentPayload((name) => req.header(name) || null);
 
     // Detect protocol version
@@ -266,6 +269,7 @@ export class PrismPaymentMiddleware implements NestMiddleware {
       (req as any).payment = result.paymentInfo.payment;
       (req as any).payer = result.paymentInfo.payer;
 
+      const middlewareCore = this.core;
       const originalEnd = res.end.bind(res);
       let endCalled = false;
 
@@ -277,7 +281,7 @@ export class PrismPaymentMiddleware implements NestMiddleware {
 
         if (res.statusCode < 400) {
           try {
-            const settlementResult = await (this as any).core.settlementCallback(
+            const settlementResult = await middlewareCore.settlementCallback(
               result.paymentInfo!.payment,
               result.paymentInfo!.paymentRequirements,
               res.statusCode

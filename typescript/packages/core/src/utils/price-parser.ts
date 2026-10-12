@@ -27,8 +27,8 @@ export function parsePrice(price: string | number): number {
   const numericPrice = price.replace(/[$€£¥]/g, '').trim();
   const parsed = parseFloat(numericPrice);
 
-  if (isNaN(parsed)) {
-    throw new Error(`Invalid price format: ${price}`);
+  if (!isFinite(parsed) || parsed <= 0) {
+    throw new Error(`Invalid price value: ${price}`);
   }
 
   return parsed;

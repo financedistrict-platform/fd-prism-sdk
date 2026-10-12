@@ -74,6 +74,16 @@ export interface PrismMiddlewareConfig {
   // v2 is the current standard, v1 is supported for backward compatibility
   x402Version?: 1 | 2;
 
+  // Allowed protocol versions from clients (default: [2]).
+  // Rejects payment payloads whose x402Version is not in this list.
+  // Set to [1, 2] to accept legacy v1 clients.
+  allowedVersions?: (1 | 2)[];
+
+  // Base URL for constructing resourceUrl in middleware (e.g. "https://api.myapp.com").
+  // When set, middleware uses this instead of the incoming Host header, preventing
+  // Host header injection attacks. Recommended for production deployments.
+  resourceBaseUrl?: string;
+
   // INTERNAL: Optional client instance for dependency injection (used in testing)
   // When provided, middleware will use this client instead of creating new one
   client?: any;

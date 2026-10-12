@@ -323,6 +323,7 @@ describe('prismPaymentMiddleware (HTTP)', () => {
       const middleware = prismPaymentMiddleware(
         {
           apiKey: 'test-api-key',
+          allowedVersions: [1, 2],
           client: createMockClient(),
         },
         {
@@ -349,7 +350,13 @@ describe('prismPaymentMiddleware (HTTP)', () => {
         method: 'GET',
         path: '/api/premium',
         headers: {
-          'X-PAYMENT': Buffer.from(JSON.stringify({ invalid: 'payment' })).toString('base64'),
+          'X-PAYMENT': Buffer.from(JSON.stringify({
+            x402Version: 1,
+            scheme: 'eip3009',
+            network: '1',
+            asset: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
+            payload: { authorization: '0xinvalidsignature' },
+          })).toString('base64'),
         },
       });
 

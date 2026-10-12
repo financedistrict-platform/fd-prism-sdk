@@ -87,6 +87,8 @@ export class PrismMiddlewareCore {
   private readonly client: PrismClient;
   private readonly debug: boolean;
   private readonly defaultProtocolVersion: 1 | 2 = 2; // v2 is default
+  private readonly allowedVersions: (1 | 2)[];
+  private static readonly MAX_PAYMENT_HEADER_BYTES = 8192; // ~10× real x402 payload size
 
   constructor(
     private readonly config: PrismMiddlewareConfig,
@@ -99,6 +101,8 @@ export class PrismMiddlewareCore {
     if (config.x402Version === 1 || config.x402Version === 2) {
       this.defaultProtocolVersion = config.x402Version;
     }
+    // Allowed versions whitelist — default to v2 only
+    this.allowedVersions = config.allowedVersions ?? [2];
   }
 
   /**
@@ -206,7 +210,7 @@ export class PrismMiddlewareCore {
       }
 
       // Return 402 Payment Required
-      const response = build402Response(paymentRequirements as any);
+      const response = build402Response(paymentRequirements as any, protocolVersion);
       return {
         handled: true,
         ...response,
@@ -215,7 +219,7 @@ export class PrismMiddlewareCore {
       console.error('Error generating payment requirements:', error);
 
       // Build appropriate error response
-      const response = buildErrorResponse(error, 'requirements');
+      const response = buildErrorResponse(error, 'requirements', protocolVersion);
       return {
         handled: true,
         ...response,
@@ -236,7 +240,7 @@ export class PrismMiddlewareCore {
       // Decode and parse payment header (supports both v1 and v2)
       const paymentPayload = this.decodePaymentHeader(paymentHeader);
       if (!paymentPayload) {
-        const response = buildInvalidPaymentHeaderResponse();
+        const response = buildInvalidPaymentHeaderResponse(protocolVersion);
         return {
           handled: true,
           ...response,
@@ -246,15 +250,26 @@ export class PrismMiddlewareCore {
       // Detect actual protocol version from payload
       const payloadVersion = detectProtocolVersion(paymentPayload);
       if (payloadVersion && payloadVersion !== protocolVersion) {
-        if (this.debug) {
-          console.log(`[PrismMiddlewareCore] Protocol version mismatch: expected ${protocolVersion}, got ${payloadVersion}`);
+        // Reject if client's version is not in the server's allowed list
+        if (!this.allowedVersions.includes(payloadVersion)) {
+          if (this.debug) {
+            console.log(`[PrismMiddlewareCore] Protocol version ${payloadVersion} not in allowedVersions: [${this.allowedVersions}]`);
+          }
+          const response = buildInvalidPaymentHeaderResponse(this.defaultProtocolVersion);
+          return { handled: true, ...response };
         }
-        // Use payload version (client decides)
+        if (this.debug) {
+          console.log(`[PrismMiddlewareCore] Protocol version mismatch: expected ${protocolVersion}, using client version ${payloadVersion}`);
+        }
         protocolVersion = payloadVersion;
       }
 
       if (this.debug) {
-        console.log('[PrismMiddlewareCore] Parsed payment payload (v' + protocolVersion + '):', paymentPayload);
+        // Redact EIP-712 signature to prevent credential exposure in logs
+        const safePayload = (paymentPayload as any)?.payload
+          ? { ...(paymentPayload as any), payload: { ...(paymentPayload as any).payload, signature: '[REDACTED]' } }
+          : paymentPayload;
+        console.log('[PrismMiddlewareCore] Parsed payment payload (v' + protocolVersion + '):', safePayload);
       }
 
       // Reconstruct payment requirements for verification
@@ -283,9 +298,13 @@ export class PrismMiddlewareCore {
 
       if (!paymentRequirements) {
         if (this.debug) {
-          console.log('[PrismMiddlewareCore] No matching payment requirement found for payment:', paymentPayload);
+          // Redact EIP-712 signature to prevent credential exposure in logs
+          const safePayload = (paymentPayload as any)?.payload
+            ? { ...(paymentPayload as any), payload: { ...(paymentPayload as any).payload, signature: '[REDACTED]' } }
+            : paymentPayload;
+          console.log('[PrismMiddlewareCore] No matching payment requirement found for payment:', safePayload);
         }
-        const response = buildInvalidPaymentResponse('No matching payment requirement found for the provided payment');
+        const response = buildInvalidPaymentResponse('No matching payment requirement found for the provided payment', protocolVersion);
         return {
           handled: true,
           ...response,
@@ -300,7 +319,7 @@ export class PrismMiddlewareCore {
         if (this.debug) {
           console.log('[PrismMiddlewareCore] Payment verification failed:', verificationResult.error);
         }
-        const response = buildInvalidPaymentResponse(verificationResult.error);
+        const response = buildInvalidPaymentResponse(verificationResult.error, protocolVersion);
         return {
           handled: true,
           ...response,
@@ -324,7 +343,7 @@ export class PrismMiddlewareCore {
       console.error('Error processing payment:', error);
 
       // Build appropriate error response
-      const response = buildErrorResponse(error, 'payment');
+      const response = buildErrorResponse(error, 'payment', protocolVersion);
       return {
         handled: true,
         ...response,
@@ -339,10 +358,25 @@ export class PrismMiddlewareCore {
    * @returns Parsed PaymentPayload or null if invalid
    */
   private decodePaymentHeader(paymentHeader: string): PaymentPayload | PaymentPayloadV1 | null {
+    // Reject oversized headers before decoding to prevent memory exhaustion
+    if (paymentHeader.length > PrismMiddlewareCore.MAX_PAYMENT_HEADER_BYTES) {
+      if (this.debug) {
+        console.log(`[PrismMiddlewareCore] Payment header too large: ${paymentHeader.length} bytes (max ${PrismMiddlewareCore.MAX_PAYMENT_HEADER_BYTES})`);
+      }
+      return null;
+    }
     try {
       // Decode base64 to string, then parse JSON
       const decodedString = Buffer.from(paymentHeader, 'base64').toString('utf-8');
       const paymentPayload = JSON.parse(decodedString);
+
+      if (!this.isValidPaymentPayloadShape(paymentPayload)) {
+        if (this.debug) {
+          console.log('[PrismMiddlewareCore] Payment header failed structural validation');
+        }
+        return null;
+      }
+
       return paymentPayload;
     } catch (error: any) {
       if (this.debug) {
@@ -350,6 +384,67 @@ export class PrismMiddlewareCore {
       }
       return null;
     }
+  }
+
+  /**
+   * Validate the structural shape of a decoded payment payload (v1 or v2)
+   * before it is trusted anywhere downstream.
+   *
+   * @param obj - Parsed JSON value from the payment header
+   * @returns true if the shape is a valid v1 or v2 payment payload
+   */
+  private isValidPaymentPayloadShape(obj: unknown): boolean {
+    if (typeof obj !== 'object' || obj === null || Array.isArray(obj)) {
+      return false;
+    }
+
+    const candidate = obj as Record<string, any>;
+
+    const isNonEmptyString = (value: unknown): boolean =>
+      typeof value === 'string' && value.length > 0;
+
+    const isValidAuthorization = (authorization: unknown): boolean => {
+      if (typeof authorization !== 'object' || authorization === null || Array.isArray(authorization)) {
+        return false;
+      }
+      const auth = authorization as Record<string, any>;
+      return (
+        isNonEmptyString(auth.from) &&
+        isNonEmptyString(auth.to) &&
+        isNonEmptyString(auth.value) &&
+        isNonEmptyString(auth.validAfter) &&
+        isNonEmptyString(auth.validBefore) &&
+        isNonEmptyString(auth.nonce)
+      );
+    };
+
+    const isValidPayload = (payload: unknown): boolean => {
+      if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
+        return false;
+      }
+      const p = payload as Record<string, any>;
+      return isNonEmptyString(p.signature) && isValidAuthorization(p.authorization);
+    };
+
+    if (candidate.x402Version === 2) {
+      const accepted = candidate.accepted;
+      if (typeof accepted !== 'object' || accepted === null || Array.isArray(accepted)) {
+        return false;
+      }
+      return (
+        isNonEmptyString(accepted.scheme) &&
+        isNonEmptyString(accepted.network) &&
+        isNonEmptyString(accepted.asset) &&
+        isValidPayload(candidate.payload)
+      );
+    }
+
+    // v1 (flat shape)
+    return (
+      isNonEmptyString(candidate.scheme) &&
+      isNonEmptyString(candidate.network) &&
+      isValidPayload(candidate.payload)
+    );
   }
 
   /**

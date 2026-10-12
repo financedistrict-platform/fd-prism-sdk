@@ -1,224 +1,147 @@
 # Prism SDK for .NET
 
-> **Status:** 🔜 Coming Soon
+> **Status:** ✅ Available — ASP.NET Core middleware for the x402 payment protocol
 
-A .NET SDK for integrating the Prism payment gateway with ASP.NET Core applications.
+A .NET SDK for integrating the Prism payment gateway with ASP.NET Core applications. Protects any route with a micropayment: unpaid requests get a `402 Payment Required` challenge, paid requests are cryptographically verified against the Prism Gateway before your handler runs, and settlement happens automatically after it responds.
 
-## Overview
+## Features
 
-The Prism SDK for .NET will provide middleware for ASP.NET Core to protect routes with micropayments using the x402 protocol.
+- ASP.NET Core middleware (works with both Minimal APIs and MVC controllers)
+- Multi-targets .NET 6.0, 7.0, and 8.0
+- On-demand payment requirements generation
+- x402 protocol v1 and v2, with automatic version detection and a configurable version whitelist (v2-only by default)
+- Structural validation of client-supplied payment payloads before anything is forwarded to the gateway
+- Verify-then-settle flow: the response is buffered so settlement can run before anything is sent to the client, and the response is rewritten to a 402/500 if settlement fails
+- Async/await throughout
+- Dependency injection support (`AddPrism`/`UsePrism`)
+- Optional `ILogger` integration for debug logging (falls back to console output if none is configured)
+- xUnit test suite covering the core payment-verification/settlement logic
 
-## Planned Features
+Not yet implemented: cloud-hosted or file-based configuration modes (only `on-demand` mode exists, same as the TypeScript and Python SDKs).
 
-- ✅ ASP.NET Core middleware
-- ✅ Support for .NET 6.0, 7.0, and 8.0
-- ✅ On-demand payment requirements generation
-- ✅ Cloud-hosted configuration support
-- ✅ File-based configuration support
-- ✅ Type-safe API with full IntelliSense
-- ✅ Async/await throughout
-- ✅ Dependency injection support
-- ✅ Built-in logging with ILogger
-- ✅ Comprehensive XML documentation
-
-## Planned Architecture
+## Architecture
 
 ```
-Prism.SDK/
-├── Prism.Core/                   # Core types and client
-│   ├── Client/
-│   │   └── PrismClient.cs
-│   ├── Models/
-│   │   ├── PaymentRequirements.cs
-│   │   ├── PaymentPayload.cs
-│   │   └── RoutesConfig.cs
-│   └── Configuration/
-│       └── PrismMiddlewareConfig.cs
-├── Prism.AspNetCore/             # ASP.NET Core middleware
-│   ├── Middleware/
-│   │   └── PrismPaymentMiddleware.cs
-│   └── Extensions/
-│       └── PrismServiceCollectionExtensions.cs
-└── Prism.Tests/                  # Unit and integration tests
-    ├── Middleware/
-    └── Client/
+csharp/
+├── Prism.Core/                        # Framework-agnostic core — no ASP.NET Core dependency
+│   ├── Client/                        # IPrismClient, PrismClient, VerifyPaymentResult/SettlePaymentResult
+│   ├── Compatibility/                 # HeaderAdapter, NetworkMapper, VersionDetector
+│   ├── Middleware/                    # PrismMiddlewareCore (the verify/settle flow) + result types
+│   ├── Types/                         # v1/v2 wire types, PrismMiddlewareConfig, RoutePaymentConfig, error hierarchy
+│   └── Utils/                         # RouteMatcher, PriceParser, ResponseBuilder
+├── Prism.AspNetCore/                  # ASP.NET Core integration
+│   ├── Middleware/PrismPaymentMiddleware.cs
+│   └── Extensions/                    # AddPrism / UsePrism / HttpContext accessors
+├── Prism.Tests/                       # xUnit
+└── Prism.SDK.sln
 ```
 
-## Planned Usage
+## Installation
 
-### Installation
+Not yet published to NuGet — reference the project directly until then:
 
 ```bash
-dotnet add package Prism.AspNetCore
+git clone <this-repo>
+cd csharp
+dotnet add <YourProject>.csproj reference Prism.AspNetCore/Prism.AspNetCore.csproj
 ```
 
-### Configuration
+## Usage
 
 ```csharp
 // Program.cs
-using Prism.AspNetCore;
+using Prism.AspNetCore.Extensions;
+using Prism.Core.Types;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add Prism services
 builder.Services.AddPrism(options =>
 {
-    options.ApiKey = builder.Configuration["Prism:ApiKey"];
-    options.UseSandbox = builder.Environment.IsDevelopment();
+    options.ApiKey = builder.Configuration["Prism:ApiKey"]!;
+    options.BaseUrl = "https://prism-gw.test.1stdigital.tech";
+    // Prefer an explicit resource base URL over the Host header in production
+    // (prevents Host-header spoofing of the resource identifier sent to the gateway).
+    options.ResourceBaseUrl = "https://api.yourcompany.com";
 });
 
 var app = builder.Build();
 
-// Use Prism middleware
 app.UsePrism(routes =>
 {
-    routes.AddRoute("/api/premium", new RouteConfig
-    {
-        Price = 0.01m,
-        Description = "Premium API access"
-    });
-
-    routes.AddRoute("/api/data/*", new RouteConfig
-    {
-        Price = 0.005m,
-        Description = "Data API access"
-    });
+    routes.AddRoute("/api/weather", new RoutePaymentConfig { Price = "$0.001", Description = "Weather API access" });
+    routes.AddRoute("/api/premium/*", new RoutePaymentConfig { Price = 0.01, Description = "Premium API access" });
 });
 
-app.MapGet("/api/premium", (HttpContext context) =>
+// Public endpoint — no route configured, passes through untouched.
+app.MapGet("/", () => Results.Ok(new { message = "Welcome to Prism API" }));
+
+// Protected endpoint — requires a verified payment; the verified payer address
+// is available via HttpContext once the middleware has run.
+app.MapGet("/api/weather", (HttpContext context) =>
 {
-    var payment = context.Items["Prism.Payment"] as PaymentPayload;
-    return Results.Ok(new { Message = "Premium content", Payment = payment });
+    var payer = context.GetPrismPayer();
+    return Results.Ok(new { location = "San Francisco", temperature = 72, payer });
 });
 
 app.Run();
 ```
 
-### Dependency Injection
+Works identically in an MVC controller — the verified payment is available via the same `HttpContext` extension methods (`GetPrismPayer()`, `GetPrismPayment()`, `GetPrismPaymentInfo()`) regardless of how the route is defined.
+
+### Dependency injection
 
 ```csharp
 public class PremiumService
 {
     private readonly IPrismClient _prismClient;
-    private readonly ILogger<PremiumService> _logger;
 
-    public PremiumService(IPrismClient prismClient, ILogger<PremiumService> logger)
-    {
-        _prismClient = prismClient;
-        _logger = logger;
-    }
+    public PremiumService(IPrismClient prismClient) => _prismClient = prismClient;
 
-    public async Task<PaymentRequirements> GetRequirementsAsync(string route)
-    {
-        _logger.LogInformation("Fetching payment requirements for {Route}", route);
-        return await _prismClient.GetPaymentRequirementsAsync(route, 0.01m, "Premium access");
-    }
+    public Task<PaymentRequiredResponse> GetRequirementsAsync(PaymentRequirementsRequest request) =>
+        _prismClient.GetPaymentRequirementsAsync(request);
 }
 ```
 
-### Minimal API Example
+## How it works
 
-```csharp
-var app = WebApplication.CreateBuilder(args).Build();
+1. `PrismPaymentMiddleware` checks the incoming request's path against your configured routes.
+2. No match → request passes through unprotected.
+3. Match, no payment header → the middleware returns `402` with payment requirements fetched from the Prism Gateway.
+4. Match, payment header present → the header is size-checked, base64-decoded, and structurally validated (reject malformed payloads before any network call), then verified against the Gateway. Verification failure → `402`.
+5. Verification success → your handler runs. Once it responds, the middleware settles the payment with the Gateway. If settlement fails, the response is replaced with a `402`/`500` instead of being sent — your handler's response is never leaked for an unsettled payment.
 
-app.UsePrism(routes =>
-{
-    routes.AddRoute("/api/weather", new RouteConfig
-    {
-        Price = 0.01m,
-        Description = "Weather API"
-    });
-});
+## Package structure
 
-app.MapGet("/api/weather", () =>
-{
-    return new WeatherForecast
-    {
-        Date = DateTime.Now,
-        TemperatureC = Random.Shared.Next(-20, 55),
-        Summary = "Sunny"
-    };
-});
+| Package | Description | Target frameworks |
+|---|---|---|
+| `Prism.Core` | Wire types, HTTP client, and the framework-agnostic verify/settle logic | net6.0, net7.0, net8.0 |
+| `Prism.AspNetCore` | ASP.NET Core middleware + DI extensions. Depends on `Prism.Core` and `Microsoft.AspNetCore.App` | net6.0, net7.0, net8.0 |
 
-app.Run();
+## Testing
+
+```bash
+cd csharp
+dotnet build Prism.SDK.sln
+dotnet test Prism.Tests/Prism.Tests.csproj
 ```
-
-### Controller Example
-
-```csharp
-[ApiController]
-[Route("api/[controller]")]
-public class DataController : ControllerBase
-{
-    [HttpGet]
-    public IActionResult GetData()
-    {
-        // Payment info available in HttpContext.Items
-        var payment = HttpContext.Items["Prism.Payment"] as PaymentPayload;
-
-        return Ok(new
-        {
-            Data = "Protected data",
-            PaymentNonce = payment?.Nonce
-        });
-    }
-}
-```
-
-## Planned Package Structure
-
-### Prism.Core
-
-Core types and HTTP client for Prism Gateway API.
-
-**NuGet Package:** `Prism.Core`
-**Target Frameworks:** .NET 6.0, .NET 7.0, .NET 8.0
-
-### Prism.AspNetCore
-
-ASP.NET Core middleware and extensions.
-
-**NuGet Package:** `Prism.AspNetCore`
-**Target Frameworks:** .NET 6.0, .NET 7.0, .NET 8.0
-**Dependencies:**
-
-- Prism.Core
-- Microsoft.AspNetCore.Http.Abstractions
-
-## Timeline
-
-- **Q1 2026**: Initial alpha release with on-demand mode
-- **Q2 2026**: Beta release with cloud/file configuration modes
-- **Q3 2026**: Production-ready v1.0 release
-- **Q4 2026**: Additional features (caching, metrics, etc.)
 
 ## Documentation
 
-Once released, full documentation will be available at:
+The [Finance District Developer Hub](https://developers.fd.xyz/prism/sdk/overview) has the full SDK guide, API reference, and framework-specific quick starts for TypeScript, Python, and Java — there is no dedicated C# page there yet, so this file is the primary reference for this SDK until one is added.
 
-- [SDK Documentation](../../docs/introduction.md)
-- [x402 Protocol](../../docs/concepts/x402-protocol.md)
-- [Authentication](../../docs/concepts/authentication.md)
-- [Payment Flow](../../docs/concepts/payment-flow.md)
-- [Configuration Modes](../../docs/concepts/configuration-modes.md)
+- [Prism SDK Overview](https://developers.fd.xyz/prism/sdk/overview)
+- [x402 Protocol](https://developers.fd.xyz/prism/integrations/x402)
+- [API Reference](https://developers.fd.xyz/prism/api-reference/introduction)
+- [Local reference docs](../docs/introduction.md)
 
 ## Support
 
-For questions or feedback, please contact:
-
-- Email: support@1stdigital.tech
-- Documentation: https://docs.prism.1stdigital.tech
-
-## Contributing
-
-Contributions will be welcome once the initial release is available. Please stay tuned!
+For questions or feedback, please open an issue or contact Finance District support.
 
 ## License
 
-TBD
+MIT
 
 ---
 
-**Current Status:** Planning phase. TypeScript SDK is available now as a reference implementation.
-
-See the [TypeScript SDK](../typescript/README.md) for a working implementation that you can use today.
+See the [TypeScript SDK](../typescript/README.md) or [Python SDK](../python/README.md) for equivalent, longer-established implementations of the same protocol.

@@ -4,25 +4,25 @@ Basic Next.js App Router application demonstrating payment-protected API routes 
 
 ## Features
 
-- ✅ Middleware-based payment protection for API routes
-- ✅ Next.js 14+ App Router support
-- ✅ TypeScript
-- ✅ Multiple payment configurations (ETH and USD)
-- ✅ Payment info passed via headers
+- âœ… Middleware-based payment protection for API routes
+- âœ… Next.js 14+ App Router support
+- âœ… TypeScript
+- âœ… Multiple payment configurations (ETH and USD)
+- âœ… Payment info passed via headers
 
 ## Structure
 
 ```
 basic-app/
-├── middleware.ts              # Prism middleware configuration
-├── app/
-│   ├── page.tsx              # Home page (free)
-│   └── api/
-│       ├── premium/
-│       │   └── route.ts      # Protected route (0.01 ETH)
-│       └── weather/
-│           └── route.ts      # Protected route ($0.001 USD)
-└── package.json
+â”œâ”€â”€ middleware.ts              # Prism middleware configuration
+â”œâ”€â”€ app/
+â”‚   â”œâ”€â”€ page.tsx              # Home page (free)
+â”‚   â””â”€â”€ api/
+â”‚       â”œâ”€â”€ premium/
+â”‚       â”‚   â””â”€â”€ route.ts      # Protected route (0.01 ETH)
+â”‚       â””â”€â”€ weather/
+â”‚           â””â”€â”€ route.ts      # Protected route ($0.001 USD)
+â””â”€â”€ package.json
 ```
 
 ## Setup

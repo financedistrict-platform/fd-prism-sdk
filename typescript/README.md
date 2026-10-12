@@ -180,14 +180,14 @@ The middleware interacts with these Prism Gateway endpoints:
 
 ## Development Status
 
-### ✅ Implemented
+### âœ… Implemented
 
 - On-demand mode (Option 1)
 - Payment requirements generation
 - Route matching and protection
 - 402 Payment Required responses
 
-### 🚧 Coming Soon
+### ðŸš§ Coming Soon
 
 - Payment verification endpoint integration
 - Payment settlement endpoint integration

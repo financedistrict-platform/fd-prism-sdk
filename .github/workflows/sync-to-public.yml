@@ -1,0 +1,63 @@
+name: Sync to Public Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit_message:
+        description: "Commit message for public release"
+        required: false
+        default: ""
+      push:
+        description: "Push to public remote after sync"
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: [self-hosted, linux, arm64]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Fetch all branches
+        run: |
+          git fetch origin
+          git fetch public || echo "Public remote not configured on runner"
+
+      - name: Configure Git
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+
+      - name: Run sync script
+        env:
+          COMMIT_MESSAGE: ${{ github.event.inputs.commit_message }}
+          PUSH_INPUT: ${{ github.event.inputs.push }}
+        run: |
+          chmod +x scripts/sync-to-public.sh
+
+          ARGS=()
+          if [ -n "$COMMIT_MESSAGE" ]; then
+            ARGS+=("$COMMIT_MESSAGE")
+          fi
+          if [ "$PUSH_INPUT" = "true" ]; then
+            ARGS+=(--push)
+          fi
+
+          ./scripts/sync-to-public.sh "${ARGS[@]}"
+
+      - name: Show sync result
+        run: |
+          echo "=== Latest commits on public-release ==="
+          git log public-release --oneline -5
+          echo ""
+          echo "=== Diff summary vs master ==="
+          git diff public-release..master --stat | tail -5
