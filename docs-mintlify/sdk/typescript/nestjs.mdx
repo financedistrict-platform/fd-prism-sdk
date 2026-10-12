@@ -100,6 +100,39 @@ export class AppController {
   startup.
 </Note>
 
+### Protecting routes with middleware
+
+To charge every route listed in `routes` without decorating each handler,
+apply `PrismPaymentMiddleware` to all routes:
+
+```typescript
+import { MiddlewareConsumer, Module, NestModule } from "@nestjs/common";
+import {
+  PrismModule,
+  PrismPaymentMiddleware,
+} from "@financedistrict/prism-x402-sdk-nestjs";
+
+@Module({
+  imports: [
+    PrismModule.forRoot({
+      apiKey: process.env.PRISM_API_KEY!,
+      routes: { "/api/premium": { price: 0.01 } },
+    }),
+  ],
+})
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(PrismPaymentMiddleware).forRoutes("*");
+  }
+}
+```
+
+The middleware matches the full request path (including any global prefix, so
+list prefixed paths in `routes`), verifies the payment before the handler runs,
+and settles it before the response is sent. If settlement fails, the client
+gets `402` and the handler's body is not returned. A route covered by both the
+middleware and the guard is verified and settled once.
+
 ---
 
 ## Configuration
