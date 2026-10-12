@@ -255,6 +255,7 @@ describe('prismPaymentMiddleware', () => {
         prismPaymentMiddleware(
           {
             apiKey: 'test-api-key',
+            allowedVersions: [1, 2],
             client: createMockClient(), // Inject mock client
           },
           {
@@ -417,7 +418,7 @@ describe('prismPaymentMiddleware', () => {
     ) => {
       app.use(
         prismPaymentMiddleware(
-          { apiKey: 'test-api-key', client: createMockClient(), ...extraConfig },
+          { apiKey: 'test-api-key', allowedVersions: [1, 2], client: createMockClient(), ...extraConfig },
           { '/api/premium': { price: '10000', description: 'Premium API access' } }
         )
       );
@@ -841,7 +842,7 @@ describe('prismPaymentMiddleware', () => {
 
   describe('Stacked payment middleware', () => {
     const SECRET = 'PAID-CONTENT-SECRET';
-    const config = () => ({ apiKey: 'test-api-key', client: createMockClient() });
+    const config = () => ({ apiKey: 'test-api-key', allowedVersions: [1, 2] as (1 | 2)[], client: createMockClient() });
     const globalRoutes = { '/api/*': { price: '10000', description: 'API' } };
     const overrideRoutes = { '/api/expensive': { price: '10000', description: 'Expensive operation' } };
 

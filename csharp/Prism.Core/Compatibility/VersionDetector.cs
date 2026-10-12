@@ -59,6 +59,20 @@ public static class VersionDetector
         }
     }
 
+    public static int? GetDeclaredProtocolVersion(JsonElement payload)
+    {
+        if (payload.ValueKind == JsonValueKind.Object &&
+            payload.TryGetProperty("x402Version", out var versionProp) &&
+            versionProp.ValueKind == JsonValueKind.Number &&
+            versionProp.TryGetInt32(out var version) &&
+            (version == 1 || version == 2))
+        {
+            return version;
+        }
+
+        return null;
+    }
+
     private static bool TryParseJson(string raw, out JsonElement element)
     {
         // Try plain JSON first.

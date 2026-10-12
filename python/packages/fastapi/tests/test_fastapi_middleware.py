@@ -37,6 +37,24 @@ ROUTES = {
 VALID_HEADER = header_for()
 
 
+WELL_FORMED_V1_HEADER = encode({
+    'x402Version': 1,
+    'scheme': 'exact',
+    'network': 'base-sepolia',
+    'payload': {
+        'signature': '0xSIG',
+        'authorization': {
+            'from': '0x1111111111111111111111111111111111111111',
+            'to': '0xAbCdEf0123456789aBcDeF0123456789AbCdEf01',
+            'value': '10000',
+            'validAfter': '0',
+            'validBefore': '99999999999',
+            'nonce': '0xnonce',
+        },
+    },
+})
+
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -177,3 +195,11 @@ async def test_require_payment_decorator_blocks_without_payment(async_client, mo
 async def test_require_payment_decorator_passes_with_payment(async_client):
     resp = await async_client.get('/api/decorated', headers={'payment-signature': VALID_HEADER})
     assert resp.status_code == 200
+
+
+async def test_v1_payment_rejected_with_402_before_any_gateway_call_when_only_v2_allowed(async_client, mock_client):
+    resp = await async_client.get('/api/premium', headers={'x-payment': WELL_FORMED_V1_HEADER})
+    assert resp.status_code == 402
+    mock_client.aget_payment_requirements.assert_not_called()
+    mock_client.averify_payment.assert_not_called()
+    mock_client.asettle_payment.assert_not_called()

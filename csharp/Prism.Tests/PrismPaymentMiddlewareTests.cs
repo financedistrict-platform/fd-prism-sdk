@@ -17,6 +17,11 @@ public class PrismPaymentMiddlewareTests
         "\"payload\":{\"signature\":\"0xsig\",\"authorization\":{\"from\":\"0xFrom\",\"to\":\"0xPayTo\",\"value\":\"1000000\"," +
         "\"validAfter\":\"0\",\"validBefore\":\"9999999999\",\"nonce\":\"0xnonce\"}}}");
 
+    private static readonly string ValidV1Header = Base64(
+        "{\"x402Version\":1,\"scheme\":\"exact\",\"network\":\"base-sepolia\"," +
+        "\"payload\":{\"signature\":\"0xsig\",\"authorization\":{\"from\":\"0xFrom\",\"to\":\"0xPayTo\",\"value\":\"1000000\"," +
+        "\"validAfter\":\"0\",\"validBefore\":\"9999999999\",\"nonce\":\"0xnonce\"}}}");
+
     private static PrismMiddlewareConfig Config(string? resourceBaseUrl = null) => new()
     {
         ApiKey = "test-key",
@@ -74,6 +79,30 @@ public class PrismPaymentMiddlewareTests
         Assert.Equal(402, context.Response.StatusCode);
         Assert.Contains("Payment settlement failed", body);
         Assert.DoesNotContain("paid content", body); // the handler's original success body must NOT leak through
+    }
+
+    [Fact]
+    public async Task V1Payment_WhenOnlyV2Allowed_Rejected402BeforeAnyGatewayCallOrHandler()
+    {
+        var client = new FakePrismClient();
+        var config = Config();
+        var core = new PrismMiddlewareCore(config, Routes(), client);
+        var handlerRan = false;
+
+        RequestDelegate next = ctx =>
+        {
+            handlerRan = true;
+            return Task.CompletedTask;
+        };
+
+        var middleware = new PrismPaymentMiddleware(next, config, core);
+        var context = BuildContext("/api/premium", ValidV1Header);
+
+        await middleware.InvokeAsync(context);
+
+        Assert.Equal(402, context.Response.StatusCode);
+        Assert.False(handlerRan);
+        Assert.Empty(client.RequirementsRequests);
     }
 
     [Fact]

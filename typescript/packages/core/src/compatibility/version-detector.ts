@@ -45,6 +45,12 @@ export function detectProtocolVersion(payload: unknown): 1 | 2 | null {
   }
 }
 
+export function getDeclaredProtocolVersion(payload: unknown): 1 | 2 | null {
+  if (!payload || typeof payload !== 'object') return null;
+  const version = (payload as { x402Version?: unknown }).x402Version;
+  return version === 1 || version === 2 ? version : null;
+}
+
 /**
  * Check if a payload is v1 protocol
  */

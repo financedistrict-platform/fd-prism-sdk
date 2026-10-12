@@ -287,6 +287,7 @@ describe('prismPaymentMiddleware (HTTP)', () => {
       const middleware = prismPaymentMiddleware(
         {
           apiKey: 'test-api-key',
+          allowedVersions: [1, 2],
           client: createMockClient(),
         },
         {
@@ -381,6 +382,62 @@ describe('prismPaymentMiddleware (HTTP)', () => {
 
       expect(response.statusCode).toBe(402);
       expect(mockVerifyPayment).toHaveBeenCalled();
+    });
+
+    it('should reject a v1 payment with 402 before any gateway call when only v2 is allowed', async () => {
+      const middleware = prismPaymentMiddleware(
+        {
+          apiKey: 'test-api-key',
+          client: createMockClient(),
+        },
+        {
+          '/api/premium': {
+            price: '10000',
+            description: 'Premium API access',
+          },
+        }
+      );
+
+      server = http.createServer(async (req: PrismHttpRequest, res) => {
+        const handled = await middleware(req, res);
+        if (!handled) {
+          res.writeHead(200);
+          res.end('Should not reach here');
+        }
+      });
+
+      await new Promise<void>((resolve) => {
+        server.listen(0, () => resolve());
+      });
+
+      const response = await makeRequest(server, {
+        method: 'GET',
+        path: '/api/premium',
+        headers: {
+          'X-PAYMENT': Buffer.from(JSON.stringify({
+            x402Version: 1,
+            scheme: 'exact',
+            network: 'base-sepolia',
+            payload: {
+              signature: '0xsignature',
+              authorization: {
+                from: '0x1111111111111111111111111111111111111111',
+                to: '0xAbCdEf0123456789aBcDeF0123456789AbCdEf01',
+                value: '10000',
+                validAfter: '0',
+                validBefore: '99999999999',
+                nonce: '0xnonce',
+              },
+            },
+          })).toString('base64'),
+        },
+      });
+
+      expect(response.statusCode).toBe(402);
+      expect(response.body).not.toContain('Should not reach here');
+      expect(mockGetPaymentRequirements).not.toHaveBeenCalled();
+      expect(mockVerifyPayment).not.toHaveBeenCalled();
+      expect(mockSettlePayment).not.toHaveBeenCalled();
     });
   });
 
@@ -506,7 +563,7 @@ describe('prismPaymentMiddleware (HTTP)', () => {
       extraConfig: { maxHeldResponseBytes?: number } = {}
     ) => {
       const middleware = prismPaymentMiddleware(
-        { apiKey: 'test-api-key', client: createMockClient(), ...extraConfig },
+        { apiKey: 'test-api-key', allowedVersions: [1, 2], client: createMockClient(), ...extraConfig },
         { '/api/premium': { price: '10000', description: 'Premium API access' } }
       );
       server = http.createServer(async (req: PrismHttpRequest, res) => {
