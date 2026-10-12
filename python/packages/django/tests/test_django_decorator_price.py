@@ -8,6 +8,8 @@ import pytest
 from django.http import HttpResponse
 from django.test import RequestFactory, override_settings
 from django.urls import path, resolve
+from django.utils.decorators import method_decorator
+from django.views import View
 
 from prism_django import AsyncPrismPaymentMiddleware, PrismPaymentMiddleware, require_payment
 
@@ -78,7 +80,23 @@ def hidden(request):
     return HttpResponse('ok')
 
 
+@method_decorator(require_payment(price=0.05, description='Class dispatch API'), name='dispatch')
+class DispatchDecoratedView(View):
+    def get(self, request):
+        executed.append('class-dispatch')
+        return HttpResponse('ok')
+
+
+@method_decorator(require_payment(price=0.05, description='Class method API'), name='get')
+class MethodDecoratedView(View):
+    def get(self, request):
+        executed.append('class-method')
+        return HttpResponse('ok')
+
+
 urlpatterns = [
+    path('api/class-dispatch', DispatchDecoratedView.as_view()),
+    path('api/class-method', MethodDecoratedView.as_view()),
     path('api/cheap', cheap),
     path('api/expensive', expensive),
     path('api/dollar', dollar),
@@ -217,3 +235,24 @@ async def test_async_middleware_price_mismatch_fails_closed(client_mock):
 def test_invalid_decorator_price_is_rejected_at_definition(bad_price):
     with pytest.raises(ValueError):
         require_payment(price=bad_price, description='x')(lambda request: None)
+
+
+@override_settings(ROOT_URLCONF=__name__, PRISM_CONFIG=CONFIG)
+def test_method_decorator_on_dispatch_enforces_decorator_price(client_mock):
+    response = sync_get('/api/class-dispatch', HTTP_PAYMENT_SIGNATURE=PAYMENT_HEADER)
+
+    assert response.status_code == 200
+    assert executed == ['class-dispatch']
+    assert client_mock.get_payment_requirements.call_args.kwargs['price'] == 0.05
+    assert client_mock.get_payment_requirements.call_args.kwargs['description'] == 'Class dispatch API'
+    assert client_mock.settle_payment.call_args.args[1]['amount'] == '0.05'
+
+
+@override_settings(ROOT_URLCONF=__name__, PRISM_CONFIG=CONFIG)
+def test_method_decorator_on_a_single_method_fails_closed(client_mock):
+    response = sync_get('/api/class-method', HTTP_PAYMENT_SIGNATURE=PAYMENT_HEADER)
+
+    assert response.status_code == 500
+    assert executed == []
+    client_mock.settle_payment.assert_not_called()
+

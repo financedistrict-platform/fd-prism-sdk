@@ -10,14 +10,26 @@ from functools import wraps
 from fastapi import FastAPI, Request, Response, HTTPException
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.routing import Match
 from prism_sdk_core import (
     PrismMiddlewareCore,
     PrismMiddlewareConfig,
     RoutePaymentConfig,
     HeaderAdapter,
+    bind_decorator_route,
     detect_protocol_version,
-    normalize_routes
+    get_decorator_route,
+    normalize_routes,
+    prices_match
 )
+
+
+def find_decorated_route(request: Request) -> Optional[RoutePaymentConfig]:
+    for route in request.app.router.routes:
+        match, _ = route.matches(request.scope)
+        if match == Match.FULL:
+            return get_decorator_route(getattr(route, 'endpoint', None))
+    return None
 
 
 class PrismPaymentMiddleware(BaseHTTPMiddleware):
@@ -60,6 +72,7 @@ class PrismPaymentMiddleware(BaseHTTPMiddleware):
             resource_url=resource_url,
             payment_header=payment_header,
             protocol_version=protocol_version,
+            route_override=find_decorated_route(request),
         )
         
         # If middleware handled (returned 402 or error)
@@ -77,6 +90,7 @@ class PrismPaymentMiddleware(BaseHTTPMiddleware):
             request.state._prism_payment = result.payment_info['payment']
             request.state._prism_payer = result.payment_info['payer']
             request.state._prism_requirements = result.payment_info['payment_requirements']
+            request.state._prism_route_price = result.payment_info['route_price']
             request.state._prism_protocol_version = protocol_version
         
         # Call the route handler
@@ -171,7 +185,13 @@ def get_payment(request: Request) -> Optional[Dict]:
 def require_payment(price: float | str, description: str):
     """
     Decorator for protecting individual FastAPI route handlers.
-    Must be used alongside add_prism_middleware().
+    Must be used alongside add_prism_middleware() and applied below the
+    route decorator (@app.get) so the registered endpoint carries the price.
+
+    The price given here is the price enforced for the route: the middleware
+    requests, verifies and settles payment against it instead of the price of
+    any middleware route that also covers the path. A route whose verified price
+    differs from the decorator's price is not run.
 
     Usage:
         @app.get('/api/premium')
@@ -192,7 +212,13 @@ def require_payment(price: float | str, description: str):
                     status_code=402,
                     detail={'error': 'Payment Required', 'message': description}
                 )
+            if not prices_match(getattr(request.state, '_prism_route_price', None), price):
+                raise HTTPException(
+                    status_code=500,
+                    detail={'error': 'Payment configuration mismatch'}
+                )
             return await func(*args, **kwargs)
+        bind_decorator_route(wrapper, price, description)
         return wrapper
     return decorator
 
