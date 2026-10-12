@@ -10,29 +10,44 @@ namespace Prism.Core.Utils;
 /// </summary>
 public static class RouteMatcher
 {
+    public static string NormalizePath(string path)
+    {
+        var trimmed = path.TrimEnd('/');
+        return trimmed.Length == 0 ? "/" : trimmed;
+    }
+
     public static string? FindMatchingRoute(string path, IReadOnlyDictionary<string, RoutePaymentConfig> routes)
     {
-        // Exact match first.
-        if (routes.ContainsKey(path))
-        {
-            return path;
-        }
+        var normalizedPath = NormalizePath(path);
 
-        // Wildcard match: route "/prefix/*" matches "/prefix" itself or anything under "/prefix/".
         foreach (var route in routes.Keys)
         {
-            if (!route.EndsWith("/*", StringComparison.Ordinal))
-            {
-                continue;
-            }
-
-            var prefix = route[..^2];
-            if (path == prefix || path.StartsWith(prefix + "/", StringComparison.Ordinal))
+            if (string.Equals(NormalizePath(route), normalizedPath, StringComparison.OrdinalIgnoreCase))
             {
                 return route;
             }
         }
 
-        return null;
+        string? bestRoute = null;
+        var bestPrefixLength = -1;
+        foreach (var route in routes.Keys)
+        {
+            var normalizedRoute = NormalizePath(route);
+            if (!normalizedRoute.EndsWith("/*", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var prefix = normalizedRoute[..^2];
+            if (prefix.Length > bestPrefixLength
+                && (string.Equals(normalizedPath, prefix, StringComparison.OrdinalIgnoreCase)
+                    || normalizedPath.StartsWith(prefix + "/", StringComparison.OrdinalIgnoreCase)))
+            {
+                bestRoute = route;
+                bestPrefixLength = prefix.Length;
+            }
+        }
+
+        return bestRoute;
     }
 }

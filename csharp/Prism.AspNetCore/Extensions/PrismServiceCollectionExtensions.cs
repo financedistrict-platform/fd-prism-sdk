@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Prism.AspNetCore.Middleware;
 using Prism.Core.Client;
 using Prism.Core.Types;
+using Prism.Core.Utils;
 
 namespace Prism.AspNetCore.Extensions;
 
@@ -11,11 +12,16 @@ namespace Prism.AspNetCore.Extensions;
 /// usage already documented in csharp/README.md.</summary>
 public class RoutesConfigBuilder
 {
-    private readonly Dictionary<string, RoutePaymentConfig> _routes = new();
+    private readonly Dictionary<string, RoutePaymentConfig> _routes = new(StringComparer.OrdinalIgnoreCase);
 
     public RoutesConfigBuilder AddRoute(string path, RoutePaymentConfig config)
     {
-        _routes[path] = config;
+        var key = RouteMatcher.NormalizePath(path);
+        if (!_routes.TryAdd(key, config))
+        {
+            throw new ArgumentException($"Route '{path}' duplicates an already registered route; paths are compared ignoring case and trailing slashes.", nameof(path));
+        }
+
         return this;
     }
 

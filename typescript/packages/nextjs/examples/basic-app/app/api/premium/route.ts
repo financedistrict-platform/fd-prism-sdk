@@ -1,22 +1,20 @@
-/**
- * Premium API Route - Protected by payment
- */
+import { NextResponse } from 'next/server';
+import { withPrismPayment } from '@financedistrict/prism-x402-sdk-nextjs';
+import { prismConfig } from '../../../lib/prism-config';
 
-import { NextRequest, NextResponse } from 'next/server';
-
-export async function GET(request: NextRequest) {
-  // Payment info is passed via headers from middleware
-  const payer = request.headers.get('x-prism-payer');
-  const payment = request.headers.get('x-prism-payment');
-
-  return NextResponse.json({
-    message: 'Welcome to Premium API!',
-    payer,
-    payment: payment ? JSON.parse(payment) : null,
-    data: {
-      premium: true,
-      features: ['Advanced analytics', 'Priority support', 'Custom integrations'],
-    },
-    timestamp: new Date().toISOString(),
-  });
-}
+export const GET = withPrismPayment(
+  async () =>
+    NextResponse.json({
+      message: 'Welcome to Premium API!',
+      data: {
+        premium: true,
+        features: ['Advanced analytics', 'Priority support', 'Custom integrations'],
+      },
+      timestamp: new Date().toISOString(),
+    }),
+  {
+    price: 0.01,
+    description: 'Premium API access',
+  },
+  prismConfig
+);

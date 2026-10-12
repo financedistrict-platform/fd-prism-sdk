@@ -5,8 +5,6 @@ error scenarios, settlement, helpers, and require_payment decorator.
 
 from __future__ import annotations
 
-import json
-import base64
 from unittest.mock import patch, MagicMock, AsyncMock
 
 import pytest
@@ -15,6 +13,7 @@ from fastapi import FastAPI, Request
 
 from prism_fastapi import add_prism_middleware, get_payer, get_payment, require_payment
 from prism_sdk_core import PrismMiddlewareConfig, RoutePaymentConfig
+from .payments import encode, header_for, requirements_for, v1_payment
 
 pytestmark = pytest.mark.asyncio
 
@@ -22,13 +21,7 @@ pytestmark = pytest.mark.asyncio
 # Shared mock data
 # ---------------------------------------------------------------------------
 
-MOCK_REQUIREMENTS = {
-    'x402Version': 2,
-    'amount': '1000000',
-    'network': 'eip155:84532',
-    'paymentAddress': '0xTEST',
-    'accepted': [{'url': 'http://test/api/premium', 'description': 'Premium API'}],
-}
+MOCK_REQUIREMENTS = requirements_for()
 MOCK_VERIFICATION_VALID = {'valid': True, 'payment': {'signature': '0xSIG'}, 'payer': '0xPAYER'}
 MOCK_VERIFICATION_INVALID = {'valid': False, 'error': 'Invalid signature'}
 MOCK_SETTLEMENT_SUCCESS = {'success': True, 'transaction': '0xTXHASH'}
@@ -41,11 +34,7 @@ ROUTES = {
 }
 
 
-def make_header(data: dict) -> str:
-    return base64.b64encode(json.dumps(data).encode()).decode()
-
-
-VALID_HEADER = make_header({'x402Version': 2, 'signature': '0xSIG', 'payer': '0xPAYER'})
+VALID_HEADER = header_for()
 
 
 WELL_FORMED_V1_HEADER = make_header({
@@ -85,10 +74,9 @@ def mock_client():
         yield inst
 
 
-@pytest.fixture
-def fastapi_app(mock_client):
+def build_app(config):
     fastapi_app = FastAPI()
-    add_prism_middleware(fastapi_app, CONFIG, ROUTES)
+    add_prism_middleware(fastapi_app, config, ROUTES)
 
     @fastapi_app.get('/api/premium')
     async def premium(request: Request):
@@ -107,9 +95,24 @@ def fastapi_app(mock_client):
 
 
 @pytest.fixture
+def fastapi_app(mock_client):
+    return build_app(CONFIG)
+
+
+@pytest.fixture
 async def async_client(fastapi_app):
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=fastapi_app),
+        base_url='http://test'
+    ) as client:
+        yield client
+
+
+@pytest.fixture
+async def v1_client(mock_client):
+    app = build_app(PrismMiddlewareConfig(api_key='test-key', debug=True, allowed_versions=[1, 2]))
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
         base_url='http://test'
     ) as client:
         yield client
@@ -159,9 +162,9 @@ async def test_invalid_payment_returns_402(async_client, mock_client):
     assert resp.status_code == 402
 
 
-async def test_v1_x_payment_header_accepted(async_client):
-    v1_header = make_header({'x402Version': 1, 'signature': '0xSIG', 'payer': '0xPAYER'})
-    resp = await async_client.get('/api/premium', headers={'x-payment': v1_header})
+async def test_v1_x_payment_header_accepted(v1_client):
+    v1_header = encode(v1_payment())
+    resp = await v1_client.get('/api/premium', headers={'x-payment': v1_header})
     assert resp.status_code == 200
 
 

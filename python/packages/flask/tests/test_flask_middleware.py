@@ -5,27 +5,20 @@ error scenarios, settlement, and the require_payment decorator.
 
 from __future__ import annotations
 
-import json
-import base64
 from unittest.mock import patch, MagicMock
 
 import pytest
 from flask import Flask, g
 
-from prism_flask import prism_payment_middleware, require_payment
+from prism_flask import get_payer, get_payment, prism_payment_middleware, require_payment
 from prism_sdk_core import PrismMiddlewareConfig, RoutePaymentConfig
+from .payments import encode, header_for, requirements_for, v1_payment
 
 # ---------------------------------------------------------------------------
 # Shared mock data
 # ---------------------------------------------------------------------------
 
-MOCK_REQUIREMENTS = {
-    'x402Version': 2,
-    'amount': '1000000',
-    'network': 'eip155:84532',
-    'paymentAddress': '0xTEST',
-    'accepted': [{'url': 'http://localhost/api/premium', 'description': 'Premium API'}],
-}
+MOCK_REQUIREMENTS = requirements_for()
 MOCK_VERIFICATION_VALID = {'valid': True, 'payment': {'signature': '0xSIG'}, 'payer': '0xPAYER'}
 MOCK_VERIFICATION_INVALID = {'valid': False, 'error': 'Invalid signature'}
 MOCK_SETTLEMENT_SUCCESS = {'success': True, 'transaction': '0xTXHASH'}
@@ -38,14 +31,11 @@ ROUTES = {
 }
 
 
-def make_header(data: dict) -> str:
-    return base64.b64encode(json.dumps(data).encode()).decode()
+VALID_HEADER = header_for()
+VALID_V1_HEADER = encode(v1_payment())
 
 
-VALID_HEADER = make_header({'x402Version': 2, 'signature': '0xSIG', 'payer': '0xPAYER'})
-
-
-WELL_FORMED_V1_HEADER = make_header({
+WELL_FORMED_V1_HEADER = encode({
     'x402Version': 1,
     'scheme': 'exact',
     'network': 'base-sepolia',
@@ -77,11 +67,10 @@ def mock_client():
         yield inst
 
 
-@pytest.fixture
-def app(mock_client):
+def build_app(config):
     flask_app = Flask(__name__)
     flask_app.config['TESTING'] = True
-    prism_payment_middleware(flask_app, CONFIG, ROUTES)
+    prism_payment_middleware(flask_app, config, ROUTES)
 
     @flask_app.route('/api/premium')
     def premium():
@@ -100,8 +89,18 @@ def app(mock_client):
 
 
 @pytest.fixture
+def app(mock_client):
+    return build_app(CONFIG)
+
+
+@pytest.fixture
 def client(app):
     return app.test_client()
+
+
+@pytest.fixture
+def v1_client(mock_client):
+    return build_app(PrismMiddlewareConfig(api_key='test-key', debug=True, allowed_versions=[1, 2])).test_client()
 
 
 # ---------------------------------------------------------------------------
@@ -151,9 +150,8 @@ def test_invalid_payment_returns_402(client, mock_client):
     assert resp.status_code == 402
 
 
-def test_v1_x_payment_header_accepted(client, mock_client):
-    v1_header = make_header({'x402Version': 1, 'signature': '0xSIG', 'payer': '0xPAYER'})
-    resp = client.get('/api/premium', headers={'X-PAYMENT': v1_header})
+def test_v1_x_payment_header_accepted(v1_client, mock_client):
+    resp = v1_client.get('/api/premium', headers={'X-PAYMENT': VALID_V1_HEADER})
     assert resp.status_code == 200
 
 
@@ -188,3 +186,34 @@ def test_v1_payment_rejected_with_402_before_any_gateway_call_when_only_v2_allow
     mock_client.get_payment_requirements.assert_not_called()
     mock_client.verify_payment.assert_not_called()
     mock_client.settle_payment.assert_not_called()
+
+
+def test_get_payer_returns_verified_payer():
+    flask_app = Flask(__name__)
+    with flask_app.test_request_context('/'):
+        g._prism_payer = '0xPAYER'
+        assert get_payer() == '0xPAYER'
+
+
+def test_get_payment_returns_verified_payment():
+    flask_app = Flask(__name__)
+    with flask_app.test_request_context('/'):
+        g._prism_payment = {'signature': '0xSIG'}
+        assert get_payment() == {'signature': '0xSIG'}
+
+
+def test_accessors_return_none_when_unpaid():
+    flask_app = Flask(__name__)
+    with flask_app.test_request_context('/'):
+        assert get_payer() is None
+        assert get_payment() is None
+
+
+def test_accessors_ignore_unprefixed_attributes():
+    flask_app = Flask(__name__)
+    with flask_app.test_request_context('/'):
+        g.prism_payer = '0xSPOOF'
+        g.prism_payment = {'signature': '0xSPOOF'}
+        assert get_payer() is None
+        assert get_payment() is None
+

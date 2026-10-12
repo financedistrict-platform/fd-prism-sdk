@@ -14,7 +14,7 @@ This document summarizes the TypeScript framework integrations implemented for F
 
 - Middleware function: `prismPaymentMiddleware(config, routes)`
 - Uses `PrismMiddlewareCore` for payment logic
-- Intercepts `res.end()` for settlement callback
+- Holds `res.write()`/`res.end()` output until the settlement callback succeeds, up to `maxHeldResponseBytes` (default 8 MiB; larger responses are discarded unsettled with a 500)
 - Payment info stored in `res.locals.payment` and `res.locals.payer`
 
 **Example:** `typescript/packages/express/examples/basic-server.js`
@@ -122,40 +122,18 @@ export class ApiController {
 
 **Implementation:**
 
-- Middleware: `createPrismMiddleware(config)` - App Router middleware
 - Route wrapper: `withPrismPayment(handler, routeConfig, middlewareConfig)` - Per-route protection
 - Helpers: `getPayer(request)`, `getPaymentInfo(request)`
-- Payment info passed via headers: `x-prism-payer`, `x-prism-payment`
 
 **Example:** `typescript/packages/nextjs/examples/basic-app/`
 
-- App Router structure with `middleware.ts`
+- App Router structure with `lib/prism-config.ts`
 - 3 routes: `/` (page), `/api/premium`, `/api/weather`
-- Middleware configuration for global route protection
+- Every paid route wrapped with `withPrismPayment` (verify, run handler, settle)
 
 **Features:**
 
-**Option 1: Middleware (Recommended)**
-
-```typescript
-// middleware.ts
-export const middleware = createPrismMiddleware({
-  apiKey: "dev-key-123",
-  routes: {
-    "/api/premium": { price: 0.01, description: "Premium API" },
-  },
-});
-
-export const config = { matcher: "/api/:path*" };
-
-// app/api/premium/route.ts
-export async function GET(request: NextRequest) {
-  const payer = request.headers.get("x-prism-payer");
-  return NextResponse.json({ message: "Premium", payer });
-}
-```
-
-**Option 2: Route-Level**
+**Route-Level (the only supported pattern; Next.js middleware cannot settle)**
 
 ```typescript
 // app/api/premium/route.ts
@@ -222,7 +200,7 @@ interface MiddlewareResult {
 | Express   | âœ…      | âœ… `prismPaymentMiddleware`                     | âœ… basic-server.js | âœ… 8 tests | âœ…      |
 | Fastify   | âœ…      | âœ… `prismPaymentPlugin`                         | âœ… basic-server.ts | â³ TODO    | â³ TODO |
 | NestJS    | âœ…      | âœ… Module + Guard + Decorators                  | âœ… basic-server.ts | â³ TODO    | â³ TODO |
-| Next.js   | âœ…      | âœ… `createPrismMiddleware` + `withPrismPayment` | âœ… basic-app/      | â³ TODO    | â³ TODO |
+| Next.js   | âœ…      | âœ… `withPrismPayment` | âœ… basic-app/      | â³ TODO    | â³ TODO |
 
 ---
 
@@ -257,10 +235,9 @@ describe("PrismModule", () => {
 **Next.js:**
 
 ```typescript
-// packages/nextjs/src/__tests__/middleware.test.ts
-describe("createPrismMiddleware", () => {
+// packages/nextjs/src/__tests__/route-wrapper.test.ts
+describe("withPrismPayment", () => {
   it("should return 402 when no payment");
-  it("should pass payment info via headers");
   it("should call settlement callback");
 });
 ```
@@ -358,7 +335,6 @@ typescript/packages/
     â”‚   â””â”€â”€ index.ts
     â””â”€â”€ examples/
         â””â”€â”€ basic-app/
-            â”œâ”€â”€ middleware.ts
             â”œâ”€â”€ app/
             â”‚   â”œâ”€â”€ page.tsx
             â”‚   â””â”€â”€ api/
@@ -392,7 +368,7 @@ Each integration uses the framework's native patterns:
 
 All integrations call `settlementCallback()` AFTER successful response (status < 400):
 
-- Express: Intercepts `res.end()`
+- Express and Node HTTP: Hold `res.write()`/`res.end()` output until settled
 - Fastify: Uses `onSend` hook
 - NestJS: Intercepts in guard after route handler
 - Next.js: Calls after route handler in wrapper
@@ -404,7 +380,7 @@ Different frameworks expose payment info differently:
 - **Express:** `res.locals.payer`, `res.locals.payment`
 - **Fastify:** `request.prismPayer`, `request.prismPayment`
 - **NestJS:** `@Payer()` decorator injection
-- **Next.js:** `request.headers.get('x-prism-payer')`
+- **Next.js:** `getPayer(request)` and `getPaymentInfo(request)` (never read payment details from request headers)
 
 ---
 
@@ -487,12 +463,13 @@ getPremium(@Payer() payer: string) {}
 ### Next.js (TypeScript)
 
 ```typescript
-import { createPrismMiddleware } from "@financedistrict/prism-x402-sdk-nextjs";
+import { withPrismPayment } from "@financedistrict/prism-x402-sdk-nextjs";
 
-export const middleware = createPrismMiddleware({
-  apiKey: "key",
-  routes: { "/api/premium": { price: 0.01 } },
-});
+export const GET = withPrismPayment(
+  async () => Response.json({ message: "Premium" }),
+  { price: 0.01, description: "Premium API" },
+  { apiKey: "key" }
+);
 ```
 
 ---
