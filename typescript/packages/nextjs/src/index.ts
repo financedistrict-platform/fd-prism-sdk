@@ -12,6 +12,31 @@ import {
   detectProtocolVersion,
 } from '@financedistrict/prism-x402-sdk';
 
+export interface VerifiedPaymentInfo {
+  payer: string | null;
+  amount: string | null;
+}
+
+const verifiedPayments = new WeakMap<Request, VerifiedPaymentInfo>();
+
+const UNTRUSTED_HEADER_PREFIX = 'x-prism-';
+
+const PAYMENT_HEADER_NAMES = new Set(
+  [...HeaderAdapter.getAllPaymentHeaders(), ...HeaderAdapter.getAllResponseHeaders()].map((name) =>
+    name.toLowerCase()
+  )
+);
+
+function stripUntrustedHeaders(headers: Headers): void {
+  const names: string[] = [];
+  headers.forEach((_, name) => names.push(name.toLowerCase()));
+  for (const name of names) {
+    if (name.startsWith(UNTRUSTED_HEADER_PREFIX) || PAYMENT_HEADER_NAMES.has(name)) {
+      headers.delete(name);
+    }
+  }
+}
+
 /**
  * Prism API route wrapper for App Router
  * Wraps Next.js route handlers with payment protection: it verifies the proof,
@@ -48,6 +73,7 @@ export function withPrismPayment(
     // Get payment header
     const url = new URL(request.url);
     const paymentHeader = HeaderAdapter.getPaymentPayload((name) => request.headers.get(name) || null);
+    stripUntrustedHeaders(request.headers);
 
     // Detect protocol version
     let protocolVersion: 1 | 2 = middlewareConfig.x402Version || 2;
@@ -84,6 +110,14 @@ export function withPrismPayment(
           },
         }
       );
+    }
+
+    if (result.paymentInfo) {
+      const requirements = result.paymentInfo.paymentRequirements;
+      verifiedPayments.set(request, {
+        payer: result.paymentInfo.payer ?? null,
+        amount: requirements?.amount ?? requirements?.maxAmountRequired ?? null,
+      });
     }
 
     // Payment verified, call original handler
@@ -172,20 +206,13 @@ export function withPrismPayment(
  * Helper to extract payer from request in route handlers
  */
 export function getPayer(request: Request): string | null {
-  return request.headers.get('x-prism-payer');
+  return verifiedPayments.get(request)?.payer ?? null;
 }
 
 /**
  * Helper to extract payment info from request in route handlers
  */
-export function getPaymentInfo(request: Request): {
-  payer: string | null;
-  amount: string | null;
-  transactionId: string | null;
-} {
-  return {
-    payer: request.headers.get('x-prism-payer'),
-    amount: request.headers.get('x-prism-amount'),
-    transactionId: request.headers.get('x-prism-transaction-id'),
-  };
+export function getPaymentInfo(request: Request): VerifiedPaymentInfo {
+  const info = verifiedPayments.get(request);
+  return { payer: info?.payer ?? null, amount: info?.amount ?? null };
 }

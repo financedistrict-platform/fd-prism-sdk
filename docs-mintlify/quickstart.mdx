@@ -218,11 +218,11 @@ Get started with Prism in minutes. Pick your framework below and follow the 3-st
   <Step title="Wrap your API route handler">
     ```typescript
     // app/api/premium/route.ts
-    import { withPrismPayment } from '@financedistrict/prism-x402-sdk-nextjs';
+    import { withPrismPayment, getPayer } from '@financedistrict/prism-x402-sdk-nextjs';
 
     export const GET = withPrismPayment(
       async (request: Request) => {
-        const payer = request.headers.get('x-prism-payer');
+        const payer = getPayer(request);
 
         return Response.json({
           message: 'Premium content!',

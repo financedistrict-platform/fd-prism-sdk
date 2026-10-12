@@ -147,24 +147,37 @@ export const POST = withPrismPayment(
 
 ## Accessing Payment Info
 
-### App Router
+Use `getPayer` and `getPaymentInfo` inside a wrapped handler. They return values the SDK recorded after the proof was verified. They return `null` for any request that was not verified by `withPrismPayment`, including a copy made with `request.clone()`.
 
 ```typescript
+import {
+  withPrismPayment,
+  getPayer,
+  getPaymentInfo,
+} from "@financedistrict/prism-x402-sdk-nextjs";
+
 async function handler(request: NextRequest) {
-  // Payer address attached to request
-  const payer = (request as any).payer;
+  const payer = getPayer(request);
   // '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb'
 
-  // Payment object in custom property
-  const payment = (request as any).prismPayment;
+  const { amount } = getPaymentInfo(request);
 
-  return NextResponse.json({
-    message: "Data",
-    payer,
-    network: payment?.network,
-  });
+  return NextResponse.json({ message: "Data", payer, amount });
 }
+
+export const GET = withPrismPayment(
+  handler,
+  { price: 0.01, description: "Premium API" },
+  { apiKey: process.env.PRISM_API_KEY! }
+);
 ```
+
+<Warning>
+  Never read payment details from request headers. The wrapper removes every
+  `x-prism-*` header and the payment proof headers (`PAYMENT-SIGNATURE`,
+  `X-PAYMENT`) from the request before your handler runs, so a client cannot
+  forge them. Use `getPayer` and `getPaymentInfo` instead.
+</Warning>
 
 ---
 
