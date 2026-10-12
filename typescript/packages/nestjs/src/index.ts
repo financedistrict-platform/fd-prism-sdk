@@ -13,11 +13,12 @@ import {
   NestMiddleware,
   DynamicModule,
   InternalServerErrorException,
+  OnModuleInit,
   UseGuards,
   applyDecorators,
   createParamDecorator,
 } from '@nestjs/common';
-import { APP_GUARD, Reflector } from '@nestjs/core';
+import { APP_GUARD, DiscoveryModule, DiscoveryService, Reflector } from '@nestjs/core';
 import { Request, Response, NextFunction } from 'express';
 import {
   PrismMiddlewareCore,
@@ -26,6 +27,8 @@ import {
   type RoutePaymentConfig,
   HeaderAdapter,
   detectProtocolVersion,
+  findMatchingRoute,
+  parsePrice,
 } from '@financedistrict/prism-x402-sdk';
 
 /**
@@ -37,6 +40,11 @@ export interface PrismModuleOptions extends PrismMiddlewareConfig {
 
 const PRISM_PAYMENT_KEY = 'prism:payment';
 const PRISM_PAYMENT_HANDLED = Symbol('prism:payment-handled');
+
+const routePrice = (routes: RoutesConfig, path: string): number | undefined => {
+  const matched = findMatchingRoute(path, routes);
+  return matched ? parsePrice(routes[matched].price) : undefined;
+};
 
 /**
  * Payment requirement decorator for routes
@@ -112,7 +120,11 @@ export class PrismPaymentGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<Request>();
     const response = context.switchToHttp().getResponse<Response>();
 
-    if ((request as any)[PRISM_PAYMENT_HANDLED]) {
+    const charged = (request as any)[PRISM_PAYMENT_HANDLED] as { price: number | undefined } | undefined;
+    if (charged) {
+      if (paymentConfig !== true && parsePrice(paymentConfig.price) !== charged.price) {
+        throw new InternalServerErrorException('Payment is configured with conflicting prices for this route');
+      }
       return true;
     }
 
@@ -161,7 +173,11 @@ export class PrismPaymentGuard implements CanActivate {
     // Payment verified
     if (result.paymentInfo) {
       // Store payment info in request
-      (request as any)[PRISM_PAYMENT_HANDLED] = true;
+      (request as any)[PRISM_PAYMENT_HANDLED] = {
+        price: paymentConfig === true
+          ? routePrice((this.core as any).routes, request.path)
+          : parsePrice(paymentConfig.price),
+      };
       (request as any).payment = result.paymentInfo.payment;
       (request as any).payer = result.paymentInfo.payer;
 
@@ -272,7 +288,7 @@ export class PrismPaymentMiddleware implements NestMiddleware {
     }
 
     if (result.paymentInfo) {
-      (req as any)[PRISM_PAYMENT_HANDLED] = true;
+      (req as any)[PRISM_PAYMENT_HANDLED] = { price: routePrice((this.core as any).routes, req.path) };
       (req as any).payment = result.paymentInfo.payment;
       (req as any).payer = result.paymentInfo.payer;
 
@@ -341,6 +357,43 @@ export class PrismPaymentMiddleware implements NestMiddleware {
   }
 }
 
+@Injectable()
+export class PrismRouteValidator implements OnModuleInit {
+  constructor(
+    private discovery: DiscoveryService,
+    private reflector: Reflector,
+    @Inject('PRISM_OPTIONS') private options: PrismModuleOptions,
+  ) { }
+
+  onModuleInit() {
+    if (Object.keys(this.options.routes ?? {}).length > 0) {
+      return;
+    }
+
+    for (const wrapper of this.discovery.getControllers()) {
+      const controller = wrapper.metatype as (Function & { prototype: any }) | null;
+      if (!controller?.prototype) {
+        continue;
+      }
+      for (const name of Object.getOwnPropertyNames(controller.prototype)) {
+        const handler = controller.prototype[name];
+        if (name === 'constructor' || typeof handler !== 'function') {
+          continue;
+        }
+        const config = this.reflector.getAllAndOverride<RoutePaymentConfig | true | undefined>(
+          PRISM_PAYMENT_KEY,
+          [handler, controller],
+        );
+        if (config === true) {
+          throw new Error(
+            `@Payment() on ${controller.name}.${name} has no price: pass a price to @Payment or configure routes in PrismModule.forRoot`,
+          );
+        }
+      }
+    }
+  }
+}
+
 /**
  * Prism module for NestJS
  * 
@@ -369,6 +422,7 @@ export class PrismModule {
 
     return {
       module: PrismModule,
+      imports: [DiscoveryModule],
       providers: [
         {
           provide: 'PRISM_OPTIONS',
@@ -380,6 +434,7 @@ export class PrismModule {
         },
         PrismPaymentGuard,
         PrismPaymentMiddleware,
+        PrismRouteValidator,
         Reflector,
         {
           provide: APP_GUARD,

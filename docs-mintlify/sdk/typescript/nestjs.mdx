@@ -97,8 +97,22 @@ export class AppController {
   `routes` entry; if no entry matches, the request fails with `500` instead of
   being served for free. `@Payment` also applies the guard itself, so an app
   that uses `@Payment` without importing `PrismModule.forRoot()` fails at
-  startup.
+  startup, and so does a bare `@Payment()` when `forRoot` has no `routes`.
 </Note>
+
+<Warning>
+  A route is charged exactly one price. If `PrismPaymentMiddleware` already
+  covers a route and its `@Payment({ price })` differs from the matching
+  `routes` price, the request fails with `500` and the handler never runs, so
+  the lower price can never be used to open a higher-priced route. Keep the two
+  prices equal or configure the price in one place.
+</Warning>
+
+<Warning>
+  With `app.setGlobalPrefix('v1')`, `routes` keys must include the prefix, for
+  example `'/v1/api/premium'`. A key without the prefix does not match, and a
+  bare `@Payment()` on that route fails with `500`.
+</Warning>
 
 ---
 

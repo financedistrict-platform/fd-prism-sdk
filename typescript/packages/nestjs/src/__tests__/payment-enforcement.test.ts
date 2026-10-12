@@ -88,6 +88,16 @@ class RouteConfigController {
   }
 }
 
+@Controller('api')
+class StrictPriceController {
+  @Payment({ price: '$5.00', description: 'Strict price' })
+  @Get('strict')
+  strict() {
+    handlerSpy('strict');
+    return { data: 'Strict content' };
+  }
+}
+
 @Payment({ price: '10000', description: 'Whole controller' })
 @Controller('vault')
 class ClassLevelController {
@@ -121,6 +131,23 @@ async function createAppWithMiddleware(routes: Record<string, { price: string }>
   }
 
   const moduleRef = await Test.createTestingModule({ imports: [MiddlewareAppModule] }).compile();
+  const app = moduleRef.createNestApplication();
+  await app.init();
+  return app;
+}
+
+async function createAppWithMiddlewareFor(
+  routes: Record<string, { price: string }>,
+  controller: any,
+): Promise<INestApplication> {
+  @Module({ imports: [prismModule(routes)], controllers: [controller] })
+  class OverlapAppModule implements NestModule {
+    configure(consumer: MiddlewareConsumer) {
+      consumer.apply(PrismPaymentMiddleware).forRoutes(controller);
+    }
+  }
+
+  const moduleRef = await Test.createTestingModule({ imports: [OverlapAppModule] }).compile();
   const app = moduleRef.createNestApplication();
   await app.init();
   return app;
@@ -250,6 +277,64 @@ describe('PrismModule payment enforcement', () => {
       expect(response.status).toBe(500);
       expect(handlerSpy).not.toHaveBeenCalled();
       expect(mockVerifyPayment).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('middleware and inline @Payment price overlap', () => {
+    it('does not serve a $5.00 route that the middleware priced at $0.001', async () => {
+      app = await createAppWithMiddlewareFor({ '/api/*': { price: '$0.001' } }, StrictPriceController);
+
+      const response = await request(app.getHttpServer())
+        .get('/api/strict')
+        .set('X-Payment', paymentHeader);
+
+      expect(response.status).toBe(500);
+      expect(handlerSpy).not.toHaveBeenCalled();
+      expect(mockSettlePayment).not.toHaveBeenCalled();
+    });
+
+    it('does not serve a route that the middleware priced above the inline price', async () => {
+      app = await createAppWithMiddlewareFor({ '/api/*': { price: '$50.00' } }, StrictPriceController);
+
+      const response = await request(app.getHttpServer())
+        .get('/api/strict')
+        .set('X-Payment', paymentHeader);
+
+      expect(response.status).toBe(500);
+      expect(handlerSpy).not.toHaveBeenCalled();
+      expect(mockSettlePayment).not.toHaveBeenCalled();
+    });
+
+    it('serves and settles once when the middleware and inline prices agree', async () => {
+      app = await createAppWithMiddlewareFor({ '/api/*': { price: '5' } }, StrictPriceController);
+
+      const response = await request(app.getHttpServer())
+        .get('/api/strict')
+        .set('X-Payment', paymentHeader);
+
+      expect(response.status).toBe(200);
+      expect(mockVerifyPayment).toHaveBeenCalledTimes(1);
+      expect(mockSettlePayment).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('bare @Payment() startup validation', () => {
+    it('refuses to start when no routes are configured', async () => {
+      await expect(createApp([prismModule()], [RouteConfigController])).rejects.toThrow(
+        /RouteConfigController\.premium has no price/,
+      );
+    });
+
+    it('starts when routes are configured', async () => {
+      app = await createApp([prismModule({ '/api/premium': { price: '10000' } })], [RouteConfigController]);
+
+      expect(app).toBeDefined();
+    });
+
+    it('starts when every @Payment carries an inline price', async () => {
+      app = await createApp([prismModule()], [InlineConfigController, ClassLevelController]);
+
+      expect(app).toBeDefined();
     });
   });
 
