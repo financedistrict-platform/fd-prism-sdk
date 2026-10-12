@@ -22,7 +22,7 @@
         <dependency>
             <groupId>org.fdtech.prism</groupId>
             <artifactId>prism-sdk-servlet</artifactId>
-            <version>1.0.0-SNAPSHOT</version>
+            <version>1.0.1-SNAPSHOT</version>
         </dependency>
 
         <!-- Servlet API -->

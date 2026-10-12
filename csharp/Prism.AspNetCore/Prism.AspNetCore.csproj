@@ -6,6 +6,7 @@
     <LangVersion>latest</LangVersion>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>Prism.AspNetCore</RootNamespace>
+    <Version>1.0.1</Version>
     <PackageId>Prism.AspNetCore</PackageId>
     <Description>ASP.NET Core middleware and DI extensions for the Prism Gateway x402 payment protocol.</Description>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>

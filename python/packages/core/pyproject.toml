@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "prism-sdk-core"
-version = "1.0.0"
+version = "1.0.1"
 description = "Prism SDK - Core client library"
 authors = ["Finance District <engineering@1stdigital.tech>"]
 readme = "README.md"

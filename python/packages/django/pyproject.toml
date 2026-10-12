@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "prism-django"
-version = "1.0.0"
+version = "1.0.1"
 description = "Prism SDK - Django middleware"
 authors = ["Finance District <engineering@1stdigital.tech>"]
 readme = "README.md"

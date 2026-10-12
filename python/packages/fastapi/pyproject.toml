@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "prism-fastapi"
-version = "1.0.0"
+version = "1.0.1"
 description = "Prism SDK - FastAPI middleware"
 authors = ["Finance District <engineering@1stdigital.tech>"]
 readme = "README.md"
