@@ -147,6 +147,30 @@ Matching rules:
 
 ---
 
+### Per-Route Price with `require_payment`
+
+`require_payment(price, description)` sets the price for a single route handler. That price is the one enforced: the middleware requests, verifies and settles payment against it, even when a cheaper wildcard route in the middleware routes also covers the path. A handler that is not covered by any middleware route is still charged when it is decorated.
+
+```python
+from fastapi import Request
+from prism_fastapi import add_prism_middleware, require_payment
+
+add_prism_middleware(app, config, {
+    "/api/*": RoutePaymentConfig(price=0.01, description="API"),
+})
+
+@app.get("/api/report")
+@require_payment(price=0.50, description="Full report")
+async def report(request: Request):
+    return {"report": "..."}
+```
+
+- `price` must be a finite, non-negative number or numeric string (a leading `$` is allowed). Anything else raises `ValueError` when the decorator is applied.
+- Apply `require_payment` below the route decorator (`@app.get`) and keep `functools.wraps` on any decorator stacked in between, and declare `request: Request` on the handler. If the middleware cannot see the decorator, the handler is not run and the response is a `500` instead of serving it at the wrong price.
+- The middleware finds the handler through the app's own routes. A decorated handler inside a mounted sub-application is not visible to it and fails closed: it answers `402` without a verified payment and `500` when a middleware route covers the path at a different price.
+
+---
+
 ## Accessing Payment Info
 
 ```python

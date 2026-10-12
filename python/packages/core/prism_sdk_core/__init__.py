@@ -10,6 +10,7 @@ from dataclasses import dataclass
 import httpx
 import json
 import base64
+from decimal import Decimal, InvalidOperation
 from enum import Enum
 
 # Import compatibility layer components
@@ -35,6 +36,43 @@ class RoutePaymentConfig:
     price: float | str  # 0.01 or "$0.001"
     description: str
     currency: Optional[str] = None
+
+
+PRISM_ROUTE_ATTR = '__prism_route__'
+
+
+def normalize_price(price: Any) -> Decimal:
+    if isinstance(price, bool) or not isinstance(price, (int, float, str)):
+        raise ValueError(f"price must be a number or a numeric string, got {price!r}")
+    text = price.strip() if isinstance(price, str) else str(price)
+    if text.startswith('$'):
+        text = text[1:]
+    try:
+        value = Decimal(text)
+    except InvalidOperation:
+        raise ValueError(f"price is not numeric: {price!r}") from None
+    if not value.is_finite() or value < 0:
+        raise ValueError(f"price must be a finite non-negative number: {price!r}")
+    return value
+
+
+def prices_match(left: Any, right: Any) -> bool:
+    try:
+        return normalize_price(left) == normalize_price(right)
+    except ValueError:
+        return False
+
+
+def bind_decorator_route(view: Any, price: float | str, description: str) -> RoutePaymentConfig:
+    normalize_price(price)
+    route = RoutePaymentConfig(price=price, description=description)
+    setattr(view, PRISM_ROUTE_ATTR, route)
+    return route
+
+
+def get_decorator_route(view: Any) -> Optional[RoutePaymentConfig]:
+    route = getattr(view, PRISM_ROUTE_ATTR, None)
+    return route if isinstance(route, RoutePaymentConfig) else None
 
 
 ROUTE_CONFIG_KEYS = frozenset({'price', 'description', 'currency'})
@@ -338,7 +376,8 @@ class PrismMiddlewareCore:
         path: str,
         resource_url: str,
         payment_header: Optional[str] = None,
-        protocol_version: Optional[Literal[1, 2]] = None
+        protocol_version: Optional[Literal[1, 2]] = None,
+        route_override: Optional[RoutePaymentConfig] = None
     ) -> MiddlewareResult:
         """
         Handle payment verification for a request
@@ -349,9 +388,10 @@ class PrismMiddlewareCore:
             resource_url: Full resource URL
             payment_header: Payment header value (base64 encoded)
             protocol_version: Protocol version (auto-detected if not provided)
+            route_override: Route configuration that replaces the one matched by path
         """
         # Check if route requires payment
-        route_config = self.find_matching_route(path)
+        route_config = route_override or self.find_matching_route(path)
         
         if not route_config:
             # Route not protected, pass through
@@ -459,7 +499,8 @@ class PrismMiddlewareCore:
                     'payment': payment_data,
                     'payer': verification.get('payer'),
                     'payment_requirements': single_requirement,
-                    'protocol_version': protocol_version
+                    'protocol_version': protocol_version,
+                    'route_price': route_config.price
                 }
             )
 
@@ -573,9 +614,10 @@ class PrismMiddlewareCore:
         resource_url: str,
         payment_header: Optional[str] = None,
         protocol_version: Optional[Literal[1, 2]] = None,
+        route_override: Optional[RoutePaymentConfig] = None,
     ) -> MiddlewareResult:
         """Async version of handle_request for ASGI frameworks."""
-        route_config = self.find_matching_route(path)
+        route_config = route_override or self.find_matching_route(path)
         if not route_config:
             return MiddlewareResult(handled=False)
 
@@ -663,6 +705,7 @@ class PrismMiddlewareCore:
                     'payer': verification.get('payer'),
                     'payment_requirements': single_requirement,
                     'protocol_version': protocol_version,
+                    'route_price': route_config.price,
                 },
             )
         except Exception as e:
@@ -691,6 +734,11 @@ __all__ = [
     'PrismMiddlewareConfig',
     'RoutePaymentConfig',
     'normalize_routes',
+    'normalize_price',
+    'prices_match',
+    'bind_decorator_route',
+    'get_decorator_route',
+    'PRISM_ROUTE_ATTR',
     'ConfigurationMode',
     'MiddlewareResult',
     'PaymentPayload',

@@ -201,6 +201,28 @@ prism_payment_middleware(
 
 ---
 
+### Per-View Price with `require_payment`
+
+`require_payment(price, description)` sets the price for a single view. That price is the one enforced: the middleware requests, verifies and settles payment against it, even when a cheaper wildcard route in `routes` also covers the path. A view that is not covered by any route in `routes` is still charged when it is decorated.
+
+```python
+from prism_flask import prism_payment_middleware, require_payment
+
+prism_payment_middleware(app, config, {
+    '/api/*': RoutePaymentConfig(price=0.01, description='API'),
+})
+
+@app.route('/api/report')
+@require_payment(price=0.50, description='Full report')
+def report():
+    return {'report': '...'}
+```
+
+- `price` must be a finite, non-negative number or numeric string (a leading `$` is allowed). Anything else raises `ValueError` when the decorator is applied.
+- Register the Prism decorator closest to the view and keep `functools.wraps` on any decorator stacked above it. If the middleware cannot see the decorator, the view is not run and the response is a `500` instead of serving it at the wrong price.
+
+---
+
 ## Accessing Payment Information
 
 Read payment info with the `get_payer()` and `get_payment()` helpers. They return `None` when no payment was verified for the request:
