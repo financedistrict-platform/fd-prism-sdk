@@ -250,17 +250,18 @@ export class PrismMiddlewareCore {
         };
       }
 
-      // Detect actual protocol version from payload
       const payloadVersion = detectProtocolVersion(paymentPayload);
-      if (payloadVersion && payloadVersion !== protocolVersion) {
-        // Reject if client's version is not in the server's allowed list
-        if (!this.allowedVersions.includes(payloadVersion)) {
-          if (this.debug) {
-            console.log(`[PrismMiddlewareCore] Protocol version ${payloadVersion} not in allowedVersions: [${this.allowedVersions}]`);
-          }
-          const response = buildInvalidPaymentHeaderResponse(this.defaultProtocolVersion);
-          return { handled: true, ...response };
+      if (!payloadVersion || !this.allowedVersions.includes(payloadVersion)) {
+        if (this.debug) {
+          console.log(`[PrismMiddlewareCore] Protocol version ${payloadVersion} not in allowedVersions: [${this.allowedVersions}]`);
         }
+        const response = buildInvalidPaymentResponse(
+          `Protocol version ${payloadVersion ?? 'unknown'} is not accepted`,
+          this.defaultProtocolVersion
+        );
+        return { handled: true, ...response };
+      }
+      if (payloadVersion !== protocolVersion) {
         if (this.debug) {
           console.log(`[PrismMiddlewareCore] Protocol version mismatch: expected ${protocolVersion}, using client version ${payloadVersion}`);
         }

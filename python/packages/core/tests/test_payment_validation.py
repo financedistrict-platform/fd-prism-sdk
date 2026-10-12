@@ -277,3 +277,71 @@ class TestSettlementCallback:
         assert async_result['success'] is False
         client.settle_payment.assert_not_called()
         client.asettle_payment.assert_not_called()
+
+
+def call_with_version(core, payload, protocol_version, is_async):
+    kwargs = dict(
+        path=ROUTE_PATH,
+        resource_url=RESOURCE_URL,
+        payment_header=encode(payload),
+        protocol_version=protocol_version,
+    )
+    if is_async:
+        return asyncio.run(core.ahandle_request(**kwargs))
+    return core.handle_request(**kwargs)
+
+
+def assert_rejected_before_gateway(result, client):
+    assert result.handled is True
+    assert result.status_code == 402
+    assert result.payment_info is None
+    client.get_payment_requirements.assert_not_called()
+    client.aget_payment_requirements.assert_not_called()
+    client.verify_payment.assert_not_called()
+    client.averify_payment.assert_not_called()
+    client.settle_payment.assert_not_called()
+    client.asettle_payment.assert_not_called()
+
+
+@pytest.mark.parametrize('submit', SUBMITTERS)
+class TestAllowedVersions:
+    def test_rejects_v1_payload_under_the_default_allowed_versions(self, submit, client):
+        result = submit(v1_payload())
+
+        assert_rejected_before_gateway(result, client)
+
+    def test_rejects_v1_payload_when_only_v2_is_allowed(self, submit, client):
+        result = submit(v1_payload(), make_core(allowed_versions=[2]))
+
+        assert_rejected_before_gateway(result, client)
+
+    def test_rejects_v2_payload_when_only_v1_is_allowed(self, submit, client):
+        result = submit(v2_payload(), make_core(allowed_versions=[1]))
+
+        assert_rejected_before_gateway(result, client)
+
+    def test_rejects_unsupported_declared_version(self, submit, client):
+        payload = v1_payload()
+        payload['x402Version'] = 5
+
+        result = submit(payload)
+
+        assert_rejected_before_gateway(result, client)
+
+    def test_accepts_v2_payload_under_the_default_allowed_versions(self, submit, client):
+        result = submit(v2_payload())
+
+        assert result.handled is False
+
+
+@pytest.mark.parametrize('is_async', [False, True], ids=['sync', 'async'])
+class TestAllowedVersionsWithAdapterSuppliedVersion:
+    def test_rejects_v1_payload_when_the_adapter_passes_the_version_detected_from_it(self, is_async, client):
+        result = call_with_version(make_core(), v1_payload(), 1, is_async)
+
+        assert_rejected_before_gateway(result, client)
+
+    def test_rejects_v2_payload_when_the_adapter_passes_the_version_detected_from_it(self, is_async, client):
+        result = call_with_version(make_core(allowed_versions=[1]), v2_payload(), 2, is_async)
+
+        assert_rejected_before_gateway(result, client)

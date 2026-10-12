@@ -45,6 +45,24 @@ def make_header(data: dict) -> str:
 VALID_HEADER = make_header({'x402Version': 2, 'signature': '0xSIG', 'payer': '0xPAYER'})
 
 
+WELL_FORMED_V1_HEADER = make_header({
+    'x402Version': 1,
+    'scheme': 'exact',
+    'network': 'base-sepolia',
+    'payload': {
+        'signature': '0xSIG',
+        'authorization': {
+            'from': '0x1111111111111111111111111111111111111111',
+            'to': '0xAbCdEf0123456789aBcDeF0123456789AbCdEf01',
+            'value': '10000',
+            'validAfter': '0',
+            'validBefore': '99999999999',
+            'nonce': '0xnonce',
+        },
+    },
+})
+
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -162,3 +180,11 @@ def test_require_payment_decorator_blocks_without_prism_payer(client, mock_clien
 def test_require_payment_decorator_passes_with_prism_payer(client, mock_client):
     resp = client.get('/api/decorated', headers={'PAYMENT-SIGNATURE': VALID_HEADER})
     assert resp.status_code == 200
+
+
+def test_v1_payment_rejected_with_402_before_any_gateway_call_when_only_v2_allowed(client, mock_client):
+    resp = client.get('/api/premium', headers={'X-PAYMENT': WELL_FORMED_V1_HEADER})
+    assert resp.status_code == 402
+    mock_client.get_payment_requirements.assert_not_called()
+    mock_client.verify_payment.assert_not_called()
+    mock_client.settle_payment.assert_not_called()

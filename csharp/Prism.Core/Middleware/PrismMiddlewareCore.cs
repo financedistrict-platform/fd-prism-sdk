@@ -126,15 +126,16 @@ public class PrismMiddlewareCore
             var payload = decoded.Value;
 
             var payloadVersion = VersionDetector.DetectProtocolVersion(payload);
-            if (payloadVersion.HasValue && payloadVersion.Value != protocolVersion)
+            if (!payloadVersion.HasValue || !_allowedVersions.Contains(payloadVersion.Value))
             {
-                if (!_allowedVersions.Contains(payloadVersion.Value))
-                {
-                    LogDebug($"[PrismMiddlewareCore] Payload version {payloadVersion} not in allowed versions — rejecting.");
-                    // Deliberately uses the configured default (not the mismatched values) for the response's x402Version.
-                    return ToResult(ResponseBuilder.BuildInvalidPaymentHeaderResponse(_defaultProtocolVersion));
-                }
+                LogDebug($"[PrismMiddlewareCore] Payload version {payloadVersion} not in allowed versions — rejecting.");
+                return ToResult(ResponseBuilder.BuildInvalidPaymentResponse(
+                    $"Protocol version {payloadVersion?.ToString() ?? "unknown"} is not accepted",
+                    _defaultProtocolVersion));
+            }
 
+            if (payloadVersion.Value != protocolVersion)
+            {
                 LogDebug($"[PrismMiddlewareCore] Payload declares version {payloadVersion}, overriding negotiated version {protocolVersion}.");
                 protocolVersion = payloadVersion.Value;
             }

@@ -100,11 +100,8 @@ public class PrismMiddlewareCoreTests
     }
 
     [Fact]
-    public async Task NonWhitelistedProtocolVersion_Rejected400()
+    public async Task NonWhitelistedProtocolVersion_Rejected402()
     {
-        // Resource server is pinned to v2 and only whitelists v2 (the default), but the client
-        // submits a structurally-valid v1 payload — must be rejected, not silently downgraded,
-        // to prevent a protocol-downgrade attack (AUDIT_REPORT.md C-2's category of bug).
         var client = new FakePrismClient();
         var core = new PrismMiddlewareCore(Config(allowedVersions: new[] { 2 }), Routes(), client);
 
@@ -117,7 +114,49 @@ public class PrismMiddlewareCoreTests
         });
 
         Assert.True(result.Handled);
-        Assert.Equal(400, result.StatusCode);
+        Assert.Equal(402, result.StatusCode);
+        Assert.Empty(client.RequirementsRequests);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(1)]
+    public async Task V1Payload_UnderDefaultAllowedVersions_Rejected402BeforeAnyGatewayCall(int? protocolVersion)
+    {
+        var client = new FakePrismClient();
+        var core = new PrismMiddlewareCore(Config(), Routes(), client);
+
+        var result = await core.HandleRequestAsync(new MiddlewareRequestData
+        {
+            Path = "/api/premium",
+            PaymentHeader = ValidV1Header,
+            ResourceUrl = "https://api.test/api/premium",
+            ProtocolVersion = protocolVersion,
+        });
+
+        Assert.True(result.Handled);
+        Assert.Equal(402, result.StatusCode);
+        Assert.Null(result.PaymentInfo);
+        Assert.Empty(client.RequirementsRequests);
+    }
+
+    [Fact]
+    public async Task V2Payload_WhenOnlyV1Allowed_Rejected402BeforeAnyGatewayCall()
+    {
+        var client = new FakePrismClient();
+        var core = new PrismMiddlewareCore(Config(allowedVersions: new[] { 1 }), Routes(), client);
+
+        var result = await core.HandleRequestAsync(new MiddlewareRequestData
+        {
+            Path = "/api/premium",
+            PaymentHeader = ValidV2Header,
+            ResourceUrl = "https://api.test/api/premium",
+            ProtocolVersion = 2,
+        });
+
+        Assert.True(result.Handled);
+        Assert.Equal(402, result.StatusCode);
+        Assert.Null(result.PaymentInfo);
         Assert.Empty(client.RequirementsRequests);
     }
 

@@ -354,7 +354,14 @@ class PrismMiddlewareCore:
                 protocol_version = detected if detected else self.config.x402_version
             else:
                 protocol_version = self.config.x402_version
-        
+
+        if payment_header:
+            submitted_payment, payment_data, protocol_version, rejection = self._read_submitted_payment(
+                payment_header, protocol_version
+            )
+            if rejection:
+                return rejection
+
         # Get payment requirements (always in v2 internally)
         try:
             requirements = self.client.get_payment_requirements(
@@ -390,36 +397,6 @@ class PrismMiddlewareCore:
                     req_header_name: json.dumps(requirements_for_client),
                 },
                 body=requirements_for_client,
-            )
-
-        # Decode and normalize payment payload (v1 -> v2 if needed)
-        try:
-            payment_data = self._decode_payment_header(payment_header)
-            payload_version = payment_data.get('x402Version', protocol_version)
-
-            # Reject if client's protocol version is not in the server's allowed list
-            if payload_version != protocol_version and payload_version not in self.allowed_versions:
-                return MiddlewareResult(
-                    handled=True,
-                    status_code=400,
-                    body={'error': 'Invalid payment header'}
-                )
-            # Override to client's version only if whitelisted
-            if payload_version in self.allowed_versions:
-                protocol_version = payload_version
-
-            submitted_payment = payment_data
-
-            # Normalize to v2 for internal processing
-            if payload_version == 1:
-                payment_data = SchemaTransformer.upgrade_payment_payload(payment_data)
-        except Exception as e:
-            # Always log server-side; never expose internal details to client
-            print(f"[Prism] Invalid payment header: {e}")
-            return MiddlewareResult(
-                handled=True,
-                status_code=400,
-                body={'error': 'Invalid payment header'}
             )
 
         single_requirement, mismatch = self._match_payment(submitted_payment, requirements, resource_url)
@@ -471,6 +448,49 @@ class PrismMiddlewareCore:
                 body={'error': 'Payment verification failed'}
             )
     
+    def _read_submitted_payment(
+        self,
+        payment_header: str,
+        protocol_version: Literal[1, 2],
+    ) -> tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]], Literal[1, 2], Optional[MiddlewareResult]]:
+        try:
+            submitted_payment = self._decode_payment_header(payment_header)
+            payload_version = submitted_payment.get('x402Version', protocol_version)
+        except Exception as e:
+            print(f"[Prism] Invalid payment header: {e}")
+            return None, None, protocol_version, MiddlewareResult(
+                handled=True,
+                status_code=400,
+                body={'error': 'Invalid payment header'}
+            )
+
+        if payload_version not in self.allowed_versions:
+            return None, None, protocol_version, MiddlewareResult(
+                handled=True,
+                status_code=402,
+                headers={'Content-Type': 'application/json'},
+                body={
+                    'error': 'Invalid Payment',
+                    'message': f'Protocol version {payload_version} is not accepted',
+                }
+            )
+
+        try:
+            payment_data = (
+                SchemaTransformer.upgrade_payment_payload(submitted_payment)
+                if payload_version == 1
+                else submitted_payment
+            )
+        except Exception as e:
+            print(f"[Prism] Invalid payment header: {e}")
+            return None, None, protocol_version, MiddlewareResult(
+                handled=True,
+                status_code=400,
+                body={'error': 'Invalid payment header'}
+            )
+
+        return submitted_payment, payment_data, payload_version, None
+
     @staticmethod
     def _match_payment(
         payment: Dict[str, Any],
@@ -612,6 +632,13 @@ class PrismMiddlewareCore:
             else:
                 protocol_version = self.config.x402_version
 
+        if payment_header:
+            submitted_payment, payment_data, protocol_version, rejection = self._read_submitted_payment(
+                payment_header, protocol_version
+            )
+            if rejection:
+                return rejection
+
         try:
             requirements = await self.client.aget_payment_requirements(
                 resource_url=resource_url,
@@ -639,34 +666,6 @@ class PrismMiddlewareCore:
                     req_header_name: json.dumps(requirements_for_client),
                 },
                 body=requirements_for_client,
-            )
-
-        try:
-            payment_data = self._decode_payment_header(payment_header)
-            payload_version = payment_data.get('x402Version', protocol_version)
-
-            # Reject if client's protocol version is not in the server's allowed list
-            if payload_version != protocol_version and payload_version not in self.allowed_versions:
-                return MiddlewareResult(
-                    handled=True,
-                    status_code=400,
-                    body={'error': 'Invalid payment header'}
-                )
-            # Override to client's version only if whitelisted
-            if payload_version in self.allowed_versions:
-                protocol_version = payload_version
-
-            submitted_payment = payment_data
-
-            # Normalize to v2 for internal processing
-            if payload_version == 1:
-                payment_data = SchemaTransformer.upgrade_payment_payload(payment_data)
-        except Exception as e:
-            # Always log server-side; never expose internal details to client
-            print(f"[Prism] Invalid payment header: {e}")
-            return MiddlewareResult(
-                handled=True, status_code=400,
-                body={'error': 'Invalid payment header'},
             )
 
         single_requirement, mismatch = self._match_payment(submitted_payment, requirements, resource_url)
