@@ -265,8 +265,8 @@ Get started with Prism in minutes. Pick your framework below and follow the 3-st
 
   <Step title="Add middleware to your app">
     ```python
-    from flask import Flask, g, jsonify
-    from prism_flask import prism_payment_middleware
+    from flask import Flask, jsonify
+    from prism_flask import get_payer, prism_payment_middleware
     from prism_sdk_core import PrismMiddlewareConfig, RoutePaymentConfig
 
     app = Flask(__name__)
@@ -288,7 +288,7 @@ Get started with Prism in minutes. Pick your framework below and follow the 3-st
 
     @app.route('/api/premium')
     def premium():
-        payer = getattr(g, 'prism_payer', None)
+        payer = get_payer()
         return jsonify({
             'message': 'Premium content!',
             'payer': payer
@@ -322,19 +322,19 @@ Get started with Prism in minutes. Pick your framework below and follow the 3-st
   <Step title="Add middleware">
     ```python
     from fastapi import FastAPI, Request
-    from prism_fastapi import prism_payment_middleware
+    from prism_fastapi import add_prism_middleware, get_payer
     from prism_sdk_core import PrismMiddlewareConfig, RoutePaymentConfig
 
     app = FastAPI()
 
     # Configure Prism middleware
-    prism_payment_middleware(
+    add_prism_middleware(
         app,
-        config=PrismMiddlewareConfig(
+        PrismMiddlewareConfig(
             api_key='dev-key-123',
             base_url='https://prism-gw.test.1stdigital.tech'
         ),
-        routes={
+        {
             '/api/premium': RoutePaymentConfig(
                 price=0.01,
                 description='Premium API access'
@@ -344,7 +344,7 @@ Get started with Prism in minutes. Pick your framework below and follow the 3-st
 
     @app.get('/api/premium')
     async def premium(request: Request):
-        payer = getattr(request.state, 'prism_payer', None)
+        payer = get_payer(request)
         return {
             'message': 'Premium content!',
             'payer': payer
@@ -381,9 +381,9 @@ Get started with Prism in minutes. Pick your framework below and follow the 3-st
     ]
 
     PRISM_CONFIG = {
-        'api_key': 'dev-key-123',
-        'base_url': 'https://prism-gw.test.1stdigital.tech',
-        'routes': {
+        'API_KEY': 'dev-key-123',
+        'BASE_URL': 'https://prism-gw.test.1stdigital.tech',
+        'ROUTES': {
             '/api/premium': {
                 'price': 0.01,
                 'description': 'Premium API access'
@@ -393,9 +393,10 @@ Get started with Prism in minutes. Pick your framework below and follow the 3-st
 
     # views.py
     from django.http import JsonResponse
+    from prism_django import get_payer
 
     def premium(request):
-        payer = getattr(request, 'prism_payer', None)
+        payer = get_payer(request)
         return JsonResponse({
             'message': 'Premium content!',
             'payer': payer

@@ -186,17 +186,27 @@ class PrismPaymentMiddleware:
         return response
 
 
+def get_payer(request: HttpRequest) -> Optional[str]:
+    """Get the verified payer address for the request"""
+    return getattr(request, '_prism_payer', None)
+
+
+def get_payment(request: HttpRequest) -> Optional[Dict]:
+    """Get the verified payment object for the request"""
+    return getattr(request, '_prism_payment', None)
+
+
 # Decorator for protecting individual views
 def require_payment(price: float | str, description: str):
     """
     Decorator for protecting individual Django views
     
     Example:
-        from prism_django import require_payment
+        from prism_django import get_payer, require_payment
         
         @require_payment(price=0.01, description='Premium API')
         def premium_view(request):
-            payer = getattr(request, '_prism_payer', None)
+            payer = get_payer(request)
             return JsonResponse({'message': 'Premium content', 'payer': payer})
     """
     def decorator(view_func: Callable):
@@ -307,4 +317,10 @@ class AsyncPrismPaymentMiddleware:
         return response
 
 
-__all__ = ['PrismPaymentMiddleware', 'AsyncPrismPaymentMiddleware', 'require_payment']
+__all__ = [
+    'PrismPaymentMiddleware',
+    'AsyncPrismPaymentMiddleware',
+    'require_payment',
+    'get_payer',
+    'get_payment',
+]
