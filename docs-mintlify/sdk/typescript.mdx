@@ -276,6 +276,11 @@ interface RoutePaymentConfig {
 <ParamField path="price" type="number | string" required>
   Price to charge per request **Formats:** - Number: `0.001` (USDC) - String:
   `"$0.001"` (explicit USD) - String: `"0.001 USDC"` (explicit token)
+  <Warning>
+    Strings must be a plain positive decimal. Thousands separators (`"1,000"`),
+    exponents (`"1e3"`), signs and stray text are rejected with an error instead
+    of being read as a different amount.
+  </Warning>
   <Tip>Use small decimals for micropayments: `0.001` = $0.001 = 0.1¢</Tip>
 </ParamField>
 

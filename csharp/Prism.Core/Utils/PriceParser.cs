@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.RegularExpressions;
 using Prism.Core.Types;
 
 namespace Prism.Core.Utils;
@@ -13,7 +14,9 @@ namespace Prism.Core.Utils;
 /// </summary>
 public static class PriceParser
 {
-    private static readonly char[] CurrencySymbols = { '$', '€', '£', '¥' };
+    private static readonly Regex PricePattern = new(
+        @"^[$€£¥]?\s*(?<amount>[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:\s+[A-Za-z]{2,10})?\z",
+        RegexOptions.CultureInvariant);
 
     public static double ParsePrice(object price)
     {
@@ -37,8 +40,9 @@ public static class PriceParser
                 parsed = (double)dec;
                 break;
             case string s:
-                var stripped = new string(s.Where(c => Array.IndexOf(CurrencySymbols, c) < 0).ToArray()).Trim();
-                if (!double.TryParse(stripped, NumberStyles.Float, CultureInfo.InvariantCulture, out parsed))
+                var match = PricePattern.Match(s.Trim());
+                if (!match.Success
+                    || !double.TryParse(match.Groups["amount"].Value, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out parsed))
                 {
                     throw new PrismValidationError($"Invalid price value: {price}", "price");
                 }

@@ -12,6 +12,12 @@ public class PriceParserTests
     [InlineData("£2", 2)]
     [InlineData("¥100", 100)]
     [InlineData("0.5", 0.5)]
+    [InlineData("10000", 10000)]
+    [InlineData(".5", 0.5)]
+    [InlineData("  $1.25  ", 1.25)]
+    [InlineData("0.001 USDC", 0.001)]
+    [InlineData("$10 USD", 10)]
+    [InlineData("5.", 5)]
     public void ParsesValidStringPrices(string input, double expected)
     {
         Assert.Equal(expected, PriceParser.ParsePrice(input), 5);
@@ -28,6 +34,22 @@ public class PriceParserTests
     [InlineData("-1")]
     [InlineData("not-a-number")]
     [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("$")]
+    [InlineData("1,000")]
+    [InlineData("1,000.50")]
+    [InlineData("1e3")]
+    [InlineData("1_000")]
+    [InlineData("10USD")]
+    [InlineData("10 US$")]
+    [InlineData("10 USDC extra")]
+    [InlineData("1 000")]
+    [InlineData("$1.2.3")]
+    [InlineData("1$2")]
+    [InlineData("$$1")]
+    [InlineData("+1")]
+    [InlineData("NaN")]
+    [InlineData("Infinity")]
     public void RejectsInvalidStringPrices(string input)
     {
         Assert.Throws<PrismValidationError>(() => PriceParser.ParsePrice(input));
