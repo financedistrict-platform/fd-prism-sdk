@@ -183,30 +183,51 @@ app.use(
 
 ---
 
-### Dynamic Pricing (per-route middleware)
+### Dynamic Pricing (override one route)
+
+List the override next to the wildcard in a **single middleware**. An exact route always wins over a wildcard, so the override route is quoted and settled at its own price and every other `/api/*` route keeps the wildcard price:
 
 ```javascript
-// Global middleware for common routes
+app.use(
+  prismPaymentMiddleware(config, {
+    "/api/*": { price: 0.001, description: "API" },
+    "/api/expensive": { price: 0.1, description: "Expensive operation" },
+  })
+);
+
+app.get("/api/expensive", (req, res) => {
+  res.json({ result: "Expensive computation" });
+});
+```
+
+The first `402` already quotes the right price, and the payment is verified and settled once. This works for overrides that are cheaper and for overrides that are more expensive than the wildcard.
+
+#### Alternative: stacked middleware
+
+Stacking a route-level middleware behind a global one also settles **exactly once**, against the route-level requirements. It has caveats, so prefer the single-middleware form above:
+
+```javascript
 app.use(
   prismPaymentMiddleware(config, {
     "/api/*": { price: 0.001, description: "API" },
   })
 );
 
-// Override for specific route with custom middleware
 app.get(
   "/api/expensive",
   prismPaymentMiddleware(config, {
-    "/api/expensive": {
-      price: 0.1,
-      description: "Expensive operation",
-    },
+    "/api/expensive": { price: 0.1, description: "Expensive operation" },
   }),
   (req, res) => {
     res.json({ result: "Expensive computation" });
   }
 );
 ```
+
+- The first `402` quotes the **global** price, because the global middleware answers before the route-level one runs. A client pays the global price first, then receives a second `402` for the route price. Use stacking only for overrides that are **more expensive** than the global price.
+- With a **cheaper** override, the client has already signed the higher global amount and can pay more than the route price.
+- The payment must pass verification in every middleware that matches the route. If the route-level middleware rejects it, the request ends with a `402` and nothing is settled.
+- A payment middleware reached after the handler has already ended the response does nothing: it does not call `next()` and does not settle again. The first middleware's settlement decides whether the response is delivered.
 
 ---
 

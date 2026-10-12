@@ -83,4 +83,37 @@ describe('holdResponseUntilSettled', () => {
     expect(JSON.parse(response.body).error).toBe('Response too large to settle');
     expect(settle).not.toHaveBeenCalled();
   });
+
+  it('keeps one hold per response and settles with the last registered callback', async () => {
+    const first = jest.fn(async () => null);
+    const second = jest.fn(async () => null);
+    const registered: boolean[] = [];
+
+    const response = await get((_req, res) => {
+      const options = { protocolVersion: 2 as const, maxHeldBytes: 1024 };
+      registered.push(holdResponseUntilSettled(res, first, options));
+      registered.push(holdResponseUntilSettled(res, second, options));
+      res.end('body');
+    });
+
+    expect(response).toEqual({ status: 200, body: 'body' });
+    expect(registered).toEqual([true, true]);
+    expect(first).not.toHaveBeenCalled();
+    expect(second).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses to register another callback once the response has ended', async () => {
+    const late = jest.fn(async () => null);
+    let registered: boolean | undefined;
+
+    await get((_req, res) => {
+      const options = { protocolVersion: 2 as const, maxHeldBytes: 1024 };
+      holdResponseUntilSettled(res, async () => null, options);
+      res.end('body');
+      registered = holdResponseUntilSettled(res, late, options);
+    });
+
+    expect(registered).toBe(false);
+    expect(late).not.toHaveBeenCalled();
+  });
 });

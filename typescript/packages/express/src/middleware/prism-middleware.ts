@@ -87,11 +87,15 @@ export function prismPaymentMiddleware(
       res.locals.payment = result.paymentInfo.payment;
       res.locals.payer = result.paymentInfo.payer;
 
-      holdResponseUntilSettled(
+      const registered = holdResponseUntilSettled(
         res,
         createResponseSettler(core, result.paymentInfo, res, protocolVersion),
         { protocolVersion, maxHeldBytes }
       );
+
+      if (!registered) {
+        return;
+      }
     }
 
     // Execute the route handler
