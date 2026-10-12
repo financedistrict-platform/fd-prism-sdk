@@ -29,6 +29,12 @@ export {
   PrismMiddlewareCore,
   type MiddlewareResult,
   type MiddlewareRequestData,
+  holdResponseUntilSettled,
+  createResponseSettler,
+  resolveMaxHeldResponseBytes,
+  DEFAULT_MAX_HELD_RESPONSE_BYTES,
+  type SettlementRejection,
+  type VerifiedPaymentInfo,
 } from './middleware';
 
 // Export utility functions

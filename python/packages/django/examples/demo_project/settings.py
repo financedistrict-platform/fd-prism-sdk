@@ -33,19 +33,18 @@ TEMPLATES = [{
 
 # Prism Payment Configuration
 PRISM_CONFIG = {
-    'api_key': 'dev-key-123',
-    'base_url': 'https://prism-gw.test.1stdigital.tech',
-    'debug': True
-}
-
-PRISM_ROUTES = {
-    '/api/premium/': {
-        'price': 0.01,
-        'description': 'Premium API access'
-    },
-    '/api/weather/': {
-        'price': '$0.001',
-        'description': 'Weather data access'
+    'API_KEY': 'dev-key-123',
+    'BASE_URL': 'https://prism-gw.test.1stdigital.tech',
+    'DEBUG': True,
+    'ROUTES': {
+        '/api/premium/': {
+            'price': 0.01,
+            'description': 'Premium API access'
+        },
+        '/api/weather/': {
+            'price': '$0.001',
+            'description': 'Weather data access'
+        }
     }
 }
 

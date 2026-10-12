@@ -123,6 +123,11 @@ await app.register(prismPlugin, {
 });
 ```
 
+Route keys can be a concrete path (`"/users/42"`), the pattern a route was
+registered with (`"/users/:id"`) or a wildcard (`"/users/*"`). When several keys
+could apply, a concrete path wins over the registered pattern, and the registered
+pattern wins over a wildcard.
+
 ---
 
 ## Accessing Payment Info
@@ -181,6 +186,12 @@ fastify.addHook('onSend', async (request, reply, payload) => {
   return payload;
 });
 ```
+
+<Warning>
+  The `onSend` hook does not run for responses written through `reply.raw` or after `reply.hijack()`.
+  Such responses reach the client before settlement. Do not use `reply.raw` or `reply.hijack()` on paid
+  routes; answer with `reply.send()`. The Fastify plugin does not apply `maxHeldResponseBytes`.
+</Warning>
 
 See [Settlement Validation](/concepts/settlement-validation) for details.
 

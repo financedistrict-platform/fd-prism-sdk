@@ -10,6 +10,7 @@ from dataclasses import dataclass
 import httpx
 import json
 import base64
+from decimal import Decimal, InvalidOperation
 from enum import Enum
 
 # Import compatibility layer components
@@ -19,6 +20,7 @@ from .header_adapter import HeaderAdapter
 from .version_detector import detect_protocol_version, get_default_protocol_version
 from .schema_transformer import SchemaTransformer
 from .network_mapper import normalize_network
+from .route_matcher import find_route, validate_route_pattern
 
 
 class ConfigurationMode(str, Enum):
@@ -34,6 +36,69 @@ class RoutePaymentConfig:
     price: float | str  # 0.01 or "$0.001"
     description: str
     currency: Optional[str] = None
+
+
+PRISM_ROUTE_ATTR = '__prism_route__'
+
+
+def normalize_price(price: Any) -> Decimal:
+    if isinstance(price, bool) or not isinstance(price, (int, float, str)):
+        raise ValueError(f"price must be a number or a numeric string, got {price!r}")
+    text = price.strip() if isinstance(price, str) else str(price)
+    if text.startswith('$'):
+        text = text[1:]
+    try:
+        value = Decimal(text)
+    except InvalidOperation:
+        raise ValueError(f"price is not numeric: {price!r}") from None
+    if not value.is_finite() or value < 0:
+        raise ValueError(f"price must be a finite non-negative number: {price!r}")
+    return value
+
+
+def prices_match(left: Any, right: Any) -> bool:
+    try:
+        return normalize_price(left) == normalize_price(right)
+    except ValueError:
+        return False
+
+
+def bind_decorator_route(view: Any, price: float | str, description: str) -> RoutePaymentConfig:
+    normalize_price(price)
+    route = RoutePaymentConfig(price=price, description=description)
+    setattr(view, PRISM_ROUTE_ATTR, route)
+    return route
+
+
+def get_decorator_route(view: Any) -> Optional[RoutePaymentConfig]:
+    route = getattr(view, PRISM_ROUTE_ATTR, None)
+    return route if isinstance(route, RoutePaymentConfig) else None
+
+
+ROUTE_CONFIG_KEYS = frozenset({'price', 'description', 'currency'})
+ROUTE_CONFIG_REQUIRED_KEYS = frozenset({'price', 'description'})
+
+
+def normalize_routes(routes: Dict[str, Any]) -> Dict[str, RoutePaymentConfig]:
+    if not isinstance(routes, dict):
+        raise ValueError(f"routes must be a dict of path pattern to route config, got {type(routes).__name__}")
+
+    normalized: Dict[str, RoutePaymentConfig] = {}
+    for pattern, value in routes.items():
+        validate_route_pattern(pattern)
+        if isinstance(value, RoutePaymentConfig):
+            normalized[pattern] = value
+            continue
+        if not isinstance(value, dict):
+            raise ValueError(f"Route {pattern!r} must be a RoutePaymentConfig or a dict, got {type(value).__name__}")
+        unknown = sorted(str(key) for key in value if key not in ROUTE_CONFIG_KEYS)
+        if unknown:
+            raise ValueError(f"Route {pattern!r} has unknown keys: {', '.join(unknown)}")
+        missing = sorted(ROUTE_CONFIG_REQUIRED_KEYS - value.keys())
+        if missing:
+            raise ValueError(f"Route {pattern!r} is missing required keys: {', '.join(missing)}")
+        normalized[pattern] = RoutePaymentConfig(**value)
+    return normalized
 
 
 @dataclass
@@ -298,33 +363,21 @@ class PrismMiddlewareCore:
         routes: Dict[str, RoutePaymentConfig]
     ):
         self.config = config
-        self.routes = routes
+        self.routes = normalize_routes(routes)
         self.client = PrismClient(config)
         self.allowed_versions: List[Literal[1, 2]] = config.allowed_versions if config.allowed_versions is not None else [2]
     
     def find_matching_route(self, path: str) -> Optional[RoutePaymentConfig]:
         """Find matching route configuration for path"""
-        # Exact match
-        if path in self.routes:
-            return self.routes[path]
-
-        # Prefix match — require '/' segment boundary to prevent /api matching /api-v2
-        best_config = None
-        best_prefix_length = -1
-        for route_path, config in self.routes.items():
-            prefix = route_path.rstrip('/')
-            if len(prefix) > best_prefix_length and path.startswith(prefix + '/'):
-                best_config = config
-                best_prefix_length = len(prefix)
-
-        return best_config
+        return find_route(path, self.routes)
     
     def handle_request(
         self,
         path: str,
         resource_url: str,
         payment_header: Optional[str] = None,
-        protocol_version: Optional[Literal[1, 2]] = None
+        protocol_version: Optional[Literal[1, 2]] = None,
+        route_override: Optional[RoutePaymentConfig] = None
     ) -> MiddlewareResult:
         """
         Handle payment verification for a request
@@ -335,9 +388,10 @@ class PrismMiddlewareCore:
             resource_url: Full resource URL
             payment_header: Payment header value (base64 encoded)
             protocol_version: Protocol version (auto-detected if not provided)
+            route_override: Route configuration that replaces the one matched by path
         """
         # Check if route requires payment
-        route_config = self.find_matching_route(path)
+        route_config = route_override or self.find_matching_route(path)
         
         if not route_config:
             # Route not protected, pass through
@@ -445,7 +499,8 @@ class PrismMiddlewareCore:
                     'payment': payment_data,
                     'payer': verification.get('payer'),
                     'payment_requirements': single_requirement,
-                    'protocol_version': protocol_version
+                    'protocol_version': protocol_version,
+                    'route_price': route_config.price
                 }
             )
 
@@ -559,9 +614,10 @@ class PrismMiddlewareCore:
         resource_url: str,
         payment_header: Optional[str] = None,
         protocol_version: Optional[Literal[1, 2]] = None,
+        route_override: Optional[RoutePaymentConfig] = None,
     ) -> MiddlewareResult:
         """Async version of handle_request for ASGI frameworks."""
-        route_config = self.find_matching_route(path)
+        route_config = route_override or self.find_matching_route(path)
         if not route_config:
             return MiddlewareResult(handled=False)
 
@@ -649,6 +705,7 @@ class PrismMiddlewareCore:
                     'payer': verification.get('payer'),
                     'payment_requirements': single_requirement,
                     'protocol_version': protocol_version,
+                    'route_price': route_config.price,
                 },
             )
         except Exception as e:
@@ -676,6 +733,12 @@ __all__ = [
     'PrismMiddlewareCore',
     'PrismMiddlewareConfig',
     'RoutePaymentConfig',
+    'normalize_routes',
+    'normalize_price',
+    'prices_match',
+    'bind_decorator_route',
+    'get_decorator_route',
+    'PRISM_ROUTE_ATTR',
     'ConfigurationMode',
     'MiddlewareResult',
     'PaymentPayload',
