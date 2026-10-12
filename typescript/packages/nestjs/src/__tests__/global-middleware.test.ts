@@ -1,5 +1,6 @@
 import 'reflect-metadata';
-import { Controller, Get, INestApplication, MiddlewareConsumer, Module, NestModule, RequestMethod } from '@nestjs/common';
+import { Controller, Get, INestApplication, MiddlewareConsumer, Module, NestModule, RequestMethod, Res } from '@nestjs/common';
+import type { Response } from 'express';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { Payer, PrismModule, PrismPaymentMiddleware } from '../index';
@@ -63,6 +64,23 @@ class ApiController {
     return { data: 'Premium content', payer };
   }
 
+  @Get('stream')
+  stream(@Res() res: Response) {
+    handlerSpy('stream');
+    res.setHeader('Content-Type', 'text/plain');
+    res.write('secret-chunk-1;');
+    res.end('secret-chunk-2');
+  }
+
+  @Get('stream-head')
+  streamHead(@Res() res: Response) {
+    handlerSpy('stream-head');
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.flushHeaders();
+    res.write('secret-chunk-1;');
+    res.end('secret-chunk-2');
+  }
+
   @Get('free')
   free() {
     handlerSpy('free');
@@ -74,7 +92,11 @@ type Target = Parameters<ReturnType<MiddlewareConsumer['apply']>['forRoutes']>[0
 
 async function createApp(
   target: Target,
-  routes: Record<string, { price: string; description?: string }> = { '/api/premium': { price: '10000' } },
+  routes: Record<string, { price: string; description?: string }> = {
+    '/api/premium': { price: '10000' },
+    '/api/stream': { price: '10000' },
+    '/api/stream-head': { price: '10000' },
+  },
 ): Promise<INestApplication> {
   @Module({
     imports: [PrismModule.forRoot({ apiKey: 'test-api-key', client: mockClient as any, routes })],
@@ -177,6 +199,46 @@ describe('PrismPaymentMiddleware registered globally', () => {
 
       expect(response.status).toBe(402);
       expect(response.body).not.toHaveProperty('data');
+    });
+
+    describe.each(['stream', 'stream-head'])('streaming handler on /api/%s', (route) => {
+      it('delivers every chunk once settlement succeeds', async () => {
+        app = await createApp(target());
+
+        const response = await request(app.getHttpServer())
+          .get(`/api/${route}`)
+          .set('X-Payment', paymentHeader);
+
+        expect(response.status).toBe(200);
+        expect(response.text).toBe('secret-chunk-1;secret-chunk-2');
+        expect(response.headers['x-payment-response']).toBeDefined();
+        expect(mockSettlePayment).toHaveBeenCalledTimes(1);
+      });
+
+      it('returns a clean 402 without any chunk when settlement fails', async () => {
+        mockSettlePayment.mockResolvedValue({ success: false, errorReason: 'insufficient funds' });
+        app = await createApp(target());
+
+        const response = await request(app.getHttpServer())
+          .get(`/api/${route}`)
+          .set('X-Payment', paymentHeader);
+
+        expect(response.status).toBe(402);
+        expect(response.text).not.toContain('secret-chunk');
+        expect(response.body).toMatchObject({ error: 'Payment settlement failed' });
+      });
+
+      it('returns a clean error without any chunk when settlement throws', async () => {
+        mockSettlePayment.mockRejectedValue(new Error('facilitator down'));
+        app = await createApp(target());
+
+        const response = await request(app.getHttpServer())
+          .get(`/api/${route}`)
+          .set('X-Payment', paymentHeader);
+
+        expect(response.status).toBe(402);
+        expect(response.text).not.toContain('secret-chunk');
+      });
     });
 
     it('leaves unpriced routes free', async () => {

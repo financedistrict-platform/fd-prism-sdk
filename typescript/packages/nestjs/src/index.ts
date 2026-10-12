@@ -46,6 +46,28 @@ type VerifiedPayment = NonNullable<MiddlewareResult['paymentInfo']>;
 
 const requestPath = (req: Request): string => req.originalUrl.split('?')[0];
 
+const toBuffer = (chunk: any, encoding?: BufferEncoding): Buffer =>
+  Buffer.isBuffer(chunk) ? chunk : typeof chunk === 'string' ? Buffer.from(chunk, encoding) : Buffer.from(chunk);
+
+const encodingOf = (value: unknown): BufferEncoding | undefined =>
+  typeof value === 'string' ? (value as BufferEncoding) : undefined;
+
+const applyHeaders = (res: Response, headers: unknown): void => {
+  if (!headers) {
+    return;
+  }
+  const pairs: Array<[string, any]> = Array.isArray(headers)
+    ? Array.isArray(headers[0])
+      ? (headers as Array<[string, any]>)
+      : Array.from({ length: Math.floor(headers.length / 2) }, (_, i): [string, any] => [headers[2 * i], headers[2 * i + 1]])
+    : Object.entries(headers as Record<string, any>);
+  pairs.forEach(([name, value]) => {
+    if (value !== undefined) {
+      res.setHeader(name, value);
+    }
+  });
+};
+
 function settleBeforeEnd(
   res: Response,
   core: PrismMiddlewareCore,
@@ -53,9 +75,54 @@ function settleBeforeEnd(
   protocolVersion: 1 | 2,
 ): void {
   const originalEnd = res.end.bind(res);
+  const originalWrite = res.write.bind(res) as (...args: any[]) => boolean;
+  const originalWriteHead = res.writeHead.bind(res) as (...args: any[]) => Response;
+  const originalFlushHeaders = res.flushHeaders.bind(res);
+  const held: Buffer[] = [];
   let endCalled = false;
+  let released = false;
+
+  (res as any).writeHead = function (statusCode: number, reasonOrHeaders?: any, headers?: any) {
+    if (released) {
+      return originalWriteHead(statusCode, reasonOrHeaders, headers);
+    }
+    res.statusCode = statusCode;
+    if (typeof reasonOrHeaders === 'string') {
+      res.statusMessage = reasonOrHeaders;
+      applyHeaders(res, headers);
+    } else {
+      applyHeaders(res, reasonOrHeaders);
+    }
+    return res;
+  };
+
+  res.flushHeaders = function () {
+    if (released) {
+      originalFlushHeaders();
+    }
+  };
+
+  (res as any).write = function (chunk: any, encodingOrCallback?: any, callback?: any): boolean {
+    if (released) {
+      return originalWrite(chunk, encodingOrCallback, callback);
+    }
+    const done = typeof encodingOrCallback === 'function' ? encodingOrCallback : callback;
+    if (endCalled) {
+      if (typeof done === 'function') {
+        process.nextTick(done, new Error('write after end'));
+      }
+      return false;
+    }
+    held.push(toBuffer(chunk, encodingOf(encodingOrCallback)));
+    if (typeof done === 'function') {
+      process.nextTick(done);
+    }
+    return true;
+  };
 
   const failClosed = (status: number, body: Record<string, unknown>) => {
+    released = true;
+    held.length = 0;
     if (!res.headersSent) {
       res.status(status);
       res.setHeader('Content-Type', 'application/json');
@@ -67,8 +134,11 @@ function settleBeforeEnd(
   };
 
   (res as any).end = async function (chunk?: any, encodingOrCallback?: any, callback?: any): Promise<any> {
-    if (endCalled) {
+    if (released) {
       return originalEnd(chunk, encodingOrCallback, callback);
+    }
+    if (endCalled) {
+      return res;
     }
     endCalled = true;
 
@@ -103,6 +173,9 @@ function settleBeforeEnd(
       }
     }
 
+    released = true;
+    held.forEach((part) => originalWrite(part));
+    held.length = 0;
     return originalEnd(chunk, encodingOrCallback, callback);
   };
 }
