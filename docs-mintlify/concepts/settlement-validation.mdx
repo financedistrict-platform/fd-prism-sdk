@@ -286,7 +286,7 @@ ResponseWrapper wrapper = new ResponseWrapper(response);
 chain.doFilter(request, wrapper);  // Execute servlet
 
 // Now validate settlement BEFORE sending
-String settlementHeader = core.getSettlementHeader(...);
+String settlementHeader = middleware.settle(decision);
 
 if (settlementHeader == null) {
     // ❌ Settlement failed - send error instead of captured output

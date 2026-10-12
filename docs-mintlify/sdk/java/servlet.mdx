@@ -174,7 +174,7 @@ Routes are configured as colon-separated values, one per line:
 
 **Format:** `path:price:description`
 
-- **path**: Exact path or wildcard (`/api/*`)
+- **path**: Route path relative to the context path. It protects that path and everything below it on a segment boundary; a trailing `/*` is optional (`/api/data/*` is the same as `/api/data`)
 - **price**: USD amount (`0.01` = $0.01 USD, or `$0.001` string format)
 - **description**: Human-readable description
 
@@ -185,17 +185,25 @@ Routes are configured as colon-separated values, one per line:
 ```java
 PrismFilter filter = new PrismFilter(config);
 
-// Exact paths
+// Exact paths (also protect everything below them)
 filter.addRoute("/api/premium", 0.01, "Premium API");
 filter.addRoute("/api/weather", "$0.001", "Weather data");
 
-// Wildcard matching
+// Trailing wildcard (same as "/api/data")
 filter.addRoute("/api/data/*", 0.005, "Data API");
 
 // Multiple route groups
 filter.addRoute("/api/basic/*", "$0.0001", "Basic tier");
 filter.addRoute("/api/premium/*", "$0.01", "Premium tier");
 ```
+
+### Path matching
+
+The filter matches on `getServletPath() + getPathInfo()`, never on `getRequestURI()`, and normalizes the result: percent-encoded characters are decoded until stable, `;params`, duplicate slashes and `.`/`..` segments are removed, and case is ignored. `/myapp/api/%70remium;jsessionid=1` therefore asks for payment exactly like `/api/premium`. Paths containing control characters are rejected with `400`.
+
+Matching is on segment boundaries, so `/api/premium` does not cover `/api/premiumness`. Requests that match no route are passed through without reading the `Authorization` header.
+
+A payment proof is verified and settled against the route that matched the request, using the route's own price and description, so a proof for a cheap route cannot unlock a more expensive one.
 
 ---
 
@@ -314,7 +322,7 @@ ResponseWrapper wrapper = new ResponseWrapper(response);
 chain.doFilter(request, wrapper);  // Execute servlet - output goes to buffer
 
 // Validate settlement BEFORE sending to client
-String settlementHeader = middleware.getSettlementHeader(paymentInfo);
+String settlementHeader = middleware.settle(decision);
 
 if (settlementHeader == null) {
     // ❌ Settlement failed - send error instead of buffered output
@@ -587,7 +595,7 @@ class PrismFilterTest {
 
     @Test
     void testPaymentRequired() throws Exception {
-        when(request.getRequestURI()).thenReturn("/api/premium");
+        when(request.getServletPath()).thenReturn("/api/premium");
         when(request.getHeader("X-PAYMENT")).thenReturn(null);
 
         filter.doFilter(request, response, chain);

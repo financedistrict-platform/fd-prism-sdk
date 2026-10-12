@@ -1,5 +1,6 @@
 package org.fdtech.prism.core;
 
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 
 import java.io.IOException;
@@ -11,92 +12,78 @@ import java.util.Map;
  * This is framework-agnostic and can be used by servlet, Spring, or other frameworks.
  */
 public class PrismMiddleware {
-    private final PrismConfig config;
     private final PrismClient client;
     private final Map<String, RoutePaymentConfig> routeMap;
 
     public PrismMiddleware(PrismConfig config) {
-        this.config = config;
-        this.client = new PrismClient(config.getBaseUrl(), config.getApiKey());
+        this(config, new PrismClient(config.getBaseUrl(), config.getApiKey()));
+    }
+
+    public PrismMiddleware(PrismConfig config, PrismClient client) {
+        this.client = client;
         this.routeMap = new HashMap<>();
 
-        // Build route map for fast lookup
         for (RoutePaymentConfig route : config.getRoutes()) {
-            routeMap.put(route.getPath(), route);
+            String key = routeKey(route.getPath());
+            if (routeMap.put(key, route) != null) {
+                throw new IllegalArgumentException("Duplicate payment route: " + route.getPath());
+            }
         }
     }
 
     /**
      * Find matching route configuration for a given path.
      *
-     * @param path The request path
-     * @return RoutePaymentConfig if found, null otherwise
+     * <p>The path is normalized first and a route matches the path itself or any
+     * path below it on a segment boundary; the longest matching route wins.
+     *
+     * @param path The request path relative to the application root
+     * @return RoutePaymentConfig if found, null otherwise (including for invalid paths)
      */
     public RoutePaymentConfig findMatchingRoute(String path) {
-        // Exact match first
-        if (routeMap.containsKey(path)) {
-            return routeMap.get(path);
-        }
-
-        // Prefix match (longest match wins)
-        RoutePaymentConfig longestMatch = null;
-        int longestLength = 0;
-
-        for (RoutePaymentConfig route : config.getRoutes()) {
-            String routePath = route.getPath();
-            if (path.startsWith(routePath) && routePath.length() > longestLength) {
-                longestMatch = route;
-                longestLength = routePath.length();
-            }
-        }
-
-        return longestMatch;
+        String normalized = PathNormalizer.normalize(path);
+        return normalized == null ? null : lookup(normalized);
     }
 
     /**
      * Handle incoming request and check if payment is required.
      *
-     * @param path The request path
+     * @param path The request path relative to the application root
      * @param authorizationHeader The Authorization header (may be null)
-     * @return PrismResponse if payment is required, null if request should continue
+     * @return The decision: an immediate response, a verified payment awaiting
+     *         settlement, or an unprotected request that should simply continue
      */
-    public PrismResponse handleRequest(String path, String authorizationHeader) {
-        // Check if this route requires payment
-        RoutePaymentConfig routeConfig = findMatchingRoute(path);
+    public PrismDecision handleRequest(String path, String authorizationHeader) {
+        String normalized = PathNormalizer.normalize(path);
+        if (normalized == null) {
+            return PrismDecision.reject(PrismResponse.badRequest());
+        }
+
+        RoutePaymentConfig routeConfig = lookup(normalized);
         if (routeConfig == null) {
-            return null; // No payment required
+            return PrismDecision.unprotected();
         }
 
-        // If no Authorization header, return 402
-        if (authorizationHeader == null || authorizationHeader.isEmpty()) {
-            return requestPayment(routeConfig);
+        String proof = extractProof(authorizationHeader);
+        if (proof == null) {
+            return PrismDecision.reject(requestPayment(routeConfig));
         }
 
-        // Verify payment proof
         try {
-            String proof = extractProof(authorizationHeader);
-            if (proof == null) {
-                return requestPayment(routeConfig);
+            JsonObject verification = client.verifyPayment(proof, routeConfig);
+            if (!isValid(verification)) {
+                return PrismDecision.reject(requestPayment(routeConfig));
             }
-
-            JsonObject verification = client.verifyPayment(proof);
-            boolean isValid = verification.has("valid") && verification.get("valid").getAsBoolean();
-
-            if (!isValid) {
-                return requestPayment(routeConfig);
-            }
-
-            // Payment verified - continue
-            return null;
-
+            return PrismDecision.verified(proof, routeConfig);
         } catch (IOException e) {
             System.err.println("Payment verification error: " + e.getMessage());
-            return requestPayment(routeConfig);
+            return PrismDecision.reject(requestPayment(routeConfig));
         }
     }
 
     /**
-     * Add settlement header to response (called after response is generated).
+     * Settle a verified payment (called after the protected response is generated
+     * and before it is sent).
      *
      * <p>The settlement callback is performed synchronously (bounded by the
      * {@link PrismClient}'s configured HTTP timeouts, the same pattern used by
@@ -104,21 +91,24 @@ public class PrismMiddleware {
      * genuine settlement failure can be reported to the caller rather than being
      * fired off in a detached thread whose outcome is never observed.
      *
-     * @param authorizationHeader The Authorization header from request
-     * @return Settlement header value, or null if not applicable or if settlement failed
+     * @param decision The decision returned by {@link #handleRequest(String, String)}
+     * @return Settlement header value, or null if nothing was verified or if settlement failed
      */
-    public String getSettlementHeader(String authorizationHeader) {
-        if (authorizationHeader == null || !authorizationHeader.startsWith("Bearer ")) {
+    public String settle(PrismDecision decision) {
+        if (!decision.requiresSettlement()) {
             return null;
         }
 
-        String proof = authorizationHeader.substring(7).trim();
-
         try {
-            client.settlementCallback(proof, "completed", "Payment processed successfully");
-            return "proof=" + proof;
+            client.settlementCallback(
+                    decision.getProof(),
+                    decision.getRoute(),
+                    "completed",
+                    "Payment processed successfully"
+            );
+            return "proof=" + decision.getProof();
         } catch (IOException e) {
-            System.err.println("Settlement failed for proof=" + proof + ": " + e.getMessage());
+            System.err.println("Settlement failed for route " + decision.getRoute().getPath() + ": " + e.getMessage());
             return null;
         }
     }
@@ -128,10 +118,7 @@ public class PrismMiddleware {
      */
     private PrismResponse requestPayment(RoutePaymentConfig routeConfig) {
         try {
-            JsonObject requirements = client.getPaymentRequirements(
-                    routeConfig.getPrice(),
-                    routeConfig.getDescription()
-            );
+            JsonObject requirements = client.getPaymentRequirements(routeConfig);
 
             String wwwAuthenticate = requirements.has("wwwAuthenticate")
                     ? requirements.get("wwwAuthenticate").getAsString()
@@ -152,6 +139,41 @@ public class PrismMiddleware {
         }
     }
 
+    private RoutePaymentConfig lookup(String normalizedPath) {
+        String candidate = normalizedPath;
+        while (true) {
+            RoutePaymentConfig route = routeMap.get(candidate);
+            if (route != null) {
+                return route;
+            }
+            if (candidate.equals("/")) {
+                return null;
+            }
+            int lastSlash = candidate.lastIndexOf('/');
+            candidate = lastSlash <= 0 ? "/" : candidate.substring(0, lastSlash);
+        }
+    }
+
+    private static String routeKey(String routePath) {
+        String path = routePath.endsWith("/*") ? routePath.substring(0, routePath.length() - 2) : routePath;
+        if (path.indexOf('*') >= 0) {
+            throw new IllegalArgumentException("Unsupported wildcard in payment route: " + routePath);
+        }
+        String key = PathNormalizer.normalize(path);
+        if (key == null) {
+            throw new IllegalArgumentException("Invalid payment route: " + routePath);
+        }
+        return key;
+    }
+
+    private static boolean isValid(JsonObject verification) {
+        JsonElement valid = verification.get("valid");
+        return valid != null
+                && valid.isJsonPrimitive()
+                && valid.getAsJsonPrimitive().isBoolean()
+                && valid.getAsBoolean();
+    }
+
     /**
      * Extract proof from Authorization header.
      */
@@ -159,6 +181,7 @@ public class PrismMiddleware {
         if (authorizationHeader == null || !authorizationHeader.startsWith("Bearer ")) {
             return null;
         }
-        return authorizationHeader.substring(7).trim();
+        String proof = authorizationHeader.substring(7).trim();
+        return proof.isEmpty() ? null : proof;
     }
 }
