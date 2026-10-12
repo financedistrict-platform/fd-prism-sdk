@@ -79,7 +79,7 @@ import { Payment, Payer } from "@financedistrict/prism-x402-sdk-nestjs";
 @Controller("api")
 export class AppController {
   @Get("premium")
-  @Payment() // Requires payment!
+  @Payment() // Requires payment! Price comes from the forRoot routes
   getPremiumData(@Payer() payer: string) {
     return {
       message: "Premium content",
@@ -88,6 +88,17 @@ export class AppController {
   }
 }
 ```
+
+<Note>
+  `PrismModule.forRoot()` registers `PrismPaymentGuard` globally, so no
+  `@UseGuards()` is needed. Every `@Payment` route (on a method or a whole
+  controller) is enforced, and the handler never runs without a verified
+  payment. `@Payment()` without arguments uses the price from the matching
+  `routes` entry; if no entry matches, the request fails with `500` instead of
+  being served for free. `@Payment` also applies the guard itself, so an app
+  that uses `@Payment` without importing `PrismModule.forRoot()` fails at
+  startup.
+</Note>
 
 ---
 
