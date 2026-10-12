@@ -15,8 +15,8 @@ namespace Prism.Core.Utils;
 public static class PriceParser
 {
     private static readonly Regex PricePattern = new(
-        @"^[$€£¥]?\s*(?<amount>[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:\s+[A-Za-z]{2,10})?\z",
-        RegexOptions.CultureInvariant);
+        @"^[$€£¥]?\s*(?<amount>[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:\s+(?:USD|USDC))?\z",
+        RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
 
     public static double ParsePrice(object price)
     {

@@ -13,6 +13,8 @@ describe('parsePrice', () => {
     ['0.001 USDC', 0.001],
     ['$10 USD', 10],
     ['5.', 5],
+    ['10 usdc', 10],
+    ['10 Usd', 10],
   ])('parses %p as %p', (input, expected) => {
     expect(parsePrice(input)).toBe(expected);
   });
@@ -30,6 +32,9 @@ describe('parsePrice', () => {
     '10USD',
     '10 US$',
     '10 USDC extra',
+    '10 EUR',
+    '10 FOO',
+    '$10 EUR',
     '1 000',
     '$1.2.3',
     '1$2',

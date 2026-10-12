@@ -277,9 +277,11 @@ interface RoutePaymentConfig {
   Price to charge per request **Formats:** - Number: `0.001` (USDC) - String:
   `"$0.001"` (explicit USD) - String: `"0.001 USDC"` (explicit token)
   <Warning>
-    Strings must be a plain positive decimal. Thousands separators (`"1,000"`),
-    exponents (`"1e3"`), signs and stray text are rejected with an error instead
-    of being read as a different amount.
+    Strings must be a plain positive decimal with an optional leading currency
+    symbol and an optional trailing `USD` or `USDC`. Thousands separators
+    (`"1,000"`), exponents (`"1e3"`), signs, other currency codes (`"10 EUR"`)
+    and stray text are rejected with an error instead of being read as a
+    different amount. Zero, negative and non-finite numbers are rejected too.
   </Warning>
   <Tip>Use small decimals for micropayments: `0.001` = $0.001 = 0.1¢</Tip>
 </ParamField>

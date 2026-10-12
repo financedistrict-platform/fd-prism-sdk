@@ -18,6 +18,8 @@ public class PriceParserTests
     [InlineData("0.001 USDC", 0.001)]
     [InlineData("$10 USD", 10)]
     [InlineData("5.", 5)]
+    [InlineData("10 usdc", 10)]
+    [InlineData("10 Usd", 10)]
     public void ParsesValidStringPrices(string input, double expected)
     {
         Assert.Equal(expected, PriceParser.ParsePrice(input), 5);
@@ -43,6 +45,9 @@ public class PriceParserTests
     [InlineData("10USD")]
     [InlineData("10 US$")]
     [InlineData("10 USDC extra")]
+    [InlineData("10 EUR")]
+    [InlineData("10 FOO")]
+    [InlineData("$10 EUR")]
     [InlineData("1 000")]
     [InlineData("$1.2.3")]
     [InlineData("1$2")]
