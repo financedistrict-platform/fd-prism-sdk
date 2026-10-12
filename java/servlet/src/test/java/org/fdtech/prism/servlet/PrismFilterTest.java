@@ -79,6 +79,7 @@ class PrismFilterTest {
         int status = 200;
         boolean flushEarly;
         String redirect;
+        Integer error;
 
         @Override
         public void doFilter(ServletRequest request, ServletResponse response) throws IOException {
@@ -94,6 +95,9 @@ class PrismFilterTest {
             http.getWriter().write(body);
             if (flushEarly) {
                 http.flushBuffer();
+            }
+            if (error != null) {
+                http.sendError(error);
             }
         }
     }
@@ -252,6 +256,35 @@ class PrismFilterTest {
         assertEquals(500, response.status());
         assertEquals("boom", response.body());
         assertEquals(0, settledFor.size());
+    }
+
+    @Test
+    void sendErrorDiscardsBufferedOutputAndIsNotSettled() throws Exception {
+        HttpServletRequest request = FakeServlet.request("/api/premium", "/api", "/premium", PAID_PREMIUM);
+        FakeServlet.Response response = FakeServlet.response();
+        Chain chain = new Chain();
+        chain.body = "stale premium content";
+        chain.error = 500;
+
+        filter.doFilter(request, response.proxy(), chain);
+
+        assertEquals(500, response.status());
+        assertTrue(response.errorSent());
+        assertEquals(0, response.sentBytes());
+        assertEquals(0, settledFor.size());
+    }
+
+    @Test
+    void sendErrorWithAnOkStatusIsNotSettled() throws Exception {
+        HttpServletRequest request = FakeServlet.request("/api/premium", "/api", "/premium", PAID_PREMIUM);
+        FakeServlet.Response response = FakeServlet.response();
+        Chain chain = new Chain();
+        chain.error = 200;
+
+        filter.doFilter(request, response.proxy(), chain);
+
+        assertEquals(0, settledFor.size());
+        assertNull(response.header("X-Settlement"));
     }
 
     @Test
