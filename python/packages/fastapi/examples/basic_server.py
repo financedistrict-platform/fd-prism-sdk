@@ -4,7 +4,7 @@ Basic FastAPI Server Example with Prism Payment Middleware
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
-from prism_fastapi import add_prism_middleware, get_payer
+from prism_fastapi import add_prism_middleware, get_payer, get_payment
 from prism_sdk_core import PrismMiddlewareConfig, RoutePaymentConfig
 
 app = FastAPI(title="Prism FastAPI Demo")
@@ -54,7 +54,7 @@ async def home():
 async def premium(request: Request):
     """Payment-protected premium endpoint"""
     payer = get_payer(request)
-    payment = getattr(request.state, 'prism_payment', None)
+    payment = get_payment(request)
     
     return {
         'message': 'Welcome to Premium API!',

@@ -124,6 +124,16 @@ def prism_payment_middleware(
         return response
 
 
+def get_payer() -> Optional[str]:
+    """Get the verified payer address for the current request"""
+    return getattr(g, '_prism_payer', None)
+
+
+def get_payment() -> Optional[Dict]:
+    """Get the verified payment object for the current request"""
+    return getattr(g, '_prism_payment', None)
+
+
 def require_payment(price: float | str, description: str):
     """
     Decorator for protecting individual Flask routes
@@ -132,7 +142,7 @@ def require_payment(price: float | str, description: str):
         @app.route('/api/premium')
         @require_payment(price=0.01, description='Premium API')
         def premium():
-            payer = g._prism_payer
+            payer = get_payer()
             return {'message': 'Premium content', 'payer': payer}
     """
     def decorator(f: Callable):
@@ -153,4 +163,4 @@ def require_payment(price: float | str, description: str):
     return decorator
 
 
-__all__ = ['prism_payment_middleware', 'require_payment']
+__all__ = ['prism_payment_middleware', 'require_payment', 'get_payer', 'get_payment']

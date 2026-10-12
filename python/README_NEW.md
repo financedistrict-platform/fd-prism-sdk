@@ -55,8 +55,8 @@ pip install prism-django
 ### Flask
 
 ```python
-from flask import Flask, g
-from prism_flask import prism_payment_middleware
+from flask import Flask
+from prism_flask import get_payer, prism_payment_middleware
 from prism_sdk_core import PrismMiddlewareConfig, RoutePaymentConfig
 
 app = Flask(__name__)
@@ -74,7 +74,7 @@ prism_payment_middleware(
 
 @app.route('/api/premium')
 def premium():
-    payer = g.prism_payer
+    payer = get_payer()
     return {'message': 'Premium content', 'payer': payer}
 ```
 
@@ -114,20 +114,21 @@ MIDDLEWARE = [
 ]
 
 PRISM_CONFIG = {
-    'api_key': 'your-api-key',
-    'base_url': 'https://prism-api.1stdigital.tech'
-}
-
-PRISM_ROUTES = {
-    '/api/premium/': {
-        'price': 0.01,
-        'description': 'Premium API'
+    'API_KEY': 'your-api-key',
+    'BASE_URL': 'https://prism-api.1stdigital.tech',
+    'ROUTES': {
+        '/api/premium/': {
+            'price': 0.01,
+            'description': 'Premium API'
+        }
     }
 }
 
 # views.py
+from prism_django import get_payer
+
 def premium(request):
-    payer = request.prism_payer
+    payer = get_payer(request)
     return JsonResponse({'message': 'Premium content', 'payer': payer})
 ```
 

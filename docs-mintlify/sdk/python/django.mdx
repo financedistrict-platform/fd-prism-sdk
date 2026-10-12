@@ -60,7 +60,7 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 
     # Add Prism middleware
-    'prism_django.middleware.PrismPaymentMiddleware',
+    'prism_django.PrismPaymentMiddleware',
 ]
 
 # Prism configuration
@@ -78,10 +78,11 @@ PRISM_CONFIG = {
 
 # views.py
 from django.http import JsonResponse
+from prism_django import get_payer
 
 def premium_view(request):
     # Access payer address
-    payer = getattr(request, 'prism_payer', None)
+    payer = get_payer(request)
 
     return JsonResponse({
         'message': 'Premium content',
@@ -125,6 +126,26 @@ PRISM_CONFIG = {
 }
 ```
 
+### PRISM_CONFIG keys
+
+| Key | Required | Description |
+|-----|----------|-------------|
+| `API_KEY` | Yes | Your Prism API key (non-empty string) |
+| `ROUTES` | Yes | Dict of route pattern to `{'price': ..., 'description': ...}` |
+| `BASE_URL` | No | Prism gateway URL |
+| `DEBUG` | No | Enable debug logging |
+| `TIMEOUT` | No | Gateway request timeout in seconds |
+| `X402_VERSION` | No | Default x402 protocol version (`1` or `2`) |
+
+Django raises `ImproperlyConfigured` at startup when `PRISM_CONFIG` is not a dict, has an unknown key (for example a lowercase `api_key`), is missing `API_KEY` or `ROUTES`, or contains an invalid route. A separate `PRISM_ROUTES` setting is not read; defining one also raises `ImproperlyConfigured`, so routes can never be silently left unprotected.
+
+### Route patterns
+
+- `/api/premium/` protects `/api/premium`, `/api/premium/` and everything below it, but not `/api/premium-v2`.
+- `/api/data/*` protects `/api/data` and every path below it (`/api/data/users`, `/api/data/users/42`), but not `/api/database`.
+- `*` is only allowed as a trailing `/*`. Patterns such as `/api/*/users` or `/api*` are rejected.
+- An exact match is used first.
+
 ---
 
 ## Route Protection
@@ -152,14 +173,15 @@ urlpatterns = [
 
 ```python
 from django.http import JsonResponse
+from prism_django import get_payer, get_payment
 
 def premium_view(request):
     # Access payer address
-    payer = getattr(request, 'prism_payer', None)
-    # '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb'
+    payer = get_payer(request)
+    # '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb' or None
 
     # Access payment object
-    payment = getattr(request, 'prism_payment', None)
+    payment = get_payment(request)
 
     if payment:
         return JsonResponse({
@@ -207,10 +229,11 @@ class PrismPaymentMiddleware:
 ```python
 from django.views import View
 from django.http import JsonResponse
+from prism_django import get_payer
 
 class PremiumAPIView(View):
     def get(self, request):
-        payer = getattr(request, 'prism_payer', None)
+        payer = get_payer(request)
 
         return JsonResponse({
             'message': 'Premium content',
@@ -218,7 +241,7 @@ class PremiumAPIView(View):
         })
 
     def post(self, request):
-        payer = getattr(request, 'prism_payer', None)
+        payer = get_payer(request)
 
         # Process POST data
         data = request.POST
@@ -239,10 +262,11 @@ class PremiumAPIView(View):
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
+from prism_django import get_payer
 
 class PremiumAPIView(APIView):
     def get(self, request):
-        payer = getattr(request, 'prism_payer', None)
+        payer = get_payer(request)
 
         return Response({
             'message': 'Premium content',
@@ -381,10 +405,11 @@ CMD ["gunicorn", "myproject.wsgi:application", "--bind", "0.0.0.0:8000"]
 ```python
 from typing import Optional, Dict, Any
 from django.http import JsonResponse, HttpRequest
+from prism_django import get_payer, get_payment
 
 def premium_view(request: HttpRequest) -> JsonResponse:
-    payer: Optional[str] = getattr(request, 'prism_payer', None)
-    payment: Optional[Dict[str, Any]] = getattr(request, 'prism_payment', None)
+    payer: Optional[str] = get_payer(request)
+    payment: Optional[Dict[str, Any]] = get_payment(request)
 
     return JsonResponse({
         'message': 'Premium content',
