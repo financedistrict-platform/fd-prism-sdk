@@ -23,6 +23,12 @@ public class PrismProperties {
     private String baseUrl = "https://prism-gw.test.1stdigital.tech";
 
     /**
+     * Seconds an admitted payment proof stays reserved while its request is handled.
+     * A reservation never outlives the proof's own validBefore.
+     */
+    private long replayReservationSeconds = 600;
+
+    /**
      * List of routes that require payment.
      */
     private List<RouteConfig> routes = new ArrayList<>();
@@ -43,6 +49,14 @@ public class PrismProperties {
         this.baseUrl = baseUrl;
     }
 
+    public long getReplayReservationSeconds() {
+        return replayReservationSeconds;
+    }
+
+    public void setReplayReservationSeconds(long replayReservationSeconds) {
+        this.replayReservationSeconds = replayReservationSeconds;
+    }
+
     public List<RouteConfig> getRoutes() {
         return routes;
     }
@@ -58,6 +72,7 @@ public class PrismProperties {
         private String path;
         private long price;
         private String description;
+        private boolean settleBeforeHandler;
 
         public String getPath() {
             return path;
@@ -81,6 +96,14 @@ public class PrismProperties {
 
         public void setDescription(String description) {
             this.description = description;
+        }
+
+        public boolean isSettleBeforeHandler() {
+            return settleBeforeHandler;
+        }
+
+        public void setSettleBeforeHandler(boolean settleBeforeHandler) {
+            this.settleBeforeHandler = settleBeforeHandler;
         }
     }
 }

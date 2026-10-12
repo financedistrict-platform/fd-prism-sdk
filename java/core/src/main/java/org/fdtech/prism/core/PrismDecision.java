@@ -1,16 +1,18 @@
 package org.fdtech.prism.core;
 
 public final class PrismDecision {
-    private static final PrismDecision UNPROTECTED = new PrismDecision(null, null, null);
+    private static final PrismDecision UNPROTECTED = new PrismDecision(null, null, null, null);
 
     private final PrismResponse response;
     private final String proof;
     private final RoutePaymentConfig route;
+    private final PaymentProof identity;
 
-    private PrismDecision(PrismResponse response, String proof, RoutePaymentConfig route) {
+    private PrismDecision(PrismResponse response, String proof, RoutePaymentConfig route, PaymentProof identity) {
         this.response = response;
         this.proof = proof;
         this.route = route;
+        this.identity = identity;
     }
 
     public static PrismDecision unprotected() {
@@ -18,11 +20,11 @@ public final class PrismDecision {
     }
 
     public static PrismDecision reject(PrismResponse response) {
-        return new PrismDecision(response, null, null);
+        return new PrismDecision(response, null, null, null);
     }
 
-    public static PrismDecision verified(String proof, RoutePaymentConfig route) {
-        return new PrismDecision(null, proof, route);
+    static PrismDecision verified(String proof, RoutePaymentConfig route, PaymentProof identity) {
+        return new PrismDecision(null, proof, route, identity);
     }
 
     public PrismResponse getResponse() {
@@ -30,7 +32,11 @@ public final class PrismDecision {
     }
 
     public boolean requiresSettlement() {
-        return proof != null && route != null;
+        return proof != null && route != null && identity != null;
+    }
+
+    PaymentProof identity() {
+        return identity;
     }
 
     public String getProof() {

@@ -3,20 +3,20 @@ package org.fdtech.prism.core;
 import com.google.gson.JsonObject;
 
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.BiFunction;
 
 public class RecordingClient extends PrismClient {
-    public final List<String> verifiedProofs = new ArrayList<>();
-    public final List<RoutePaymentConfig> verifiedRoutes = new ArrayList<>();
-    public final List<RoutePaymentConfig> requirementRoutes = new ArrayList<>();
-    public final List<RoutePaymentConfig> settledRoutes = new ArrayList<>();
-    public final List<String> settledProofs = new ArrayList<>();
+    public final List<String> verifiedProofs = new CopyOnWriteArrayList<>();
+    public final List<RoutePaymentConfig> verifiedRoutes = new CopyOnWriteArrayList<>();
+    public final List<RoutePaymentConfig> requirementRoutes = new CopyOnWriteArrayList<>();
+    public final List<RoutePaymentConfig> settledRoutes = new CopyOnWriteArrayList<>();
+    public final List<String> settledProofs = new CopyOnWriteArrayList<>();
 
     public BiFunction<String, RoutePaymentConfig, JsonObject> verifier =
-            (proof, route) -> validJson(proof.equals("paid:" + route.getPath()));
-    public IOException settlementFailure;
+            (proof, route) -> validJson(TestProofs.paidFor(proof).equals(route.getPath()));
+    public volatile IOException settlementFailure;
     public Runnable beforeSettlement = () -> { };
 
     public RecordingClient() {

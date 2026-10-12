@@ -12,6 +12,7 @@ import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.nio.charset.Charset;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -20,8 +21,14 @@ final class FakeServlet {
     }
 
     static HttpServletRequest request(String requestUri, String servletPath, String pathInfo, String authorization) {
+        Map<String, Object> attributes = new HashMap<>();
         InvocationHandler handler = (proxy, method, args) -> {
             switch (method.getName()) {
+                case "getAttribute":
+                    return attributes.get((String) args[0]);
+                case "setAttribute":
+                    attributes.put((String) args[0], args[1]);
+                    return null;
                 case "getRequestURI":
                     return requestUri;
                 case "getServletPath":

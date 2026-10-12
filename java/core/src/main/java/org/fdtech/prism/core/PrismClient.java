@@ -112,7 +112,7 @@ public class PrismClient {
 
         try (Response response = httpClient.newCall(request).execute()) {
             if (!response.isSuccessful()) {
-                throw new IOException(failureMessage + ": " + response.code());
+                throw new PrismGatewayException(failureMessage + ": " + response.code(), response.code());
             }
             ResponseBody body = response.body();
             return body == null ? "" : body.string();

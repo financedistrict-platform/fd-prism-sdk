@@ -111,6 +111,7 @@ mvn spring-boot:run
 - ✅ **Route matching** - Normalized paths, prefix matching on segment boundaries
 - ✅ **Route-bound proofs** - Every proof is verified and settled against the matched route
 - ✅ **Settlement callbacks** - Synchronous; the response is held until settlement succeeds
+- ✅ **One proof, one execution** - A proof is reserved before verification; parallel or replayed requests get `402`
 
 ## 📖 API Reference
 
@@ -121,6 +122,7 @@ PrismConfig config = new PrismConfig.Builder()
     .apiKey("your-api-key")              // Required
     .baseUrl("https://...")              // Optional (has default)
     .addRoute("/path", price, "desc")    // Add routes
+    .replayReservationSeconds(600)       // Optional, default 600
     .build();
 ```
 
@@ -130,7 +132,8 @@ PrismConfig config = new PrismConfig.Builder()
 RoutePaymentConfig route = new RoutePaymentConfig(
     "/api/premium",        // Path
     1000L,                 // Price in wei (long)
-    "Premium access"       // Description
+    "Premium access",      // Description
+    false                  // Optional: settle before the servlet runs (default false)
 );
 ```
 
@@ -150,7 +153,26 @@ Route paths are relative to the context path, so a route for `/api/premium` also
 
 The Gateway receives the matched route's `resource`, `price` and `description` (built on the server from `RoutePaymentConfig`, never from the request) with every `verify-payment` and `settlement-callback` call, so a proof is only accepted for the route it was issued for. Settlement runs before any response byte is sent; if it fails the client gets `402` instead of the content.
 
-`PrismMiddleware.handleRequest` returns a `PrismDecision` (respond, continue unprotected, or verified and awaiting `settle`).
+`PrismMiddleware.handleRequest` returns a `PrismDecision` (respond, continue unprotected, or verified and awaiting `settle`). Pass a request-scope object as the third argument when one request can reach the middleware more than once; call `release(decision)` when the protected response is an error.
+
+### One proof, one execution
+
+The bearer value must be the base64 x402 payload. Before the Gateway is called, the proof is reserved under the authorization's `from` address plus `nonce` (case-insensitive). While it is reserved, every other request carrying it gets `402` (`Payment proof is already being processed or has already been used`) and never reaches your servlet. A bearer value that is not an x402 payload with `from` and `nonce`, or whose `validBefore` has passed, gets the normal payment-required `402` without a Gateway call.
+
+| Event | Reservation |
+|-------|-------------|
+| Gateway rejects the payment, or verification throws | Released |
+| Servlet responds with status `>= 400` or calls `sendError` | Released |
+| Gateway refuses the settlement callback with a `4xx` | Released |
+| Settlement times out, fails to connect or gets a `5xx` | Kept until `validBefore` or the reservation limit |
+| Settlement succeeds | Kept until `validBefore` |
+| Servlet throws | Held until the reservation ends |
+
+A reservation lasts until the earlier of `validBefore` and `replayReservationSeconds` (default 600). Keep the limit above your slowest paid servlet. At most 10,000 proofs are tracked; when every slot is an active reservation, new proofs get `402`.
+
+For servlets with side effects, set the fourth `RoutePaymentConfig` argument (Spring Boot: `prism.routes[n].settle-before-handler=true`). The payment then settles first and the servlet runs only after settlement succeeded. The settlement the filter performs afterwards reuses the stored result. Do not stack two filters on such a route.
+
+The guard lives in the process and is shared by everything built from one `PrismConfig`; several JVMs do not coordinate.
 
 ### PrismFilter (Servlet)
 

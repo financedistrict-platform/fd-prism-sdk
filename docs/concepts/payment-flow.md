@@ -161,7 +161,7 @@ After the local checks, the SDK reserves the proof before it calls the Gateway. 
 | Settlement succeeds | Kept until the authorization's `validBefore` |
 | Handler or adapter never reports back (error responses, thrown handlers) | Held until the reservation ends |
 
-A reservation lasts until the earlier of the authorization's `validBefore` and the reservation limit, 600 seconds by default. Set the limit with `replayReservationSeconds` (TypeScript), `replay_reservation_seconds` (Python) or `ReplayReservationSeconds` (C#). A handler that runs longer than the reservation lets the same proof reserve again and run the handler a second time, so keep the limit above your slowest paid handler or use the settle-first option below. A proof is rejected as expired once `validBefore` has passed, whatever the limit.
+A reservation lasts until the earlier of the authorization's `validBefore` and the reservation limit, 600 seconds by default. Set the limit with `replayReservationSeconds` (TypeScript), `replay_reservation_seconds` (Python), `ReplayReservationSeconds` (C#) or `replayReservationSeconds` on `PrismConfig.Builder` (Java). A handler that runs longer than the reservation lets the same proof reserve again and run the handler a second time, so keep the limit above your slowest paid handler or use the settle-first option below. A proof is rejected as expired once `validBefore` has passed, whatever the limit.
 
 At most 10,000 proofs are tracked. Expired entries are dropped first, then the oldest settled proof. If every slot holds an active reservation, new proofs are refused with `402`.
 
@@ -176,8 +176,9 @@ Reserving the proof guarantees the handler runs once per proof, but by default t
 | TypeScript | `settleBeforeHandler: true` in the route config |
 | Python | `RoutePaymentConfig(..., settle_before_handler=True)` |
 | C# | `SettleBeforeHandler = true` on `RoutePaymentConfig` |
+| Java | `new RoutePaymentConfig(path, price, description, true)` |
 
-If the Gateway answers that settlement failed, the request is rejected with `402`, the handler never runs, and the proof is released for a retry. If settlement throws or times out, the request is rejected the same way but the proof stays reserved. The adapter's own post-handler settlement call reuses the stored result instead of settling a second time, so adapters need no change. If the handler then fails, the payment has already been taken and the proof stays consumed; the option trades that risk for never running a side effect on an unsettled payment. The replay guard and this option are not part of the Java SDK yet.
+If the Gateway answers that settlement failed, the request is rejected with `402`, the handler never runs, and the proof is released for a retry. If settlement throws or times out, the request is rejected the same way but the proof stays reserved. The adapter's own post-handler settlement call reuses the stored result instead of settling a second time, so adapters need no change. If the handler then fails, the payment has already been taken and the proof stays consumed; the option trades that risk for never running a side effect on an unsettled payment.
 
 ### Step 7-8: Verify Payment
 

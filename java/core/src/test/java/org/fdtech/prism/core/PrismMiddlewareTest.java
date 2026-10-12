@@ -29,6 +29,10 @@ class PrismMiddlewareTest {
                 .build();
     }
 
+    private static String bearer(String route) {
+        return "Bearer " + TestProofs.forRoute(route);
+    }
+
     private static void assertPaymentRequired(PrismDecision decision) {
         assertNotNull(decision.getResponse());
         assertEquals(402, decision.getResponse().getStatusCode());
@@ -71,7 +75,7 @@ class PrismMiddlewareTest {
     void aVariantIsVerifiedAgainstTheSameRouteAsTheCanonicalPath(String path) {
         RoutePaymentConfig premium = middleware.findMatchingRoute("/api/premium");
 
-        PrismDecision decision = middleware.handleRequest(path, "Bearer paid:/api/premium");
+        PrismDecision decision = middleware.handleRequest(path, bearer("/api/premium"));
 
         assertNull(decision.getResponse());
         assertTrue(decision.requiresSettlement());
@@ -131,13 +135,14 @@ class PrismMiddlewareTest {
 
     @Test
     void aProofForOneRouteDoesNotUnlockAnother() {
-        PrismDecision crossRoute = middleware.handleRequest("/api/premium", "Bearer paid:/api/cheap");
+        String cheapProof = bearer("/api/cheap");
+        PrismDecision crossRoute = middleware.handleRequest("/api/premium", cheapProof);
 
         assertPaymentRequired(crossRoute);
         assertEquals("/api/premium", client.verifiedRoutes.get(0).getPath());
         assertEquals(1000000L, client.verifiedRoutes.get(0).getPrice());
 
-        PrismDecision sameRoute = middleware.handleRequest("/api/cheap", "Bearer paid:/api/cheap");
+        PrismDecision sameRoute = middleware.handleRequest("/api/cheap", cheapProof);
 
         assertNull(sameRoute.getResponse());
         assertTrue(sameRoute.requiresSettlement());
@@ -172,7 +177,7 @@ class PrismMiddlewareTest {
 
         for (JsonObject response : new JsonObject[]{missing, text, nested, RecordingClient.validJson(false)}) {
             client.verifier = (proof, route) -> response;
-            assertPaymentRequired(middleware.handleRequest("/api/premium", "Bearer x"));
+            assertPaymentRequired(middleware.handleRequest("/api/premium", bearer("/api/premium")));
         }
     }
 
@@ -190,7 +195,7 @@ class PrismMiddlewareTest {
             }
         };
 
-        PrismDecision decision = new PrismMiddleware(config(), failing).handleRequest("/api/premium", "Bearer x");
+        PrismDecision decision = new PrismMiddleware(config(), failing).handleRequest("/api/premium", bearer("/api/premium"));
 
         assertPaymentRequired(decision);
     }
@@ -203,19 +208,20 @@ class PrismMiddlewareTest {
 
     @Test
     void settlementUsesTheVerifiedProofAndRoute() {
-        PrismDecision decision = middleware.handleRequest("/api/cheap", "Bearer paid:/api/cheap");
+        String proof = TestProofs.forRoute("/api/cheap");
+        PrismDecision decision = middleware.handleRequest("/api/cheap", "Bearer " + proof);
 
         String header = middleware.settle(decision);
 
-        assertEquals("proof=paid:/api/cheap", header);
-        assertEquals("paid:/api/cheap", client.settledProofs.get(0));
+        assertEquals("proof=" + proof, header);
+        assertEquals(proof, client.settledProofs.get(0));
         assertEquals("/api/cheap", client.settledRoutes.get(0).getPath());
     }
 
     @Test
     void settlementFailureIsReported() {
         client.settlementFailure = new IOException("settlement rejected");
-        PrismDecision decision = middleware.handleRequest("/api/cheap", "Bearer paid:/api/cheap");
+        PrismDecision decision = middleware.handleRequest("/api/cheap", bearer("/api/cheap"));
 
         assertNull(middleware.settle(decision));
     }
