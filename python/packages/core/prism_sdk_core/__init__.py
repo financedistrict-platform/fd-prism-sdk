@@ -309,12 +309,15 @@ class PrismMiddlewareCore:
             return self.routes[path]
 
         # Prefix match — require '/' segment boundary to prevent /api matching /api-v2
+        best_config = None
+        best_prefix_length = -1
         for route_path, config in self.routes.items():
             prefix = route_path.rstrip('/')
-            if path.startswith(prefix + '/'):
-                return config
+            if len(prefix) > best_prefix_length and path.startswith(prefix + '/'):
+                best_config = config
+                best_prefix_length = len(prefix)
 
-        return None
+        return best_config
     
     def handle_request(
         self,

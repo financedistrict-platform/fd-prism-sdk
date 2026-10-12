@@ -19,6 +19,8 @@ public static class RouteMatcher
         }
 
         // Wildcard match: route "/prefix/*" matches "/prefix" itself or anything under "/prefix/".
+        string? bestRoute = null;
+        var bestPrefixLength = -1;
         foreach (var route in routes.Keys)
         {
             if (!route.EndsWith("/*", StringComparison.Ordinal))
@@ -27,12 +29,14 @@ public static class RouteMatcher
             }
 
             var prefix = route[..^2];
-            if (path == prefix || path.StartsWith(prefix + "/", StringComparison.Ordinal))
+            if (prefix.Length > bestPrefixLength
+                && (path == prefix || path.StartsWith(prefix + "/", StringComparison.Ordinal)))
             {
-                return route;
+                bestRoute = route;
+                bestPrefixLength = prefix.Length;
             }
         }
 
-        return null;
+        return bestRoute;
     }
 }

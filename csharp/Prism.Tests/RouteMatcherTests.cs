@@ -55,4 +55,49 @@ public class RouteMatcherTests
         var routes = Routes("/api/premium");
         Assert.Null(RouteMatcher.FindMatchingRoute("/unrelated", routes));
     }
+
+    [Fact]
+    public void ExactMatchBeatsEveryWildcard()
+    {
+        var routes = Routes("/api/*", "/api/premium/*", "/api/premium/gold");
+        Assert.Equal("/api/premium/gold", RouteMatcher.FindMatchingRoute("/api/premium/gold", routes));
+    }
+
+    [Theory]
+    [InlineData("/api/*", "/api/premium/*", "/api/premium/gold/*")]
+    [InlineData("/api/premium/gold/*", "/api/premium/*", "/api/*")]
+    [InlineData("/api/premium/*", "/api/*", "/api/premium/gold/*")]
+    public void LongestWildcardPrefixWinsRegardlessOfConfigOrder(string first, string second, string third)
+    {
+        var routes = Routes(first, second, third);
+        Assert.Equal("/api/premium/*", RouteMatcher.FindMatchingRoute("/api/premium/silver", routes));
+        Assert.Equal("/api/premium/gold/*", RouteMatcher.FindMatchingRoute("/api/premium/gold/bar", routes));
+        Assert.Equal("/api/*", RouteMatcher.FindMatchingRoute("/api/free", routes));
+    }
+
+    [Fact]
+    public void LongestWildcardPrefixWinsRegardlessOfPrice()
+    {
+        var routes = new Dictionary<string, RoutePaymentConfig>
+        {
+            ["/api/*"] = new() { Price = "$5" },
+            ["/api/premium/*"] = new() { Price = "$0.01" },
+        };
+        Assert.Equal("/api/premium/*", RouteMatcher.FindMatchingRoute("/api/premium/silver", routes));
+    }
+
+    [Fact]
+    public void RootWildcardLosesToMoreSpecificWildcard()
+    {
+        var routes = Routes("/*", "/api/*");
+        Assert.Equal("/api/*", RouteMatcher.FindMatchingRoute("/api/x", routes));
+        Assert.Equal("/*", RouteMatcher.FindMatchingRoute("/other", routes));
+    }
+
+    [Fact]
+    public void LongerWildcardDoesNotMatchAcrossSegmentBoundary()
+    {
+        var routes = Routes("/api/*", "/api/premium/*");
+        Assert.Equal("/api/*", RouteMatcher.FindMatchingRoute("/api/premium-extra/x", routes));
+    }
 }
