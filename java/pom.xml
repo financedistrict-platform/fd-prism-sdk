@@ -6,7 +6,7 @@
 
     <groupId>org.fdtech.prism</groupId>
     <artifactId>prism-sdk-parent</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
+    <version>1.0.1-SNAPSHOT</version>
     <packaging>pom</packaging>
 
     <name>FD Prism SDK - Parent</name>

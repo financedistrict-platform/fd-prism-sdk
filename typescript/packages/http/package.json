@@ -1,6 +1,6 @@
 {
   "name": "@financedistrict/prism-x402-sdk-http",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Prism SDK - Node.js HTTP middleware",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -20,7 +20,7 @@
     "test": "jest"
   },
   "dependencies": {
-    "@financedistrict/prism-x402-sdk": "^2.0.2"
+    "@financedistrict/prism-x402-sdk": "^2.0.6"
   },
   "peerDependencies": {},
   "devDependencies": {
