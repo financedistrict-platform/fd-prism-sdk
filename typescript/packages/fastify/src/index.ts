@@ -11,6 +11,7 @@ import {
   type RoutesConfig,
   HeaderAdapter,
   detectProtocolVersion,
+  findMatchingRoute,
 } from '@financedistrict/prism-x402-sdk';
 
 export interface PrismFastifyOptions extends PrismMiddlewareConfig {
@@ -68,9 +69,17 @@ const prismPluginCore: FastifyPluginAsync<PrismFastifyOptions> = async (fastify,
     // Store protocol version for onSend hook
     requestProtocolVersion.set(request, protocolVersion);
 
+    const requestPath = request.url.split('?')[0];
+    const registeredPath = request.routeOptions?.url ?? request.routerPath;
+    const isConfiguredKey = (candidate: string) => findMatchingRoute(candidate, routes) === candidate;
+    const matchPath =
+      registeredPath && !isConfiguredKey(requestPath) && isConfiguredKey(registeredPath)
+        ? registeredPath
+        : requestPath;
+
     // Process request through middleware core
     const result = await core.handleRequest({
-      path: request.routerPath || request.url.split('?')[0],
+      path: matchPath,
       paymentHeader: paymentHeader || undefined,
       resourceUrl,
       protocolVersion,

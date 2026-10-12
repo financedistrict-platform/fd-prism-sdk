@@ -39,7 +39,20 @@ def make_header(data: dict) -> str:
     return base64.b64encode(json.dumps(data).encode()).decode()
 
 
-VALID_HEADER = make_header({'x402Version': 2, 'signature': '0xSIG', 'payer': '0xPAYER'})
+AUTHORIZATION = {
+    'from': '0xPAYER',
+    'to': '0xTEST',
+    'value': '1000000',
+    'validAfter': '0',
+    'validBefore': '9999999999',
+    'nonce': '0x01',
+}
+PAYLOAD = {'signature': '0xSIG', 'authorization': AUTHORIZATION}
+VALID_HEADER = make_header({
+    'x402Version': 2,
+    'accepted': {'scheme': 'exact', 'network': 'eip155:84532', 'asset': '0xASSET'},
+    'payload': PAYLOAD,
+})
 
 
 def make_get_response(status: int = 200):

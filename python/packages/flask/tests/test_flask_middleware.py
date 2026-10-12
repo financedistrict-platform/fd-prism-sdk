@@ -42,7 +42,26 @@ def make_header(data: dict) -> str:
     return base64.b64encode(json.dumps(data).encode()).decode()
 
 
-VALID_HEADER = make_header({'x402Version': 2, 'signature': '0xSIG', 'payer': '0xPAYER'})
+AUTHORIZATION = {
+    'from': '0xPAYER',
+    'to': '0xTEST',
+    'value': '1000000',
+    'validAfter': '0',
+    'validBefore': '9999999999',
+    'nonce': '0x01',
+}
+PAYLOAD = {'signature': '0xSIG', 'authorization': AUTHORIZATION}
+VALID_HEADER = make_header({
+    'x402Version': 2,
+    'accepted': {'scheme': 'exact', 'network': 'eip155:84532', 'asset': '0xASSET'},
+    'payload': PAYLOAD,
+})
+VALID_V1_HEADER = make_header({
+    'x402Version': 1,
+    'scheme': 'exact',
+    'network': 'base-sepolia',
+    'payload': PAYLOAD,
+})
 
 
 # ---------------------------------------------------------------------------
@@ -59,11 +78,10 @@ def mock_client():
         yield inst
 
 
-@pytest.fixture
-def app(mock_client):
+def build_app(config):
     flask_app = Flask(__name__)
     flask_app.config['TESTING'] = True
-    prism_payment_middleware(flask_app, CONFIG, ROUTES)
+    prism_payment_middleware(flask_app, config, ROUTES)
 
     @flask_app.route('/api/premium')
     def premium():
@@ -82,8 +100,18 @@ def app(mock_client):
 
 
 @pytest.fixture
+def app(mock_client):
+    return build_app(CONFIG)
+
+
+@pytest.fixture
 def client(app):
     return app.test_client()
+
+
+@pytest.fixture
+def v1_client(mock_client):
+    return build_app(PrismMiddlewareConfig(api_key='test-key', debug=True, allowed_versions=[1, 2])).test_client()
 
 
 # ---------------------------------------------------------------------------
@@ -133,9 +161,8 @@ def test_invalid_payment_returns_402(client, mock_client):
     assert resp.status_code == 402
 
 
-def test_v1_x_payment_header_accepted(client, mock_client):
-    v1_header = make_header({'x402Version': 1, 'signature': '0xSIG', 'payer': '0xPAYER'})
-    resp = client.get('/api/premium', headers={'X-PAYMENT': v1_header})
+def test_v1_x_payment_header_accepted(v1_client, mock_client):
+    resp = v1_client.get('/api/premium', headers={'X-PAYMENT': VALID_V1_HEADER})
     assert resp.status_code == 200
 
 

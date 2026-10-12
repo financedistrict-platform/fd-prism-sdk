@@ -123,6 +123,11 @@ await app.register(prismPlugin, {
 });
 ```
 
+Route keys can be a concrete path (`"/users/42"`), the pattern a route was
+registered with (`"/users/:id"`) or a wildcard (`"/users/*"`). When several keys
+could apply, a concrete path wins over the registered pattern, and the registered
+pattern wins over a wildcard.
+
 ---
 
 ## Accessing Payment Info
