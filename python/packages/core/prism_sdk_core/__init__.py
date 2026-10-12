@@ -512,7 +512,7 @@ class PrismMiddlewareCore:
             return MiddlewareResult(
                 handled=False,
                 payment_info={
-                    'payment': payment_data,
+                    'payment': submitted_payment,
                     'payer': verification.get('payer'),
                     'payment_requirements': single_requirement,
                     'protocol_version': protocol_version,
@@ -753,7 +753,7 @@ class PrismMiddlewareCore:
             return MiddlewareResult(
                 handled=False,
                 payment_info={
-                    'payment': payment_data,
+                    'payment': submitted_payment,
                     'payer': verification.get('payer'),
                     'payment_requirements': single_requirement,
                     'protocol_version': protocol_version,

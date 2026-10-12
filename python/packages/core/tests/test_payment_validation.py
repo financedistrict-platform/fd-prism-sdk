@@ -236,6 +236,24 @@ class TestV1Payload:
 
         assert result.handled is False
 
+    def test_verifies_the_upgraded_copy_and_exposes_the_submitted_payment(self, submit, client):
+        submitted = v1_payload()
+
+        result = submit(submitted, make_core(allowed_versions=[1, 2]))
+
+        assert result.payment_info['payment'] == submitted
+        verified = (client.verify_payment.call_args or client.averify_payment.call_args).args[0]
+        assert verified['x402Version'] == 2
+
+    def test_settles_the_submitted_payment_it_exposed(self, submit, client):
+        core = make_core(allowed_versions=[1, 2])
+        info = submit(v1_payload(), core).payment_info
+
+        settled = core.settlement_callback(info['payment'], info['payment_requirements'], 200)
+
+        assert settled['success'] is True
+        client.settle_payment.assert_called_once()
+
     def test_rejects_authorization_paying_a_different_recipient(self, submit, client):
         result = submit(v1_payload(auth={'to': OTHER_ADDRESS}), make_core(allowed_versions=[1, 2]))
 
