@@ -287,6 +287,7 @@ describe('prismPaymentMiddleware (HTTP)', () => {
       const middleware = prismPaymentMiddleware(
         {
           apiKey: 'test-api-key',
+          allowedVersions: [1, 2],
           client: createMockClient(),
         },
         {
@@ -562,7 +563,7 @@ describe('prismPaymentMiddleware (HTTP)', () => {
       extraConfig: { maxHeldResponseBytes?: number } = {}
     ) => {
       const middleware = prismPaymentMiddleware(
-        { apiKey: 'test-api-key', client: createMockClient(), ...extraConfig },
+        { apiKey: 'test-api-key', allowedVersions: [1, 2], client: createMockClient(), ...extraConfig },
         { '/api/premium': { price: '10000', description: 'Premium API access' } }
       );
       server = http.createServer(async (req: PrismHttpRequest, res) => {

@@ -99,7 +99,7 @@ async function createApp(
   },
 ): Promise<INestApplication> {
   @Module({
-    imports: [PrismModule.forRoot({ apiKey: 'test-api-key', client: mockClient as any, routes })],
+    imports: [PrismModule.forRoot({ apiKey: 'test-api-key', allowedVersions: [1, 2], client: mockClient as any, routes })],
     controllers: [ApiController],
   })
   class TestAppModule implements NestModule {

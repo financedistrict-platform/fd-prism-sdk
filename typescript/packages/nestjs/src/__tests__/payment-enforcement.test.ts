@@ -120,7 +120,7 @@ class ExplicitGuardController {
 }
 
 const prismModule = (routes: Record<string, { price: string; description?: string }> = {}) =>
-  PrismModule.forRoot({ apiKey: 'test-api-key', client: mockClient as any, routes });
+  PrismModule.forRoot({ apiKey: 'test-api-key', allowedVersions: [1, 2], client: mockClient as any, routes });
 
 async function createAppWithMiddleware(routes: Record<string, { price: string }>): Promise<INestApplication> {
   @Module({ imports: [prismModule(routes)], controllers: [InlineConfigController] })

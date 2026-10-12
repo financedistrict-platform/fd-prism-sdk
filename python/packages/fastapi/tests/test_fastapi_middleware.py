@@ -37,7 +37,7 @@ ROUTES = {
 VALID_HEADER = header_for()
 
 
-WELL_FORMED_V1_HEADER = make_header({
+WELL_FORMED_V1_HEADER = encode({
     'x402Version': 1,
     'scheme': 'exact',
     'network': 'base-sepolia',
