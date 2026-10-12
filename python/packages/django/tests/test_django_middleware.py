@@ -11,6 +11,7 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 from django.test import RequestFactory, override_settings
+from django.core.exceptions import ImproperlyConfigured
 from django.http import HttpResponse
 
 from prism_django import PrismPaymentMiddleware, AsyncPrismPaymentMiddleware, require_payment
@@ -128,7 +129,11 @@ def test_invalid_payment_returns_402(MockClient):
 
 
 @patch('prism_sdk_core.PrismClient')
-@override_settings(PRISM_CONFIG={'api_key': 'dict-key', 'debug': False})
+@override_settings(PRISM_CONFIG={
+    'API_KEY': 'dict-key',
+    'DEBUG': False,
+    'ROUTES': {'/api/premium/': {'price': 0.01, 'description': 'Premium API'}},
+})
 def test_config_dict_accepted(MockClient):
     """PRISM_CONFIG as plain dict must not raise TypeError."""
     make_middleware(MockClient.return_value)  # no exception == pass
@@ -136,17 +141,19 @@ def test_config_dict_accepted(MockClient):
 
 @patch('prism_sdk_core.PrismClient')
 @override_settings(PRISM_CONFIG=PrismMiddlewareConfig(api_key='obj-key', debug=False))
-def test_config_object_accepted(MockClient):
-    """PRISM_CONFIG as PrismMiddlewareConfig must not raise TypeError."""
-    make_middleware(MockClient.return_value)  # no exception == pass
+def test_config_object_rejected(MockClient):
+    """PRISM_CONFIG must be a dict so that ROUTES can live beside the other keys."""
+    with pytest.raises(ImproperlyConfigured):
+        make_middleware(MockClient.return_value)
 
 
 @patch('prism_sdk_core.PrismClient')
-@override_settings(
-    PRISM_ROUTES={'/api/premium/': RoutePaymentConfig(price=0.01, description='Premium API')}
-)
+@override_settings(PRISM_CONFIG={
+    'API_KEY': 'test',
+    'ROUTES': {'/api/premium/': RoutePaymentConfig(price=0.01, description='Premium API')},
+})
 def test_route_config_object_accepted(MockClient):
-    """PRISM_ROUTES with RoutePaymentConfig values must not raise TypeError."""
+    """ROUTES with RoutePaymentConfig values must not raise TypeError."""
     make_middleware(MockClient.return_value)  # no exception == pass
 
 
@@ -193,8 +200,11 @@ def test_require_payment_decorator_passes_with_prism_payer(MockClient):
 @pytest.mark.asyncio
 @patch('prism_sdk_core.PrismClient')
 @override_settings(
-    PRISM_CONFIG={'api_key': 'test', 'debug': True},
-    PRISM_ROUTES={'/api/premium/': {'price': 0.01, 'description': 'Premium API'}},
+    PRISM_CONFIG={
+        'API_KEY': 'test',
+        'DEBUG': True,
+        'ROUTES': {'/api/premium/': {'price': 0.01, 'description': 'Premium API'}},
+    },
 )
 async def test_async_middleware_free_route(MockClient):
     inst = MockClient.return_value
@@ -212,8 +222,11 @@ async def test_async_middleware_free_route(MockClient):
 @pytest.mark.asyncio
 @patch('prism_sdk_core.PrismClient')
 @override_settings(
-    PRISM_CONFIG={'api_key': 'test', 'debug': True},
-    PRISM_ROUTES={'/api/premium/': {'price': 0.01, 'description': 'Premium API'}},
+    PRISM_CONFIG={
+        'API_KEY': 'test',
+        'DEBUG': True,
+        'ROUTES': {'/api/premium/': {'price': 0.01, 'description': 'Premium API'}},
+    },
 )
 async def test_async_middleware_protected_no_payment_returns_402(MockClient):
     from unittest.mock import AsyncMock
@@ -232,8 +245,11 @@ async def test_async_middleware_protected_no_payment_returns_402(MockClient):
 @pytest.mark.asyncio
 @patch('prism_sdk_core.PrismClient')
 @override_settings(
-    PRISM_CONFIG={'api_key': 'test', 'debug': True},
-    PRISM_ROUTES={'/api/premium/': {'price': 0.01, 'description': 'Premium API'}},
+    PRISM_CONFIG={
+        'API_KEY': 'test',
+        'DEBUG': True,
+        'ROUTES': {'/api/premium/': {'price': 0.01, 'description': 'Premium API'}},
+    },
 )
 async def test_async_middleware_valid_payment_returns_200(MockClient):
     from unittest.mock import AsyncMock

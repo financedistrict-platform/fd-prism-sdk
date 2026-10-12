@@ -154,10 +154,20 @@ prism_payment_middleware(
     }
 )
 
+# ✅ Protected: GET /api
 # ✅ Protected: GET /api/users
 # ✅ Protected: GET /api/posts/123
+# ❌ Not protected: GET /api-v2/users
 # ❌ Not protected: GET /public
 ```
+
+Matching rules:
+
+- `/api/*` protects `/api` and every path below it. The match stops at a `/` boundary, so `/api-v2` is not covered.
+- `*` is only allowed as a trailing `/*`. Patterns such as `/api/*/users` or `/api*` raise `ValueError` when the middleware is set up.
+- A route without `*` (for example `/api/premium`) covers that path and everything below it.
+- An exact match is used first.
+- A route value must be a `RoutePaymentConfig`, or a dict with only `price`, `description` and optionally `currency`. Unknown or missing keys raise `ValueError` at setup, so a typo can never leave a route unprotected.
 
 ---
 

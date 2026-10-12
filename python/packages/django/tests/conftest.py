@@ -10,6 +10,9 @@ def pytest_configure():
     settings.configure(
         DATABASES={'default': {'ENGINE': 'django.db.backends.sqlite3', 'NAME': ':memory:'}},
         INSTALLED_APPS=['django.contrib.contenttypes', 'django.contrib.auth'],
-        PRISM_CONFIG={'api_key': 'test-key', 'debug': True},
-        PRISM_ROUTES={'/api/premium/': {'price': 0.01, 'description': 'Premium API'}},
+        PRISM_CONFIG={
+            'API_KEY': 'test-key',
+            'DEBUG': True,
+            'ROUTES': {'/api/premium/': {'price': 0.01, 'description': 'Premium API'}},
+        },
     )

@@ -15,7 +15,8 @@ from prism_sdk_core import (
     PrismMiddlewareConfig,
     RoutePaymentConfig,
     HeaderAdapter,
-    detect_protocol_version
+    detect_protocol_version,
+    normalize_routes
 )
 
 
@@ -153,7 +154,7 @@ def add_prism_middleware(
             }
         )
     """
-    app.add_middleware(PrismPaymentMiddleware, config=config, routes=routes)
+    app.add_middleware(PrismPaymentMiddleware, config=config, routes=normalize_routes(routes))
 
 
 # Helper to get payer from request

@@ -58,36 +58,24 @@ pip install prism-fastapi
 ### Flask Example
 
 ```python
-from flask import Flask, jsonify
-from prism_flask import PrismMiddleware
+from flask import Flask, g, jsonify
+from prism_flask import prism_payment_middleware
+from prism_sdk_core import PrismMiddlewareConfig, RoutePaymentConfig
 
 app = Flask(__name__)
 
-# Configure Prism middleware
-app.wsgi_app = PrismMiddleware(
-    app.wsgi_app,
-    api_key='your-api-key',
-    use_sandbox=True,
-    routes={
-        '/api/premium': {
-            'price': 0.01,
-            'description': 'Premium API access'
-        },
-        '/api/data/*': {
-            'price': 0.005,
-            'description': 'Data API access'
-        }
-    }
+prism_payment_middleware(
+    app,
+    PrismMiddlewareConfig(api_key='your-api-key'),
+    {
+        '/api/premium': RoutePaymentConfig(price=0.01, description='Premium API access'),
+        '/api/data/*': RoutePaymentConfig(price=0.005, description='Data API access'),
+    },
 )
 
 @app.route('/api/premium')
 def premium():
-    # Payment info available in flask.g
-    payment = getattr(flask.g, 'prism_payment', None)
-    return jsonify({
-        'message': 'Premium content',
-        'payment_nonce': payment.nonce if payment else None
-    })
+    return jsonify({'message': 'Premium content', 'payer': getattr(g, '_prism_payer', None)})
 
 @app.route('/api/free')
 def free():
@@ -101,40 +89,55 @@ if __name__ == '__main__':
 
 ```python
 from fastapi import FastAPI, Request
-from prism_fastapi import PrismMiddleware
+from prism_fastapi import add_prism_middleware, get_payer
+from prism_sdk_core import PrismMiddlewareConfig, RoutePaymentConfig
 
 app = FastAPI()
 
-# Add Prism middleware
-app.add_middleware(
-    PrismMiddleware,
-    api_key='your-api-key',
-    use_sandbox=True,
-    routes={
-        '/api/premium': {
-            'price': 0.01,
-            'description': 'Premium API access'
-        },
-        '/api/data/*': {
-            'price': 0.005,
-            'description': 'Data API access'
-        }
-    }
+add_prism_middleware(
+    app,
+    PrismMiddlewareConfig(api_key='your-api-key'),
+    {
+        '/api/premium': RoutePaymentConfig(price=0.01, description='Premium API access'),
+        '/api/data/*': RoutePaymentConfig(price=0.005, description='Data API access'),
+    },
 )
 
 @app.get('/api/premium')
 async def premium(request: Request):
-    # Payment info available in request.state
-    payment = getattr(request.state, 'prism_payment', None)
-    return {
-        'message': 'Premium content',
-        'payment_nonce': payment.nonce if payment else None
-    }
+    return {'message': 'Premium content', 'payer': get_payer(request)}
 
 @app.get('/api/free')
 async def free():
     return {'message': 'Free content'}
 ```
+
+### Django Example
+
+```python
+# settings.py
+MIDDLEWARE = [
+    # ...
+    'prism_django.PrismPaymentMiddleware',
+]
+
+PRISM_CONFIG = {
+    'API_KEY': os.environ['PRISM_API_KEY'],
+    'ROUTES': {
+        '/api/premium/': {'price': 0.01, 'description': 'Premium API access'},
+        '/api/data/*': {'price': 0.005, 'description': 'Data API access'},
+    },
+}
+```
+
+Django raises `ImproperlyConfigured` at startup when `PRISM_CONFIG` has an unknown key, lacks `API_KEY` or `ROUTES`, or when a leftover `PRISM_ROUTES` setting is defined.
+
+### Route Patterns
+
+- `/api/data/*` protects `/api/data` and every path below it, stopping at a `/` boundary: `/api/data/users` is protected, `/api/database` is not.
+- A route without `*` (for example `/api/premium`) covers that path and everything below it.
+- `*` is only allowed as a trailing `/*`. Patterns such as `/api/*/users` or `/api*` are rejected at setup.
+- A route value is a `RoutePaymentConfig`, or a dict with only `price`, `description` and optionally `currency`. Unknown or missing keys are rejected at setup.
 
 ### Using PrismClient Directly
 
@@ -198,18 +201,21 @@ async def get_requirements(
 
 ```python
 import os
-from prism_flask import PrismMiddleware
+from prism_flask import prism_payment_middleware
+from prism_sdk_core import PrismMiddlewareConfig, RoutePaymentConfig
 
-app.wsgi_app = PrismMiddleware(
-    app.wsgi_app,
-    api_key=os.environ['PRISM_API_KEY'],
-    use_sandbox=os.environ.get('ENVIRONMENT') != 'production',
-    routes={
-        '/api/premium': {
-            'price': float(os.environ.get('PREMIUM_PRICE', '0.01')),
-            'description': 'Premium API access'
-        }
-    }
+prism_payment_middleware(
+    app,
+    PrismMiddlewareConfig(
+        api_key=os.environ['PRISM_API_KEY'],
+        debug=os.environ.get('ENVIRONMENT') != 'production',
+    ),
+    {
+        '/api/premium': RoutePaymentConfig(
+            price=float(os.environ.get('PREMIUM_PRICE', '0.01')),
+            description='Premium API access',
+        ),
+    },
 )
 ```
 

@@ -5,7 +5,8 @@ Django middleware for x402 payment protocol
 
 from __future__ import annotations
 
-from typing import Dict, Callable, Optional
+from typing import Dict, Callable, Optional, Tuple
+from django.core.exceptions import ImproperlyConfigured
 from django.http import JsonResponse, HttpRequest, HttpResponse
 from django.conf import settings
 from prism_sdk_core import (
@@ -13,8 +14,52 @@ from prism_sdk_core import (
     PrismMiddlewareConfig,
     RoutePaymentConfig,
     HeaderAdapter,
-    detect_protocol_version
+    detect_protocol_version,
+    normalize_routes
 )
+
+CONFIG_KEY_FIELDS = {
+    'API_KEY': 'api_key',
+    'BASE_URL': 'base_url',
+    'DEBUG': 'debug',
+    'TIMEOUT': 'timeout',
+    'X402_VERSION': 'x402_version',
+}
+ROUTES_KEY = 'ROUTES'
+
+
+def load_prism_settings() -> Tuple[PrismMiddlewareConfig, Dict[str, RoutePaymentConfig]]:
+    if hasattr(settings, 'PRISM_ROUTES'):
+        raise ImproperlyConfigured(
+            "PRISM_ROUTES is not read; put the routes under PRISM_CONFIG['ROUTES']"
+        )
+
+    raw = getattr(settings, 'PRISM_CONFIG', None)
+    if not isinstance(raw, dict):
+        raise ImproperlyConfigured("PRISM_CONFIG must be a dict")
+
+    allowed = sorted([*CONFIG_KEY_FIELDS, ROUTES_KEY])
+    unknown = sorted(str(key) for key in raw if key not in allowed)
+    if unknown:
+        raise ImproperlyConfigured(
+            f"PRISM_CONFIG has unknown keys: {', '.join(unknown)}. Allowed keys: {', '.join(allowed)}"
+        )
+
+    api_key = raw.get('API_KEY')
+    if not isinstance(api_key, str) or not api_key:
+        raise ImproperlyConfigured("PRISM_CONFIG['API_KEY'] must be a non-empty string")
+
+    if ROUTES_KEY not in raw:
+        raise ImproperlyConfigured("PRISM_CONFIG['ROUTES'] is required")
+    try:
+        routes = normalize_routes(raw[ROUTES_KEY])
+    except ValueError as e:
+        raise ImproperlyConfigured(f"PRISM_CONFIG['ROUTES'] is invalid: {e}") from e
+
+    config = PrismMiddlewareConfig(**{
+        field: raw[key] for key, field in CONFIG_KEY_FIELDS.items() if key in raw
+    })
+    return config, routes
 
 
 class PrismPaymentMiddleware:
@@ -28,44 +73,21 @@ class PrismPaymentMiddleware:
         ]
         
         PRISM_CONFIG = {
-            'api_key': os.environ['PRISM_API_KEY'],
-            'base_url': 'https://prism-api.1stdigital.tech',
-            'debug': False
-        }
-        
-        PRISM_ROUTES = {
-            '/api/premium/': {'price': 0.01, 'description': 'Premium API'},
-            '/api/weather/': {'price': '$0.001', 'description': 'Weather data'}
+            'API_KEY': os.environ['PRISM_API_KEY'],
+            'BASE_URL': 'https://prism-api.1stdigital.tech',
+            'DEBUG': False,
+            'ROUTES': {
+                '/api/premium/': {'price': 0.01, 'description': 'Premium API'},
+                '/api/data/*': {'price': '$0.001', 'description': 'Data API'}
+            }
         }
     """
     
     def __init__(self, get_response: Callable):
         self.get_response = get_response
 
-        prism_config_raw = getattr(settings, 'PRISM_CONFIG', {})
-        prism_routes_dict = getattr(settings, 'PRISM_ROUTES', {})
+        config, routes = load_prism_settings()
 
-        # Accept PrismMiddlewareConfig object or dict
-        if isinstance(prism_config_raw, PrismMiddlewareConfig):
-            config = prism_config_raw
-        else:
-            config = PrismMiddlewareConfig(
-                api_key=prism_config_raw.get('api_key', ''),
-                base_url=prism_config_raw.get('base_url', 'https://prism-api.1stdigital.tech'),
-                debug=prism_config_raw.get('debug', False),
-                timeout=prism_config_raw.get('timeout', 30),
-                x402_version=prism_config_raw.get('x402_version', 2),
-            )
-
-        # Accept RoutePaymentConfig objects or dicts
-        routes = {
-            path: (
-                cfg if isinstance(cfg, RoutePaymentConfig)
-                else RoutePaymentConfig(price=cfg['price'], description=cfg['description'])
-            )
-            for path, cfg in prism_routes_dict.items()
-        }
-        
         self.core = PrismMiddlewareCore(config, routes)
         self.config = config
     
@@ -213,27 +235,7 @@ class AsyncPrismPaymentMiddleware:
         self.get_response = get_response
         markcoroutinefunction(self)
 
-        prism_config_raw = getattr(settings, 'PRISM_CONFIG', {})
-        prism_routes_dict = getattr(settings, 'PRISM_ROUTES', {})
-
-        if isinstance(prism_config_raw, PrismMiddlewareConfig):
-            config = prism_config_raw
-        else:
-            config = PrismMiddlewareConfig(
-                api_key=prism_config_raw.get('api_key', ''),
-                base_url=prism_config_raw.get('base_url', 'https://prism-api.1stdigital.tech'),
-                debug=prism_config_raw.get('debug', False),
-                timeout=prism_config_raw.get('timeout', 30),
-                x402_version=prism_config_raw.get('x402_version', 2),
-            )
-
-        routes = {
-            path: (
-                cfg if isinstance(cfg, RoutePaymentConfig)
-                else RoutePaymentConfig(price=cfg['price'], description=cfg['description'])
-            )
-            for path, cfg in prism_routes_dict.items()
-        }
+        config, routes = load_prism_settings()
 
         self.core = PrismMiddlewareCore(config, routes)
         self.config = config

@@ -19,6 +19,7 @@ from .header_adapter import HeaderAdapter
 from .version_detector import detect_protocol_version, get_default_protocol_version
 from .schema_transformer import SchemaTransformer
 from .network_mapper import normalize_network
+from .route_matcher import find_route, validate_route_pattern
 
 
 class ConfigurationMode(str, Enum):
@@ -34,6 +35,32 @@ class RoutePaymentConfig:
     price: float | str  # 0.01 or "$0.001"
     description: str
     currency: Optional[str] = None
+
+
+ROUTE_CONFIG_KEYS = frozenset({'price', 'description', 'currency'})
+ROUTE_CONFIG_REQUIRED_KEYS = frozenset({'price', 'description'})
+
+
+def normalize_routes(routes: Dict[str, Any]) -> Dict[str, RoutePaymentConfig]:
+    if not isinstance(routes, dict):
+        raise ValueError(f"routes must be a dict of path pattern to route config, got {type(routes).__name__}")
+
+    normalized: Dict[str, RoutePaymentConfig] = {}
+    for pattern, value in routes.items():
+        validate_route_pattern(pattern)
+        if isinstance(value, RoutePaymentConfig):
+            normalized[pattern] = value
+            continue
+        if not isinstance(value, dict):
+            raise ValueError(f"Route {pattern!r} must be a RoutePaymentConfig or a dict, got {type(value).__name__}")
+        unknown = sorted(str(key) for key in value if key not in ROUTE_CONFIG_KEYS)
+        if unknown:
+            raise ValueError(f"Route {pattern!r} has unknown keys: {', '.join(unknown)}")
+        missing = sorted(ROUTE_CONFIG_REQUIRED_KEYS - value.keys())
+        if missing:
+            raise ValueError(f"Route {pattern!r} is missing required keys: {', '.join(missing)}")
+        normalized[pattern] = RoutePaymentConfig(**value)
+    return normalized
 
 
 @dataclass
@@ -298,23 +325,13 @@ class PrismMiddlewareCore:
         routes: Dict[str, RoutePaymentConfig]
     ):
         self.config = config
-        self.routes = routes
+        self.routes = normalize_routes(routes)
         self.client = PrismClient(config)
         self.allowed_versions: List[Literal[1, 2]] = config.allowed_versions if config.allowed_versions is not None else [2]
     
     def find_matching_route(self, path: str) -> Optional[RoutePaymentConfig]:
         """Find matching route configuration for path"""
-        # Exact match
-        if path in self.routes:
-            return self.routes[path]
-
-        # Prefix match — require '/' segment boundary to prevent /api matching /api-v2
-        for route_path, config in self.routes.items():
-            prefix = route_path.rstrip('/')
-            if path.startswith(prefix + '/'):
-                return config
-
-        return None
+        return find_route(path, self.routes)
     
     def handle_request(
         self,
@@ -673,6 +690,7 @@ __all__ = [
     'PrismMiddlewareCore',
     'PrismMiddlewareConfig',
     'RoutePaymentConfig',
+    'normalize_routes',
     'ConfigurationMode',
     'MiddlewareResult',
     'PaymentPayload',

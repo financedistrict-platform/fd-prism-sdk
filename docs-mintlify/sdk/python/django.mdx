@@ -60,7 +60,7 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 
     # Add Prism middleware
-    'prism_django.middleware.PrismPaymentMiddleware',
+    'prism_django.PrismPaymentMiddleware',
 ]
 
 # Prism configuration
@@ -124,6 +124,26 @@ PRISM_CONFIG = {
     }
 }
 ```
+
+### PRISM_CONFIG keys
+
+| Key | Required | Description |
+|-----|----------|-------------|
+| `API_KEY` | Yes | Your Prism API key (non-empty string) |
+| `ROUTES` | Yes | Dict of route pattern to `{'price': ..., 'description': ...}` |
+| `BASE_URL` | No | Prism gateway URL |
+| `DEBUG` | No | Enable debug logging |
+| `TIMEOUT` | No | Gateway request timeout in seconds |
+| `X402_VERSION` | No | Default x402 protocol version (`1` or `2`) |
+
+Django raises `ImproperlyConfigured` at startup when `PRISM_CONFIG` is not a dict, has an unknown key (for example a lowercase `api_key`), is missing `API_KEY` or `ROUTES`, or contains an invalid route. A separate `PRISM_ROUTES` setting is not read; defining one also raises `ImproperlyConfigured`, so routes can never be silently left unprotected.
+
+### Route patterns
+
+- `/api/premium/` protects `/api/premium`, `/api/premium/` and everything below it, but not `/api/premium-v2`.
+- `/api/data/*` protects `/api/data` and every path below it (`/api/data/users`, `/api/data/users/42`), but not `/api/database`.
+- `*` is only allowed as a trailing `/*`. Patterns such as `/api/*/users` or `/api*` are rejected.
+- An exact match is used first.
 
 ---
 

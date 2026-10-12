@@ -114,14 +114,13 @@ MIDDLEWARE = [
 ]
 
 PRISM_CONFIG = {
-    'api_key': 'your-api-key',
-    'base_url': 'https://prism-api.1stdigital.tech'
-}
-
-PRISM_ROUTES = {
-    '/api/premium/': {
-        'price': 0.01,
-        'description': 'Premium API'
+    'API_KEY': 'your-api-key',
+    'BASE_URL': 'https://prism-api.1stdigital.tech',
+    'ROUTES': {
+        '/api/premium/': {
+            'price': 0.01,
+            'description': 'Premium API'
+        }
     }
 }
 
