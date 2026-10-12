@@ -27,6 +27,7 @@ from .payment_validator import (
     validate_payment_resource,
     validate_payment_window,
 )
+from .payment_replay_guard import PaymentReplayGuard, payment_proof_key
 from .route_matcher import find_route, validate_route_pattern
 
 
@@ -43,6 +44,7 @@ class RoutePaymentConfig:
     price: float | str  # 0.01 or "$0.001"
     description: str
     currency: Optional[str] = None
+    settle_before_handler: bool = False
 
 
 PRISM_ROUTE_ATTR = '__prism_route__'
@@ -118,6 +120,7 @@ class PrismMiddlewareConfig:
     timeout: int = 30
     x402_version: Literal[1, 2] = 2  # Default to v2
     allowed_versions: Optional[List[Literal[1, 2]]] = None  # Default [2]; rejects payloads outside whitelist
+    replay_reservation_seconds: float = 600  # Longest an admitted proof stays reserved while its request runs
 
 
 class PaymentPayload(TypedDict, total=False):
@@ -260,6 +263,8 @@ class PrismClient:
                 self._api_url('settle'),
                 json={'paymentPayload': payment_payload, 'paymentRequirements': requirements},
             )
+            if response.status_code >= 500:
+                response.raise_for_status()
             data = response.json()
             if self.config.debug:
                 print(f"[Prism] settle response ({response.status_code}): {data}")
@@ -274,7 +279,7 @@ class PrismClient:
         except Exception as e:
             if self.config.debug:
                 print(f"[Prism] Settlement error: {e}")
-            return {'success': False, 'errorReason': str(e)}
+            raise
 
     # ------------------------------------------------------------------
     # Async methods
@@ -342,6 +347,8 @@ class PrismClient:
                 self._api_url('settle'),
                 json={'paymentPayload': payment_payload, 'paymentRequirements': requirements},
             )
+            if response.status_code >= 500:
+                response.raise_for_status()
             data = response.json()
             if self.config.debug:
                 print(f"[Prism] settle response ({response.status_code}): {data}")
@@ -355,7 +362,12 @@ class PrismClient:
         except Exception as e:
             if self.config.debug:
                 print(f"[Prism] Settlement error: {e}")
-            return {'success': False, 'errorReason': str(e)}
+            raise
+
+
+def _valid_before(payment: Dict[str, Any]) -> Any:
+    authorization = (payment.get('payload') or {}).get('authorization') or {}
+    return authorization.get('validBefore')
 
 
 class PrismMiddlewareCore:
@@ -372,6 +384,7 @@ class PrismMiddlewareCore:
         self.config = config
         self.routes = normalize_routes(routes)
         self.client = PrismClient(config)
+        self.replay_guard = PaymentReplayGuard(in_flight_ttl_seconds=config.replay_reservation_seconds)
         self.allowed_versions: List[Literal[1, 2]] = config.allowed_versions if config.allowed_versions is not None else [2]
     
     def find_matching_route(self, path: str) -> Optional[RoutePaymentConfig]:
@@ -469,11 +482,16 @@ class PrismMiddlewareCore:
                 }
             )
 
+        proof_key = self._reserve_proof(submitted_payment)
+        if proof_key is None:
+            return self._proof_rejection(requirements_for_client)
+
         # Verify payment — pass decoded payload and the matched requirement (not full envelope)
         try:
             verification = self.client.verify_payment(payment_data, single_requirement)
 
             if not verification.get('valid'):
+                self.replay_guard.release(proof_key)
                 return MiddlewareResult(
                     handled=True,
                     status_code=402,
@@ -484,6 +502,11 @@ class PrismMiddlewareCore:
                         'payment': requirements_for_client
                     }
                 )
+
+            if route_config.settle_before_handler:
+                settlement = self.settlement_callback(submitted_payment, single_requirement, 200)
+                if not settlement.get('success'):
+                    return self._settlement_rejection(settlement, requirements_for_client)
 
             # Store single_requirement for settlement (not the full envelope)
             return MiddlewareResult(
@@ -498,6 +521,7 @@ class PrismMiddlewareCore:
             )
 
         except Exception as e:
+            self.replay_guard.release(proof_key)
             # Always log server-side; never expose internal details to client
             print(f"[Prism] Payment verification error: {e}")
             return MiddlewareResult(
@@ -571,6 +595,68 @@ class PrismMiddlewareCore:
         if reason:
             return None, reason
         return requirement, None
+
+    def _reserve_proof(self, submitted_payment: Dict[str, Any]) -> Optional[str]:
+        proof_key = payment_proof_key(submitted_payment)
+        if proof_key is None or not self.replay_guard.try_reserve(proof_key, _valid_before(submitted_payment)):
+            return None
+        return proof_key
+
+    @staticmethod
+    def _proof_rejection(requirements_for_client: Dict[str, Any]) -> MiddlewareResult:
+        return MiddlewareResult(
+            handled=True,
+            status_code=402,
+            headers={'Content-Type': 'application/json'},
+            body={
+                'error': 'Invalid Payment',
+                'message': 'Payment proof is already being processed or has already been used',
+                'payment': requirements_for_client,
+            },
+        )
+
+    def _finish_settlement(self, payment: Dict[str, Any], result: Dict[str, Any]) -> None:
+        proof_key = payment_proof_key(payment)
+        if proof_key is None:
+            return
+        if result.get('success'):
+            self.replay_guard.mark_consumed(proof_key, _valid_before(payment), result)
+        else:
+            self.replay_guard.release(proof_key)
+
+    def _settlement_outcome_unknown(self, payment: Dict[str, Any], error: Exception) -> Dict[str, Any]:
+        print(f"[Prism] Settlement outcome unknown: {error}")
+        proof_key = payment_proof_key(payment)
+        if proof_key is not None:
+            self.replay_guard.mark_consumed(proof_key, _valid_before(payment))
+        return {'success': False, 'errorReason': 'Settlement outcome unknown'}
+
+    def _already_settled(self, payment: Dict[str, Any], status_code: int) -> Optional[Dict[str, Any]]:
+        proof_key = payment_proof_key(payment)
+        settlement = self.replay_guard.settlement_for(proof_key) if proof_key else None
+        if settlement is None:
+            return None
+        if status_code >= 400:
+            return {'success': False, 'reason': 'Status code >= 400'}
+        return settlement
+
+    @staticmethod
+    def _settlement_rejection(settlement: Dict[str, Any], requirements_for_client: Dict[str, Any]) -> MiddlewareResult:
+        return MiddlewareResult(
+            handled=True,
+            status_code=402,
+            headers={'Content-Type': 'application/json'},
+            body={
+                'error': 'Invalid Payment',
+                'message': settlement.get('errorReason') or 'Payment settlement failed',
+                'payment': requirements_for_client,
+            },
+        )
+
+    def _release_proof(self, payment: Dict[str, Any]) -> None:
+        proof_key = payment_proof_key(payment)
+        if proof_key is not None:
+            self.replay_guard.release(proof_key)
 
     _MAX_PAYMENT_HEADER_BYTES = 8192  # ~10× real x402 payload size
 
@@ -659,13 +745,23 @@ class PrismMiddlewareCore:
         status_code: int,
     ) -> Dict[str, Any]:
         """Settlement callback after successful response (sync)."""
+        already_settled = self._already_settled(payment, status_code)
+        if already_settled is not None:
+            return already_settled
         if status_code >= 400:
+            self._release_proof(payment)
             return {'success': False, 'reason': 'Status code >= 400'}
         mismatch = validate_payment_binding(payment, requirements)
         if mismatch:
+            self._release_proof(payment)
             print(f"[Prism] Settlement refused: {mismatch}")
             return {'success': False, 'errorReason': mismatch}
-        return self.client.settle_payment(payment, requirements, status_code)
+        try:
+            result = self.client.settle_payment(payment, requirements, status_code)
+        except Exception as e:
+            return self._settlement_outcome_unknown(payment, e)
+        self._finish_settlement(payment, result)
+        return result
 
     # ------------------------------------------------------------------
     # Async counterparts for ASGI frameworks
@@ -738,9 +834,14 @@ class PrismMiddlewareCore:
                 },
             )
 
+        proof_key = self._reserve_proof(submitted_payment)
+        if proof_key is None:
+            return self._proof_rejection(requirements_for_client)
+
         try:
             verification = await self.client.averify_payment(payment_data, single_requirement)
             if not verification.get('valid'):
+                self.replay_guard.release(proof_key)
                 return MiddlewareResult(
                     handled=True, status_code=402,
                     body={
@@ -749,6 +850,11 @@ class PrismMiddlewareCore:
                         'payment': requirements_for_client,
                     },
                 )
+            if route_config.settle_before_handler:
+                settlement = await self.asettlement_callback(submitted_payment, single_requirement, 200)
+                if not settlement.get('success'):
+                    return self._settlement_rejection(settlement, requirements_for_client)
+
             return MiddlewareResult(
                 handled=False,
                 payment_info={
@@ -760,6 +866,7 @@ class PrismMiddlewareCore:
                 },
             )
         except Exception as e:
+            self.replay_guard.release(proof_key)
             # Always log server-side; never expose internal details to client
             print(f"[Prism] Payment verification error: {e}")
             return MiddlewareResult(
@@ -774,13 +881,23 @@ class PrismMiddlewareCore:
         status_code: int,
     ) -> Dict[str, Any]:
         """Async settlement callback."""
+        already_settled = self._already_settled(payment, status_code)
+        if already_settled is not None:
+            return already_settled
         if status_code >= 400:
+            self._release_proof(payment)
             return {'success': False, 'reason': 'Status code >= 400'}
         mismatch = validate_payment_binding(payment, requirements)
         if mismatch:
+            self._release_proof(payment)
             print(f"[Prism] Settlement refused: {mismatch}")
             return {'success': False, 'errorReason': mismatch}
-        return await self.client.asettle_payment(payment, requirements, status_code)
+        try:
+            result = await self.client.asettle_payment(payment, requirements, status_code)
+        except Exception as e:
+            return self._settlement_outcome_unknown(payment, e)
+        self._finish_settlement(payment, result)
+        return result
 
 
 __all__ = [

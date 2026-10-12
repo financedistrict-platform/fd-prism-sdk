@@ -67,6 +67,7 @@ export function prismPaymentMiddleware(
       paymentHeader: paymentHeader || undefined,
       resourceUrl,
       protocolVersion,
+      requestScope: res,
     });
 
     // If middleware handled the request (returned error or 402)

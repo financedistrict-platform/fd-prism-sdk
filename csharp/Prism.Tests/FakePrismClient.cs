@@ -15,6 +15,7 @@ public class FakePrismClient : IPrismClient
     public Func<JsonElement, PaymentRequirements, Task<SettlePaymentResult>>? OnSettlePayment { get; set; }
 
     public List<PaymentRequirementsRequest> RequirementsRequests { get; } = new();
+    public int VerifyCalls { get; private set; }
 
     public Task<AuthInfoResponse> GetAuthInfoAsync(CancellationToken cancellationToken = default) =>
         Task.FromResult(new AuthInfoResponse());
@@ -33,9 +34,12 @@ public class FakePrismClient : IPrismClient
             });
     }
 
-    public Task<VerifyPaymentResult> VerifyPaymentAsync(JsonElement paymentPayload, PaymentRequirements paymentRequirements, CancellationToken cancellationToken = default) =>
-        OnVerifyPayment?.Invoke(paymentPayload, paymentRequirements)
+    public Task<VerifyPaymentResult> VerifyPaymentAsync(JsonElement paymentPayload, PaymentRequirements paymentRequirements, CancellationToken cancellationToken = default)
+    {
+        VerifyCalls++;
+        return OnVerifyPayment?.Invoke(paymentPayload, paymentRequirements)
             ?? Task.FromResult(new VerifyPaymentResult { IsValid = true, Payer = "0xPayer" });
+    }
 
     public Task<SettlePaymentResult> SettlePaymentAsync(JsonElement paymentPayload, PaymentRequirements paymentRequirements, CancellationToken cancellationToken = default) =>
         OnSettlePayment?.Invoke(paymentPayload, paymentRequirements)

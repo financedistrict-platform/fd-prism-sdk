@@ -28,6 +28,7 @@ public class PrismMiddlewareCore
     private readonly IReadOnlyDictionary<string, RoutePaymentConfig> _routes;
     private readonly ILogger<PrismMiddlewareCore>? _logger;
     private readonly Func<DateTimeOffset> _utcNow;
+    private readonly PaymentReplayGuard _replayGuard;
 
     public PrismMiddlewareCore(
         PrismMiddlewareConfig config,
@@ -37,6 +38,9 @@ public class PrismMiddlewareCore
         Func<DateTimeOffset>? utcNow = null)
     {
         _utcNow = utcNow ?? (() => DateTimeOffset.UtcNow);
+        _replayGuard = new PaymentReplayGuard(
+            _utcNow,
+            inFlightTtl: config.ReplayReservationSeconds > 0 ? TimeSpan.FromSeconds(config.ReplayReservationSeconds) : null);
         _debug = config.Debug;
         _client = client ?? new PrismClient(config);
         _defaultProtocolVersion = config.X402Version is 1 or 2 ? config.X402Version : 2;
@@ -128,6 +132,7 @@ public class PrismMiddlewareCore
 
     private async Task<MiddlewareResult> HandlePaymentVerificationAsync(string paymentHeader, RoutePaymentConfig routeConfig, string resourceUrl, int protocolVersion)
     {
+        string? reservedKey = null;
         try
         {
             var decoded = DecodePaymentHeader(paymentHeader);
@@ -187,14 +192,34 @@ public class PrismMiddlewareCore
                 return ToResult(ResponseBuilder.BuildInvalidPaymentResponse(mismatch, protocolVersion));
             }
 
+            var proofKey = PaymentReplayGuard.ProofKey(payload);
+            if (proofKey is null || !_replayGuard.TryReserve(proofKey))
+            {
+                return ToResult(ResponseBuilder.BuildInvalidPaymentResponse("Payment proof is already being processed or has already been used", protocolVersion));
+            }
+
+            reservedKey = proofKey;
+
             var verificationResult = await _client.VerifyPaymentAsync(payload, paymentRequirements).ConfigureAwait(false);
             if (!verificationResult.IsValid)
             {
+                _replayGuard.Release(proofKey);
                 LogDebug($"[PrismMiddlewareCore] Payment verification failed: {verificationResult.Error}");
                 return ToResult(ResponseBuilder.BuildInvalidPaymentResponse(verificationResult.Error, protocolVersion));
             }
 
             LogDebug($"[PrismMiddlewareCore] Payment verified. Payer: {verificationResult.Payer}");
+
+            if (routeConfig.SettleBeforeHandler)
+            {
+                var settlement = await SettlementCallbackAsync(payload, paymentRequirements, 200).ConfigureAwait(false);
+                if (settlement is not { Success: true })
+                {
+                    return ToResult(ResponseBuilder.BuildInvalidPaymentResponse(
+                        string.IsNullOrEmpty(settlement?.ErrorReason) ? "Payment settlement failed" : settlement.ErrorReason,
+                        protocolVersion));
+                }
+            }
 
             return new MiddlewareResult
             {
@@ -210,6 +235,11 @@ public class PrismMiddlewareCore
         }
         catch (Exception error)
         {
+            if (reservedKey is not null)
+            {
+                _replayGuard.Release(reservedKey);
+            }
+
             LogError($"Error processing payment: {error}");
             var response = ResponseBuilder.BuildErrorResponse(error, "payment", protocolVersion, LogError);
             return ToResult(response);
@@ -333,14 +363,24 @@ public class PrismMiddlewareCore
     /// </summary>
     public async Task<SettlePaymentResult?> SettlementCallbackAsync(JsonElement payment, PaymentRequirements paymentRequirements, int statusCode)
     {
+        var proofKey = PaymentReplayGuard.ProofKey(payment);
+
+        var alreadySettled = proofKey is null ? null : _replayGuard.SettlementFor<SettlePaymentResult>(proofKey);
+        if (alreadySettled is not null)
+        {
+            return statusCode >= 400 ? null : alreadySettled;
+        }
+
         if (statusCode >= 400)
         {
+            ReleaseProof(proofKey);
             return null;
         }
 
         var mismatch = PaymentValidator.ValidateBinding(payment, paymentRequirements);
         if (mismatch is not null)
         {
+            ReleaseProof(proofKey);
             LogError($"Settlement refused: {mismatch}");
             return new SettlePaymentResult { Success = false, ErrorReason = mismatch };
         }
@@ -348,6 +388,18 @@ public class PrismMiddlewareCore
         try
         {
             var result = await _client.SettlePaymentAsync(payment, paymentRequirements).ConfigureAwait(false);
+
+            if (proofKey is not null)
+            {
+                if (result.Success)
+                {
+                    _replayGuard.MarkConsumed(proofKey, PaymentReplayGuard.ValidBefore(payment), result);
+                }
+                else
+                {
+                    _replayGuard.Release(proofKey);
+                }
+            }
 
             if (result.Success && !string.IsNullOrEmpty(result.Transaction))
             {
@@ -362,8 +414,28 @@ public class PrismMiddlewareCore
         }
         catch (Exception error)
         {
+            if (proofKey is not null)
+            {
+                if (error is PrismGatewayError { StatusCode: >= 400 and < 500 })
+                {
+                    _replayGuard.Release(proofKey);
+                }
+                else
+                {
+                    _replayGuard.MarkConsumed(proofKey, PaymentReplayGuard.ValidBefore(payment));
+                }
+            }
+
             LogError($"Error during settlement: {error}");
             return null;
+        }
+    }
+
+    private void ReleaseProof(string? proofKey)
+    {
+        if (proofKey is not null)
+        {
+            _replayGuard.Release(proofKey);
         }
     }
 

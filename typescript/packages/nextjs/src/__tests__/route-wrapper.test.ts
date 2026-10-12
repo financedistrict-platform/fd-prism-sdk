@@ -9,23 +9,26 @@ const requirement = {
   amount: '10000',
 };
 
-const proof = Buffer.from(
-  JSON.stringify({
-    x402Version: 2,
-    accepted: requirement,
-    payload: {
-      signature: '0xsig',
-      authorization: {
-        from: '0xpayer',
-        to: '0xmerchant',
-        value: '10000',
-        validAfter: '0',
-        validBefore: '9999999999',
-        nonce: '0xnonce',
+const proofFor = (nonce: string) =>
+  Buffer.from(
+    JSON.stringify({
+      x402Version: 2,
+      accepted: requirement,
+      payload: {
+        signature: '0xsig',
+        authorization: {
+          from: '0xpayer',
+          to: '0xmerchant',
+          value: '10000',
+          validAfter: '0',
+          validBefore: '9999999999',
+          nonce,
+        },
       },
-    },
-  })
-).toString('base64');
+    })
+  ).toString('base64');
+
+const proof = proofFor('0xnonce');
 
 const createClient = () => ({
   getPaymentRequirements: jest.fn().mockResolvedValue({
@@ -41,9 +44,9 @@ const createClient = () => ({
   getAuthInfo: jest.fn(),
 });
 
-const paidRequest = (path: string, extraHeaders: Record<string, string> = {}) =>
+const paidRequest = (path: string, extraHeaders: Record<string, string> = {}, paymentProof: string = proof) =>
   new Request(`http://localhost${path}`, {
-    headers: { 'PAYMENT-SIGNATURE': proof, ...extraHeaders },
+    headers: { 'PAYMENT-SIGNATURE': paymentProof, ...extraHeaders },
   });
 
 const forgedHeaders = {
@@ -91,7 +94,7 @@ describe('withPrismPayment', () => {
     expect(response.headers.get('PAYMENT-RESPONSE')).not.toBeNull();
   });
 
-  it('settles on every protected route the proof is presented to', async () => {
+  it('settles on every protected route a proof is presented to', async () => {
     const client = createClient();
     const config = { apiKey: 'k', client: client as any };
     const routeA = withPrismPayment(
@@ -105,11 +108,31 @@ describe('withPrismPayment', () => {
       config
     );
 
-    await routeA(paidRequest('/api/a'));
-    await routeB(paidRequest('/api/b'));
+    await routeA(paidRequest('/api/a', {}, proofFor('0xnonce-a')));
+    await routeB(paidRequest('/api/b', {}, proofFor('0xnonce-b')));
 
     expect(client.verifyPayment).toHaveBeenCalledTimes(2);
     expect(client.settlePayment).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects a proof that was already settled on another protected route', async () => {
+    const client = createClient();
+    const config = { apiKey: 'k', client: client as any };
+    const handlerB = jest.fn().mockResolvedValue(Response.json({ route: 'b' }));
+    const routeA = withPrismPayment(
+      jest.fn().mockResolvedValue(Response.json({ route: 'a' })),
+      { price: 0.01, description: 'a' },
+      config
+    );
+    const routeB = withPrismPayment(handlerB, { price: 0.01, description: 'b' }, config);
+
+    const first = await routeA(paidRequest('/api/a'));
+    const second = await routeB(paidRequest('/api/b'));
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(402);
+    expect(handlerB).not.toHaveBeenCalled();
+    expect(client.settlePayment).toHaveBeenCalledTimes(1);
   });
 
   it('withholds the handler response when settlement fails', async () => {

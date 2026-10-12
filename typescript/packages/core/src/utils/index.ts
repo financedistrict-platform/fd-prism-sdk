@@ -12,6 +12,12 @@ export {
   validatePaymentResource,
 } from './payment-validator';
 export {
+  PaymentReplayGuard,
+  paymentProofKey,
+  paymentValidBefore,
+  replayGuardFor,
+} from './payment-replay-guard';
+export {
   build402Response,
   buildErrorResponse,
   buildInvalidPaymentHeaderResponse,

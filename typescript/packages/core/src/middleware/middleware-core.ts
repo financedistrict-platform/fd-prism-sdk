@@ -17,12 +17,17 @@ import {
   validatePaymentBinding,
   validatePaymentWindow,
   validatePaymentResource,
+  paymentProofKey,
+  paymentValidBefore,
+  replayGuardFor,
+  type PaymentReplayGuard,
   type MiddlewareResponse,
 } from '../utils';
 import {
   detectProtocolVersion,
   getDeclaredProtocolVersion,
 } from '../compatibility';
+import { PrismGatewayError } from '../types/errors';
 import type { PaymentPayloadV1 } from '../types/v1';
 import type { PaymentPayload as PaymentPayloadV2 } from '../types/v2';
 
@@ -46,6 +51,14 @@ export interface MiddlewareResult {
   };
 }
 
+export interface SettlementOutcome {
+  success: boolean;
+  transaction?: string;
+  payer?: string;
+  network?: string;
+  errorReason?: string;
+}
+
 /**
  * Request data for middleware processing
  */
@@ -58,6 +71,7 @@ export interface MiddlewareRequestData {
   resourceUrl: string;
   /** Protocol version (1 or 2, auto-detected if not provided) */
   protocolVersion?: 1 | 2;
+  requestScope?: object;
 }
 
 /**
@@ -90,6 +104,7 @@ export class PrismMiddlewareCore {
   private readonly mode: ConfigurationMode = 'on-demand';
   private readonly client: PrismClient;
   private readonly debug: boolean;
+  private readonly replayGuard: PaymentReplayGuard;
   private readonly defaultProtocolVersion: 1 | 2 = 2; // v2 is default
   private readonly allowedVersions: (1 | 2)[];
   private static readonly MAX_PAYMENT_HEADER_BYTES = 8192; // ~10× real x402 payload size
@@ -101,6 +116,7 @@ export class PrismMiddlewareCore {
     this.debug = config.debug || false;
     // Use injected client if provided (for testing), otherwise create new one
     this.client = config.client || new PrismClient(config);
+    this.replayGuard = replayGuardFor(config);
     // Allow configuration to override default protocol version
     if (config.x402Version === 1 || config.x402Version === 2) {
       this.defaultProtocolVersion = config.x402Version;
@@ -166,7 +182,7 @@ export class PrismMiddlewareCore {
     if (this.debug) {
       console.log('[PrismMiddlewareCore] Payment header present, verifying...');
     }
-    return this.handlePaymentVerification(paymentHeader, routeConfig, resourceUrl, protocolVersion);
+    return this.handlePaymentVerification(paymentHeader, routeConfig, resourceUrl, protocolVersion, requestData.requestScope);
   }
 
   /**
@@ -238,8 +254,10 @@ export class PrismMiddlewareCore {
     paymentHeader: string,
     routeConfig: any,
     resourceUrl: string,
-    protocolVersion: 1 | 2
+    protocolVersion: 1 | 2,
+    requestScope?: object
   ): Promise<MiddlewareResult> {
+    let reservedKey: string | null = null;
     try {
       // Decode and parse payment header (supports both v1 and v2)
       const paymentPayload = this.decodePaymentHeader(paymentHeader);
@@ -334,10 +352,24 @@ export class PrismMiddlewareCore {
         };
       }
 
+      const proofKey = paymentProofKey(paymentPayload);
+      if (!proofKey || !this.replayGuard.tryReserve(proofKey, paymentValidBefore(paymentPayload), requestScope)) {
+        const response = buildInvalidPaymentResponse(
+          'Payment proof is already being processed or has already been used',
+          protocolVersion
+        );
+        return {
+          handled: true,
+          ...response,
+        };
+      }
+      reservedKey = proofKey;
+
       // Verify payment with Gateway
       const verificationResult = await this.client.verifyPayment(paymentPayload as any, paymentRequirements);
 
       if (!verificationResult.isValid) {
+        this.replayGuard.release(proofKey);
         if (this.debug) {
           console.log('[PrismMiddlewareCore] Payment verification failed:', verificationResult.error);
         }
@@ -352,6 +384,20 @@ export class PrismMiddlewareCore {
         console.log('[PrismMiddlewareCore] Payment verified successfully, payer:', verificationResult.payer);
       }
 
+      if (routeConfig.settleBeforeHandler) {
+        const settlement = await this.settlementCallback(paymentPayload as any, paymentRequirements, 200);
+        if (!settlement || !settlement.success) {
+          const response = buildInvalidPaymentResponse(
+            settlement?.errorReason || 'Payment settlement failed',
+            protocolVersion
+          );
+          return {
+            handled: true,
+            ...response,
+          };
+        }
+      }
+
       // Payment is valid, allow request to continue
       return {
         handled: false,
@@ -362,6 +408,9 @@ export class PrismMiddlewareCore {
         },
       };
     } catch (error: any) {
+      if (reservedKey) {
+        this.replayGuard.release(reservedKey);
+      }
       console.error('Error processing payment:', error);
 
       // Build appropriate error response
@@ -481,20 +530,41 @@ export class PrismMiddlewareCore {
     paymentPayload: PaymentPayload,
     paymentRequirements: any,
     statusCode: number
-  ): Promise<{ success: boolean; transaction?: string; payer?: string; network?: string; errorReason?: string } | null> {
+  ): Promise<SettlementOutcome | null> {
+    const proofKey = paymentProofKey(paymentPayload);
+
+    const alreadySettled = proofKey ? this.replayGuard.settlementFor<SettlementOutcome>(proofKey) : undefined;
+    if (alreadySettled) {
+      return statusCode >= 400 ? null : alreadySettled;
+    }
+
     // Only settle if response was successful (< 400)
     if (statusCode >= 400) {
+      if (proofKey) {
+        this.replayGuard.release(proofKey);
+      }
       return null;
     }
 
     const mismatch = validatePaymentBinding(paymentPayload as any, paymentRequirements);
     if (mismatch) {
+      if (proofKey) {
+        this.replayGuard.release(proofKey);
+      }
       console.error('Settlement refused:', mismatch);
       return { success: false, errorReason: mismatch };
     }
 
     try {
       const settlementResult = await this.client.settlePayment(paymentPayload, paymentRequirements);
+
+      if (proofKey) {
+        if (settlementResult.success) {
+          this.replayGuard.markConsumed(proofKey, paymentValidBefore(paymentPayload), settlementResult);
+        } else {
+          this.replayGuard.release(proofKey);
+        }
+      }
 
       if (settlementResult.success && settlementResult.transaction) {
         console.log(
@@ -506,8 +576,19 @@ export class PrismMiddlewareCore {
 
       return settlementResult;
     } catch (error: any) {
+      if (proofKey) {
+        if (this.isDefiniteSettlementRefusal(error)) {
+          this.replayGuard.release(proofKey);
+        } else {
+          this.replayGuard.markConsumed(proofKey, paymentValidBefore(paymentPayload));
+        }
+      }
       console.error('Error during settlement:', error);
       return null;
     }
+  }
+
+  private isDefiniteSettlementRefusal(error: unknown): boolean {
+    return error instanceof PrismGatewayError && error.statusCode >= 400 && error.statusCode < 500;
   }
 }
