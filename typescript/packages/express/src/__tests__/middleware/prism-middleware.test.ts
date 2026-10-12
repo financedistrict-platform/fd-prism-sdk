@@ -177,6 +177,45 @@ describe('prismPaymentMiddleware', () => {
       expect(response.headers['x-payment-requirements']).toBeDefined();
     });
 
+    it.each(['/API/PREMIUM', '/Api/Premium', '/api/premium/', '/API/PREMIUM/'])(
+      'should return 402 for %s, which Express routes to the protected handler',
+      async (requestPath) => {
+        mockGetPaymentRequirements.mockResolvedValue({
+          x402Version: 1,
+          accepts: [
+            {
+              scheme: 'eip3009',
+              network: '1',
+              maxAmountRequired: '10000',
+              resource: 'http://127.0.0.1/api/premium',
+              description: 'Premium API access',
+              mimeType: 'application/json',
+              payTo: '0x1234567890abcdef',
+              maxTimeoutSeconds: 60,
+              asset: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
+              extra: null,
+            },
+          ],
+        });
+        const handler = jest.fn((req: Request, res: Response) => {
+          res.json({ data: 'Premium content' });
+        });
+
+        app.use(
+          prismPaymentMiddleware(
+            { apiKey: 'test-api-key', client: createMockClient() },
+            { '/api/premium': { price: '10000', description: 'Premium API access' } }
+          )
+        );
+        app.get('/api/premium', handler);
+
+        const response = await request(app).get(requestPath);
+
+        expect(response.status).toBe(402);
+        expect(handler).not.toHaveBeenCalled();
+      }
+    );
+
     it('should allow access with valid payment header', async () => {
       const mockRequirements = {
         x402Version: 1,
