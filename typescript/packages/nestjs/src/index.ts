@@ -12,9 +12,13 @@ import {
   Inject,
   NestMiddleware,
   DynamicModule,
+  InternalServerErrorException,
+  OnModuleInit,
+  UseGuards,
+  applyDecorators,
   createParamDecorator,
 } from '@nestjs/common';
-import { Reflector } from '@nestjs/core';
+import { APP_GUARD, DiscoveryModule, DiscoveryService, Reflector } from '@nestjs/core';
 import { Request, Response, NextFunction } from 'express';
 import {
   PrismMiddlewareCore,
@@ -23,6 +27,8 @@ import {
   type RoutePaymentConfig,
   HeaderAdapter,
   detectProtocolVersion,
+  findMatchingRoute,
+  parsePrice,
 } from '@financedistrict/prism-x402-sdk';
 
 /**
@@ -33,6 +39,12 @@ export interface PrismModuleOptions extends PrismMiddlewareConfig {
 }
 
 const PRISM_PAYMENT_KEY = 'prism:payment';
+const PRISM_PAYMENT_HANDLED = Symbol('prism:payment-handled');
+
+const routePrice = (routes: RoutesConfig, path: string): number | undefined => {
+  const matched = findMatchingRoute(path, routes);
+  return matched ? parsePrice(routes[matched].price) : undefined;
+};
 
 /**
  * Payment requirement decorator for routes
@@ -46,7 +58,11 @@ const PRISM_PAYMENT_KEY = 'prism:payment';
  * }
  * ```
  */
-export const Payment = (config: RoutePaymentConfig) => SetMetadata(PRISM_PAYMENT_KEY, config);
+export const Payment = (config?: RoutePaymentConfig) =>
+  applyDecorators(
+    SetMetadata(PRISM_PAYMENT_KEY, config ?? true),
+    UseGuards(PrismPaymentGuard),
+  );
 
 /**
  * Payer decorator to extract payer address from request
@@ -79,12 +95,8 @@ export const PaymentInfo = createParamDecorator(
 /**
  * Prism payment guard
  * 
- * @example
- * ```typescript
- * @UseGuards(PrismPaymentGuard)
- * @Controller('api')
- * export class ApiController { ... }
- * ```
+ * Registered globally by PrismModule.forRoot and applied by @Payment, so it
+ * does not need to be added with @UseGuards.
  */
 @Injectable()
 export class PrismPaymentGuard implements CanActivate {
@@ -94,19 +106,27 @@ export class PrismPaymentGuard implements CanActivate {
   ) { }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    // Get payment config from decorator
-    const paymentConfig = this.reflector.get<RoutePaymentConfig>(
+    // Get payment config from decorator (handler first, then controller)
+    const paymentConfig = this.reflector.getAllAndOverride<RoutePaymentConfig | true | undefined>(
       PRISM_PAYMENT_KEY,
-      context.getHandler(),
+      [context.getHandler(), context.getClass()],
     );
 
-    // If no payment config, allow access
+    // If no payment decorator, allow access
     if (!paymentConfig) {
       return true;
     }
 
     const request = context.switchToHttp().getRequest<Request>();
     const response = context.switchToHttp().getResponse<Response>();
+
+    const charged = (request as any)[PRISM_PAYMENT_HANDLED] as { price: number | undefined } | undefined;
+    if (charged) {
+      if (paymentConfig !== true && parsePrice(paymentConfig.price) !== charged.price) {
+        throw new InternalServerErrorException('Payment is configured with conflicting prices for this route');
+      }
+      return true;
+    }
 
     // Construct resource URL — prefer config.resourceBaseUrl to avoid Host header injection
     const guardBase = ((this.core as any).config.resourceBaseUrl ?? `${request.protocol}://${request.get('host')}`).replace(/\/$/, '');
@@ -124,16 +144,10 @@ export class PrismPaymentGuard implements CanActivate {
       }
     }
 
-    // Build routes config for this endpoint
-    const routes: RoutesConfig = {
-      [request.path]: paymentConfig,
-    };
-
-    // Create temporary core with this route
-    const tempCore = new PrismMiddlewareCore(
-      (this.core as any).config,
-      routes,
-    );
+    // Inline config applies to this route; a bare @Payment() uses the forRoot routes
+    const tempCore = paymentConfig === true
+      ? this.core
+      : new PrismMiddlewareCore((this.core as any).config, { [request.path]: paymentConfig });
 
     // Process request
     const result = await tempCore.handleRequest({
@@ -159,6 +173,11 @@ export class PrismPaymentGuard implements CanActivate {
     // Payment verified
     if (result.paymentInfo) {
       // Store payment info in request
+      (request as any)[PRISM_PAYMENT_HANDLED] = {
+        price: paymentConfig === true
+          ? routePrice((this.core as any).routes, request.path)
+          : parsePrice(paymentConfig.price),
+      };
       (request as any).payment = result.paymentInfo.payment;
       (request as any).payer = result.paymentInfo.payer;
 
@@ -221,9 +240,12 @@ export class PrismPaymentGuard implements CanActivate {
 
         return originalEnd(chunk, encodingOrCallback, callback);
       };
+
+      return true;
     }
 
-    return true;
+    // A @Payment route that was neither charged nor rejected must never reach the handler
+    throw new InternalServerErrorException('Payment is required but no price is configured for this route');
   }
 }
 
@@ -266,6 +288,7 @@ export class PrismPaymentMiddleware implements NestMiddleware {
     }
 
     if (result.paymentInfo) {
+      (req as any)[PRISM_PAYMENT_HANDLED] = { price: routePrice((this.core as any).routes, req.path) };
       (req as any).payment = result.paymentInfo.payment;
       (req as any).payer = result.paymentInfo.payer;
 
@@ -334,6 +357,43 @@ export class PrismPaymentMiddleware implements NestMiddleware {
   }
 }
 
+@Injectable()
+export class PrismRouteValidator implements OnModuleInit {
+  constructor(
+    private discovery: DiscoveryService,
+    private reflector: Reflector,
+    @Inject('PRISM_OPTIONS') private options: PrismModuleOptions,
+  ) { }
+
+  onModuleInit() {
+    if (Object.keys(this.options.routes ?? {}).length > 0) {
+      return;
+    }
+
+    for (const wrapper of this.discovery.getControllers()) {
+      const controller = wrapper.metatype as (Function & { prototype: any }) | null;
+      if (!controller?.prototype) {
+        continue;
+      }
+      for (const name of Object.getOwnPropertyNames(controller.prototype)) {
+        const handler = controller.prototype[name];
+        if (name === 'constructor' || typeof handler !== 'function') {
+          continue;
+        }
+        const config = this.reflector.getAllAndOverride<RoutePaymentConfig | true | undefined>(
+          PRISM_PAYMENT_KEY,
+          [handler, controller],
+        );
+        if (config === true) {
+          throw new Error(
+            `@Payment() on ${controller.name}.${name} has no price: pass a price to @Payment or configure routes in PrismModule.forRoot`,
+          );
+        }
+      }
+    }
+  }
+}
+
 /**
  * Prism module for NestJS
  * 
@@ -362,6 +422,7 @@ export class PrismModule {
 
     return {
       module: PrismModule,
+      imports: [DiscoveryModule],
       providers: [
         {
           provide: 'PRISM_OPTIONS',
@@ -373,7 +434,12 @@ export class PrismModule {
         },
         PrismPaymentGuard,
         PrismPaymentMiddleware,
+        PrismRouteValidator,
         Reflector,
+        {
+          provide: APP_GUARD,
+          useClass: PrismPaymentGuard,
+        },
       ],
       exports: [PrismPaymentGuard, PrismPaymentMiddleware, 'PRISM_CORE'],
       global: true,
