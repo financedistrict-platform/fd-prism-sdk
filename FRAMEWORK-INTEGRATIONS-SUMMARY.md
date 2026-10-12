@@ -380,7 +380,7 @@ Different frameworks expose payment info differently:
 - **Express:** `res.locals.payer`, `res.locals.payment`
 - **Fastify:** `request.prismPayer`, `request.prismPayment`
 - **NestJS:** `@Payer()` decorator injection
-- **Next.js:** `request.headers.get('x-prism-payer')`
+- **Next.js:** `getPayer(request)` and `getPaymentInfo(request)` (never read payment details from request headers)
 
 ---
 

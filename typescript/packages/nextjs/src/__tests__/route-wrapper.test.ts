@@ -1,5 +1,5 @@
 import * as nextjs from '../index';
-import { withPrismPayment } from '../index';
+import { withPrismPayment, getPayer, getPaymentInfo } from '../index';
 
 const proof = Buffer.from(
   JSON.stringify({
@@ -33,8 +33,17 @@ const createClient = () => ({
   getAuthInfo: jest.fn(),
 });
 
-const paidRequest = (path: string) =>
-  new Request(`http://localhost${path}`, { headers: { 'PAYMENT-SIGNATURE': proof } });
+const paidRequest = (path: string, extraHeaders: Record<string, string> = {}) =>
+  new Request(`http://localhost${path}`, {
+    headers: { 'PAYMENT-SIGNATURE': proof, ...extraHeaders },
+  });
+
+const forgedHeaders = {
+  'x-prism-payer': '0xattacker',
+  'X-Prism-Amount': '999999',
+  'x-prism-transaction-id': '0xforged',
+  'x-prism-anything': 'else',
+};
 
 describe('package surface', () => {
   it('exposes no verify-only middleware', () => {
@@ -108,5 +117,94 @@ describe('withPrismPayment', () => {
 
     expect(response.status).toBe(402);
     expect(await response.text()).not.toContain('secret');
+  });
+});
+
+describe('forged payment headers', () => {
+  const routeConfig = { price: 0.01, description: 'a' };
+
+  it('removes client-supplied x-prism headers before the handler runs', async () => {
+    const client = createClient();
+    let seen: string[] = [];
+    const route = withPrismPayment(
+      async (request) => {
+        seen = [];
+        request.headers.forEach((_, name) => seen.push(name));
+        return Response.json({ ok: true });
+      },
+      routeConfig,
+      { apiKey: 'k', client: client as any }
+    );
+
+    await route(paidRequest('/api/a', forgedHeaders));
+
+    expect(seen.filter((name) => name.startsWith('x-prism-'))).toEqual([]);
+  });
+
+  it('removes the payment proof headers before the handler runs', async () => {
+    const client = createClient();
+    let seen: string[] = [];
+    const route = withPrismPayment(
+      async (request) => {
+        seen = [];
+        request.headers.forEach((_, name) => seen.push(name));
+        return Response.json({ ok: true });
+      },
+      routeConfig,
+      { apiKey: 'k', client: client as any }
+    );
+
+    await route(paidRequest('/api/a', { 'X-PAYMENT': proof }));
+
+    expect(seen).not.toContain('payment-signature');
+    expect(seen).not.toContain('x-payment');
+    expect(client.verifyPayment).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports the verified payer and amount, not forged header values', async () => {
+    const client = createClient();
+    client.getPaymentRequirements.mockResolvedValue({
+      accepts: [{ scheme: 'exact', network: 'eip155:84532', asset: '0xasset', amount: '10000' }],
+    });
+    let payer: string | null = null;
+    let info: ReturnType<typeof getPaymentInfo> | null = null;
+    const route = withPrismPayment(
+      async (request) => {
+        payer = getPayer(request);
+        info = getPaymentInfo(request);
+        return Response.json({ ok: true });
+      },
+      routeConfig,
+      { apiKey: 'k', client: client as any }
+    );
+
+    await route(paidRequest('/api/a', forgedHeaders));
+
+    expect(payer).toBe('0xpayer');
+    expect(info).toEqual({ payer: '0xpayer', amount: '10000' });
+  });
+
+  it('never trusts payment headers on a request that did not pass verification', () => {
+    const forged = new Request('http://localhost/api/a', { headers: forgedHeaders });
+
+    expect(getPayer(forged)).toBeNull();
+    expect(getPaymentInfo(forged)).toEqual({ payer: null, amount: null });
+  });
+
+  it('does not carry verified payment info over to a different request', async () => {
+    const client = createClient();
+    let other: Request | null = null;
+    const route = withPrismPayment(
+      async (request) => {
+        other = request.clone();
+        return Response.json({ ok: true });
+      },
+      routeConfig,
+      { apiKey: 'k', client: client as any }
+    );
+
+    await route(paidRequest('/api/a', forgedHeaders));
+
+    expect(getPayer(other!)).toBeNull();
   });
 });
