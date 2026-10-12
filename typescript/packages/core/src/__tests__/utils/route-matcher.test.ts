@@ -74,4 +74,62 @@ describe('findMatchingRoute', () => {
     };
     expect(findMatchingRoute('/DATA/Special/', mixed)).toBe('/data/special');
   });
+
+  describe('precedence', () => {
+    const cheapFirst: RoutesConfig = {
+      '/api/*': { price: 0.001 },
+      '/api/premium/*': { price: 0.01 },
+      '/api/premium/gold/*': { price: 0.05 },
+    };
+
+    it('picks the longest wildcard prefix when a cheaper wildcard is configured first', () => {
+      expect(findMatchingRoute('/api/premium/silver', cheapFirst)).toBe('/api/premium/*');
+      expect(findMatchingRoute('/api/premium/gold/bar', cheapFirst)).toBe('/api/premium/gold/*');
+      expect(findMatchingRoute('/api/free', cheapFirst)).toBe('/api/*');
+    });
+
+    it('does not depend on config order', () => {
+      const reversed: RoutesConfig = {
+        '/api/premium/gold/*': { price: 0.05 },
+        '/api/premium/*': { price: 0.01 },
+        '/api/*': { price: 0.001 },
+      };
+      expect(findMatchingRoute('/api/premium/silver', reversed)).toBe('/api/premium/*');
+      expect(findMatchingRoute('/api/premium/gold/bar', reversed)).toBe('/api/premium/gold/*');
+    });
+
+    it('does not depend on price', () => {
+      const expensiveBroad: RoutesConfig = {
+        '/api/*': { price: 5 },
+        '/api/premium/*': { price: 0.01 },
+      };
+      expect(findMatchingRoute('/api/premium/silver', expensiveBroad)).toBe('/api/premium/*');
+    });
+
+    it('prefers a wildcard over the root wildcard regardless of order', () => {
+      const rootFirst: RoutesConfig = {
+        '/*': { price: 0.001 },
+        '/api/*': { price: 0.01 },
+      };
+      expect(findMatchingRoute('/api/x', rootFirst)).toBe('/api/*');
+      expect(findMatchingRoute('/other', rootFirst)).toBe('/*');
+    });
+
+    it('applies longest prefix after case and trailing slash normalisation', () => {
+      expect(findMatchingRoute('/API/Premium/Silver/', cheapFirst)).toBe('/api/premium/*');
+    });
+
+    it('lets an exact route beat every wildcard', () => {
+      const withExact: RoutesConfig = {
+        '/api/*': { price: 0.001 },
+        '/api/premium/*': { price: 0.01 },
+        '/api/premium/gold': { price: 0.05 },
+      };
+      expect(findMatchingRoute('/api/premium/gold', withExact)).toBe('/api/premium/gold');
+    });
+
+    it('keeps a longer wildcard from matching across a segment boundary', () => {
+      expect(findMatchingRoute('/api/premium-extra/x', cheapFirst)).toBe('/api/*');
+    });
+  });
 });

@@ -79,6 +79,30 @@ public class PrismMiddlewareCoreTests
     }
 
     [Theory]
+    [InlineData("/api/*", "/api/premium/*")]
+    [InlineData("/api/premium/*", "/api/*")]
+    public async Task OverlappingWildcards_QuoteThePriceOfTheLongestPrefix(string first, string second)
+    {
+        var prices = new Dictionary<string, string> { ["/api/*"] = "$0.001", ["/api/premium/*"] = "$0.01" };
+        var routes = new Dictionary<string, RoutePaymentConfig>
+        {
+            [first] = new() { Price = prices[first] },
+            [second] = new() { Price = prices[second] },
+        };
+        var client = new FakePrismClient();
+        var core = new PrismMiddlewareCore(Config(), routes, client);
+
+        var result = await core.HandleRequestAsync(new MiddlewareRequestData
+        {
+            Path = "/api/premium/silver",
+            ResourceUrl = "https://api.test/api/premium/silver",
+        });
+
+        Assert.Equal(402, result.StatusCode);
+        Assert.Equal(0.01, Assert.Single(client.RequirementsRequests).RequestedAmount);
+    }
+
+    [Theory]
     [InlineData("/API/premium")]
     [InlineData("/api/premium/")]
     [InlineData("/Api/Premium/")]

@@ -28,6 +28,8 @@ public static class RouteMatcher
             }
         }
 
+        string? bestRoute = null;
+        var bestPrefixLength = -1;
         foreach (var route in routes.Keys)
         {
             var normalizedRoute = NormalizePath(route);
@@ -37,13 +39,15 @@ public static class RouteMatcher
             }
 
             var prefix = normalizedRoute[..^2];
-            if (string.Equals(normalizedPath, prefix, StringComparison.OrdinalIgnoreCase)
-                || normalizedPath.StartsWith(prefix + "/", StringComparison.OrdinalIgnoreCase))
+            if (prefix.Length > bestPrefixLength
+                && (string.Equals(normalizedPath, prefix, StringComparison.OrdinalIgnoreCase)
+                    || normalizedPath.StartsWith(prefix + "/", StringComparison.OrdinalIgnoreCase)))
             {
-                return route;
+                bestRoute = route;
+                bestPrefixLength = prefix.Length;
             }
         }
 
-        return null;
+        return bestRoute;
     }
 }

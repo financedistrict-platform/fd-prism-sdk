@@ -27,9 +27,12 @@ def find_route(path: str, routes: Mapping[str, T]) -> Optional[T]:
     if path in routes:
         return routes[path]
 
+    best_config: Optional[T] = None
+    best_prefix_length = -1
     for pattern, config in routes.items():
         prefix = route_prefix(pattern)
-        if path == prefix or path.startswith(prefix + '/'):
-            return config
+        if len(prefix) > best_prefix_length and (path == prefix or path.startswith(prefix + '/')):
+            best_config = config
+            best_prefix_length = len(prefix)
 
-    return None
+    return best_config

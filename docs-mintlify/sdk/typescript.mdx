@@ -380,7 +380,7 @@ Matches:
 
 ### Route Priority
 
-When multiple patterns match, **most specific wins**:
+When multiple patterns match, **most specific wins**. An exact route beats every wildcard, and among wildcards the one with the longest matching prefix wins. The result never depends on price or on the order of the keys in the config:
 
 ```typescript
 {
@@ -390,7 +390,9 @@ When multiple patterns match, **most specific wins**:
 }
 ```
 
-Request to `/api/premium/gold` → uses `0.05` price
+- `/api/premium/gold` → uses `0.05` (exact route)
+- `/api/premium/silver` → uses `0.01` (longest wildcard prefix, even though `/api/*` is cheaper and listed first)
+- `/api/free` → uses `0.001`
 
 ## Accessing Payment Info
 

@@ -44,14 +44,20 @@ export function findMatchingRoute(path: string, routes: RoutesConfig): string | 
     }
   }
 
+  let bestRoute: string | null = null;
+  let bestPrefixLength = -1;
   for (const { route, pattern } of patterns) {
     if (pattern.endsWith('/*')) {
       const prefix = normalizePath(pattern.slice(0, -2));
-      if (normalizedPath === prefix || normalizedPath.startsWith(prefix + '/')) {
-        return route;
+      if (
+        prefix.length > bestPrefixLength &&
+        (normalizedPath === prefix || normalizedPath.startsWith(prefix + '/'))
+      ) {
+        bestRoute = route;
+        bestPrefixLength = prefix.length;
       }
     }
   }
 
-  return null;
+  return bestRoute;
 }
