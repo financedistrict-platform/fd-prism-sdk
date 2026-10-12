@@ -6,17 +6,20 @@ icon: "n"
 
 ## Overview
 
-The **@financedistrict/prism-x402-sdk-nextjs** package provides middleware for Next.js API routes and App Router route handlers. Supports both Pages Router and App Router architectures.
+The **@financedistrict/prism-x402-sdk-nextjs** package protects Next.js App Router route handlers with `withPrismPayment`. The wrapper verifies the payment proof, runs your handler, and settles the payment before the response is returned.
 
-<CardGroup cols={3}>
+<Warning>
+  Next.js `middleware.ts` runs before the route handler and cannot see its
+  response, so it cannot settle a payment. Never gate paid routes with
+  middleware alone: a route that is not wrapped with `withPrismPayment` is not
+  protected.
+</Warning>
+
+<CardGroup cols={2}>
   <Card title="App Router" icon="layer-group">
     Support for Next.js 13.5.9+, 14.2.25+ and 15.2.3+ App Router. Older
     releases are affected by the middleware bypass CVE-2025-29927 and are
     excluded by the peer range.
-  </Card>
-  
-  <Card title="Pages Router" icon="file">
-    Works with traditional API routes
   </Card>
 
   <Card title="Edge Runtime" icon="bolt">
@@ -55,88 +58,41 @@ import { NextRequest, NextResponse } from "next/server";
 import { withPrismPayment } from "@financedistrict/prism-x402-sdk-nextjs";
 
 async function handler(request: NextRequest) {
-  // Access payer from request
-  const payer = (request as any).payer;
-
   return NextResponse.json({
     message: "Premium content",
-    payer,
   });
 }
 
-// Wrap handler with payment middleware
-export const GET = withPrismPayment(handler, {
-  apiKey: process.env.PRISM_API_KEY || "dev-key-123",
-  baseUrl: "https://prism-gw.test.1stdigital.tech",
-  price: 0.01, // $0.01 USD
-  description: "Premium API",
-});
-```
-
----
-
-## Quick Start (Pages Router)
-
-```typescript
-// pages/api/premium.ts
-import { NextApiRequest, NextApiResponse } from "next";
-import { createPrismMiddleware } from "@financedistrict/prism-x402-sdk-nextjs";
-
-const prismMiddleware = createPrismMiddleware({
-  apiKey: process.env.PRISM_API_KEY || "dev-key-123",
-  baseUrl: "https://prism-gw.test.1stdigital.tech",
-});
-
-export default async function handler(
-  req: NextApiRequest,
-  res: NextApiResponse
-) {
-  // Apply middleware
-  const paymentResult = await prismMiddleware(req, res, {
+export const GET = withPrismPayment(
+  handler,
+  {
     price: 0.01, // $0.01 USD
     description: "Premium API",
-  });
-
-  if (!paymentResult) return; // Middleware handled response
-
-  // Payment verified
-  res.status(200).json({
-    message: "Premium content",
-    payer: (req as any).payer,
-  });
-}
+  },
+  {
+    apiKey: process.env.PRISM_API_KEY || "dev-key-123",
+    baseUrl: "https://prism-gw.test.1stdigital.tech",
+  }
+);
 ```
 
 ---
 
 ## Configuration
 
-### App Router Options
-
 ```typescript
-interface PrismRouteConfig {
-  apiKey: string;
-  baseUrl?: string;
-  debug?: boolean;
+withPrismPayment(handler, routeConfig, prismConfig);
+
+interface RoutePaymentConfig {
   price: number | string; // USD price
   description: string;
   mimeType?: string;
 }
-```
 
-### Pages Router Options
-
-```typescript
 interface PrismMiddlewareConfig {
   apiKey: string;
   baseUrl?: string;
   debug?: boolean;
-}
-
-interface RoutePaymentConfig {
-  price: number | string;
-  description: string;
-  mimeType?: string;
 }
 ```
 
@@ -154,11 +110,11 @@ async function handler(request: NextRequest) {
   return NextResponse.json({ data: "Premium" });
 }
 
-export const GET = withPrismPayment(handler, {
-  apiKey: process.env.PRISM_API_KEY!,
-  price: 0.01,
-  description: "Premium API",
-});
+export const GET = withPrismPayment(
+  handler,
+  { price: 0.01, description: "Premium API" },
+  { apiKey: process.env.PRISM_API_KEY! }
+);
 ```
 
 ### Multiple Methods
@@ -176,63 +132,54 @@ async function postHandler(request: NextRequest) {
   return NextResponse.json({ received: body });
 }
 
-export const GET = withPrismPayment(getHandler, {
-  apiKey: process.env.PRISM_API_KEY!,
-  price: 0.01,
-  description: "Get data",
-});
+export const GET = withPrismPayment(
+  getHandler,
+  { price: 0.01, description: "Get data" },
+  { apiKey: process.env.PRISM_API_KEY! }
+);
 
-export const POST = withPrismPayment(postHandler, {
-  apiKey: process.env.PRISM_API_KEY!,
-  price: 0.02,
-  description: "Post data",
-});
+export const POST = withPrismPayment(
+  postHandler,
+  { price: 0.02, description: "Post data" },
+  { apiKey: process.env.PRISM_API_KEY! }
+);
 ```
 
 ---
 
 ## Accessing Payment Info
 
-### App Router
+Use `getPayer` and `getPaymentInfo` inside a wrapped handler. They return values the SDK recorded after the proof was verified. They return `null` for any request that was not verified by `withPrismPayment`, including a copy made with `request.clone()`.
 
 ```typescript
+import {
+  withPrismPayment,
+  getPayer,
+  getPaymentInfo,
+} from "@financedistrict/prism-x402-sdk-nextjs";
+
 async function handler(request: NextRequest) {
-  // Payer address attached to request
-  const payer = (request as any).payer;
+  const payer = getPayer(request);
   // '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb'
 
-  // Payment object in custom property
-  const payment = (request as any).prismPayment;
+  const { amount } = getPaymentInfo(request);
 
-  return NextResponse.json({
-    message: "Data",
-    payer,
-    network: payment?.network,
-  });
+  return NextResponse.json({ message: "Data", payer, amount });
 }
+
+export const GET = withPrismPayment(
+  handler,
+  { price: 0.01, description: "Premium API" },
+  { apiKey: process.env.PRISM_API_KEY! }
+);
 ```
 
-### Pages Router
-
-```typescript
-export default async function handler(
-  req: NextApiRequest,
-  res: NextApiResponse
-) {
-  const paymentResult = await prismMiddleware(req, res, {
-    price: 0.01,
-    description: "Premium",
-  });
-
-  if (!paymentResult) return;
-
-  // Access payer
-  const payer = (req as any).payer;
-  const payment = (res as any).locals?.payment;
-
-  res.json({ payer, network: payment?.network });
-}
-```
+<Warning>
+  Never read payment details from request headers. The wrapper removes every
+  `x-prism-*` header and the payment proof headers (`PAYMENT-SIGNATURE`,
+  `X-PAYMENT`) from the request before your handler runs, so a client cannot
+  forge them. Use `getPayer` and `getPaymentInfo` instead.
+</Warning>
 
 ---
 

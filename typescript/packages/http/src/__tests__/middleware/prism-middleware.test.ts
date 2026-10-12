@@ -1,4 +1,6 @@
 import * as http from 'http';
+import { Readable } from 'stream';
+import { AddressInfo } from 'net';
 import { prismPaymentMiddleware, PrismHttpRequest } from '../../middleware/prism-middleware';
 
 // Create mock client methods
@@ -14,6 +16,26 @@ const createMockClient = () => ({
   settlePayment: mockSettlePayment,
   getAuthInfo: mockGetAuthInfo,
 });
+
+const validPaymentHeader = () =>
+  Buffer.from(
+    JSON.stringify({
+      x402Version: 1,
+      scheme: 'eip3009',
+      network: '1',
+      payload: {
+        signature: '0xsignature123',
+        authorization: {
+          from: '0xabcdef1234567890',
+          to: '0x1234567890abcdef',
+          value: '10000',
+          validAfter: '0',
+          validBefore: '9999999999',
+          nonce: '0xnonce123',
+        },
+      },
+    })
+  ).toString('base64');
 
 // Helper to make HTTP requests for testing
 function makeRequest(
@@ -236,15 +258,15 @@ describe('prismPaymentMiddleware (HTTP)', () => {
         network: '1',
         asset: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
         payload: {
-          signature: '0xsignature123',
-          authorization: {
-            from: '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb',
-            to: '0x1234567890123456789012345678901234567890',
-            value: '10000',
-            validAfter: '0',
-            validBefore: '999999999999',
-            nonce: '0x1234',
-          },
+          from: '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb',
+          to: '0x1234567890123456789012345678901234567890',
+          value: '10000',
+          validAfter: '0',
+          validBefore: '999999999999',
+          nonce: '0x1234',
+          v: 27,
+          r: '0xabc',
+          s: '0xdef',
         },
       };
 
@@ -263,7 +285,6 @@ describe('prismPaymentMiddleware (HTTP)', () => {
       const middleware = prismPaymentMiddleware(
         {
           apiKey: 'test-api-key',
-          allowedVersions: [1, 2],
           client: createMockClient(),
         },
         {
@@ -290,7 +311,7 @@ describe('prismPaymentMiddleware (HTTP)', () => {
         method: 'GET',
         path: '/api/premium',
         headers: {
-          'X-PAYMENT': Buffer.from(JSON.stringify(mockPayment)).toString('base64'),
+          'X-PAYMENT': validPaymentHeader(),
         },
       });
 
@@ -351,23 +372,7 @@ describe('prismPaymentMiddleware (HTTP)', () => {
         method: 'GET',
         path: '/api/premium',
         headers: {
-          'X-PAYMENT': Buffer.from(JSON.stringify({
-            x402Version: 1,
-            scheme: 'eip3009',
-            network: '1',
-            asset: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
-            payload: {
-              signature: '0xinvalidsignature',
-              authorization: {
-                from: '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb',
-                to: '0x1234567890123456789012345678901234567890',
-                value: '10000',
-                validAfter: '0',
-                validBefore: '999999999999',
-                nonce: '0x1234',
-              },
-            },
-          })).toString('base64'),
+          'X-PAYMENT': validPaymentHeader(),
         },
       });
 
@@ -453,6 +458,197 @@ describe('prismPaymentMiddleware (HTTP)', () => {
       const data = JSON.parse(response.body);
       expect(data.error).toBe('Payment service unavailable');
       expect(data.retryAfter).toBe(60);
+    });
+  });
+
+  describe('Streaming settlement', () => {
+    const SECRET = 'PAID-CONTENT-SECRET';
+
+    const paidRequirements = {
+      x402Version: 1,
+      accepts: [
+        {
+          scheme: 'eip3009',
+          network: '1',
+          maxAmountRequired: '10000',
+          resource: 'http://localhost/api/premium',
+          description: 'Premium API access',
+        },
+      ],
+    };
+
+    const allowPayment = () => {
+      mockGetPaymentRequirements.mockResolvedValue(paidRequirements);
+      mockVerifyPayment.mockResolvedValue({ isValid: true, payer: '0xabcdef1234567890' });
+    };
+
+    const allowSettlement = () => {
+      allowPayment();
+      mockSettlePayment.mockResolvedValue({
+        success: true,
+        payer: '0xabcdef1234567890',
+        transaction: '0xtxhash123',
+        network: '1',
+      });
+    };
+
+    const failSettlement = () => {
+      allowPayment();
+      mockSettlePayment.mockResolvedValue({ success: false, errorReason: 'insufficient_funds' });
+    };
+
+    const startServer = async (
+      handler: (req: PrismHttpRequest, res: http.ServerResponse) => void,
+      extraConfig: { maxHeldResponseBytes?: number } = {}
+    ) => {
+      const middleware = prismPaymentMiddleware(
+        { apiKey: 'test-api-key', client: createMockClient(), ...extraConfig },
+        { '/api/premium': { price: '10000', description: 'Premium API access' } }
+      );
+      server = http.createServer(async (req: PrismHttpRequest, res) => {
+        const handled = await middleware(req, res);
+        if (!handled) {
+          handler(req, res);
+        }
+      });
+      await new Promise<void>((resolve) => {
+        server.listen(0, () => resolve());
+      });
+    };
+
+    const pay = () =>
+      makeRequest(server, {
+        method: 'GET',
+        path: '/api/premium',
+        headers: { 'X-PAYMENT': validPaymentHeader() },
+      });
+
+    it('does not deliver res.write chunks when settlement fails', async () => {
+      failSettlement();
+      await startServer((_req, res) => {
+        res.write(SECRET);
+        res.end();
+      });
+
+      const response = await pay();
+
+      expect(response.statusCode).toBe(402);
+      expect(response.body).not.toContain(SECRET);
+      expect(JSON.parse(response.body).error).toBe('Payment settlement failed');
+    });
+
+    it('does not deliver piped streams when settlement fails', async () => {
+      failSettlement();
+      await startServer((_req, res) => {
+        Readable.from([SECRET, SECRET]).pipe(res);
+      });
+
+      const response = await pay();
+
+      expect(response.statusCode).toBe(402);
+      expect(response.body).not.toContain(SECRET);
+    });
+
+    it('does not deliver writeHead and write content when settlement fails', async () => {
+      failSettlement();
+      await startServer((_req, res) => {
+        res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Content-Length': '999' });
+        res.write(`data: ${SECRET}\n\n`);
+        res.end();
+      });
+
+      const response = await pay();
+
+      expect(response.statusCode).toBe(402);
+      expect(response.body).not.toContain(SECRET);
+      expect(JSON.parse(response.body).error).toBe('Payment settlement failed');
+    });
+
+    it('returns 402 when the settlement call rejects', async () => {
+      allowPayment();
+      mockSettlePayment.mockRejectedValue(new Error('gateway down'));
+      await startServer((_req, res) => {
+        res.write(SECRET);
+        res.end();
+      });
+
+      const response = await pay();
+
+      expect(response.statusCode).toBe(402);
+      expect(response.body).not.toContain(SECRET);
+    });
+
+    it('delivers every chunk and the settlement header when settlement succeeds', async () => {
+      allowSettlement();
+      await startServer((_req, res) => {
+        res.writeHead(200, { 'Content-Type': 'text/plain' });
+        res.write('alpha-');
+        res.write(Buffer.from('beta-'));
+        res.end('gamma');
+      });
+
+      const response = await pay();
+
+      expect(response.statusCode).toBe(200);
+      expect(response.body).toBe('alpha-beta-gamma');
+      expect(response.headers['x-payment-response']).toBeDefined();
+      expect(mockSettlePayment).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not settle when the handler answers with an error status', async () => {
+      allowPayment();
+      await startServer((_req, res) => {
+        res.statusCode = 500;
+        res.write('boom');
+        res.end();
+      });
+
+      const response = await pay();
+
+      expect(response.statusCode).toBe(500);
+      expect(response.body).toBe('boom');
+      expect(mockSettlePayment).not.toHaveBeenCalled();
+    });
+
+    it('fails closed when the response exceeds the configured hold limit', async () => {
+      allowSettlement();
+      await startServer(
+        (_req, res) => {
+          for (let i = 0; i < 4; i += 1) {
+            res.write(`${SECRET}-`.padEnd(512, 'x'));
+          }
+          res.end();
+        },
+        { maxHeldResponseBytes: 1024 }
+      );
+
+      const response = await pay();
+
+      expect(response.statusCode).toBe(500);
+      expect(response.body).not.toContain(SECRET);
+      expect(JSON.parse(response.body).error).toBe('Response too large to settle');
+      expect(mockSettlePayment).not.toHaveBeenCalled();
+    });
+
+    it('does not settle when the client disconnects before the handler finishes', async () => {
+      allowSettlement();
+      await startServer((_req, res) => {
+        res.writeHead(200, { 'Content-Type': 'text/plain' });
+        res.write('partial-');
+        setTimeout(() => res.end(SECRET), 150);
+      });
+
+      const { port } = server.address() as AddressInfo;
+      const clientReq = http.get(
+        { port, path: '/api/premium', headers: { 'X-PAYMENT': validPaymentHeader() } },
+        () => undefined
+      );
+      clientReq.on('error', () => undefined);
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      clientReq.destroy();
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      expect(mockSettlePayment).not.toHaveBeenCalled();
     });
   });
 });

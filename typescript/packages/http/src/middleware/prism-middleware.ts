@@ -7,6 +7,9 @@ import {
   PrismMiddlewareCore,
   HeaderAdapter,
   detectProtocolVersion,
+  holdResponseUntilSettled,
+  createResponseSettler,
+  resolveMaxHeldResponseBytes,
 } from '@financedistrict/prism-x402-sdk';
 
 /**
@@ -76,6 +79,7 @@ export function prismPaymentMiddleware(
 ) {
   // Create middleware core instance
   const core = new PrismMiddlewareCore(config, routes);
+  const maxHeldBytes = resolveMaxHeldResponseBytes(config.maxHeldResponseBytes);
 
   return async function (
     req: PrismHttpRequest,
@@ -124,97 +128,15 @@ export function prismPaymentMiddleware(
       req.payment = result.paymentInfo.payment;
       req.payer = result.paymentInfo.payer;
 
-      // Set up response interception for settlement
-      const originalEnd = res.end.bind(res);
-      const originalWriteHead = res.writeHead.bind(res);
-      let endCalled = false;
-      let settlementDone = false;
-      let transactionHash: string | undefined;
+      const registered = holdResponseUntilSettled(
+        res,
+        createResponseSettler(core, result.paymentInfo, res, protocolVersion),
+        { protocolVersion, maxHeldBytes }
+      );
 
-      // Intercept writeHead to add X-PAYMENT-RESPONSE header if available
-      res.writeHead = function (statusCode: number, statusMessage?: any, headers?: any): any {
-        // Handle both writeHead(statusCode, headers) and writeHead(statusCode, statusMessage, headers)
-        let finalHeaders = headers;
-        if (typeof statusMessage === 'object' && !headers) {
-          finalHeaders = statusMessage;
-        }
-
-        // Add transaction hash header if settlement completed
-        if (settlementDone && transactionHash) {
-          if (!finalHeaders) {
-            finalHeaders = {};
-          }
-          // Determine which header to use based on protocol version
-          const headerName = protocolVersion === 1 ? 'X-PAYMENT-RESPONSE' : 'PAYMENT-RESPONSE';
-          finalHeaders[headerName] = transactionHash;
-        }
-
-        if (typeof statusMessage === 'string') {
-          return originalWriteHead(statusCode, statusMessage, finalHeaders);
-        } else {
-          return originalWriteHead(statusCode, finalHeaders);
-        }
-      };
-
-      res.end = async function (chunk?: any, encodingOrCallback?: any, callback?: any): Promise<any> {
-        if (endCalled) {
-          return originalEnd(chunk, encodingOrCallback, callback);
-        }
-        endCalled = true;
-
-        // Perform settlement BEFORE sending response (if status < 400)
-        if (res.statusCode < 400) {
-          try {
-            const settlementResult = await core.settlementCallback(
-              result.paymentInfo!.payment,
-              result.paymentInfo!.paymentRequirements,
-              res.statusCode
-            );
-
-            if (settlementResult && settlementResult.success && settlementResult.transaction) {
-              const settlementResponse = JSON.stringify(settlementResult);
-              transactionHash = Buffer.from(settlementResponse).toString('base64');
-              settlementDone = true;
-
-              // If writeHead wasn't called yet, add header now
-              if (!res.headersSent) {
-                HeaderAdapter.setSettlementResponse(
-                  (name, value) => res.setHeader(name, value),
-                  transactionHash,
-                  protocolVersion
-                );
-              }
-            } else if (!settlementResult || (settlementResult && !settlementResult.success)) {
-              // Settlement failed or returned null - DO NOT send data, return 402 Payment Required
-              const errorReason = settlementResult?.errorReason || 'Settlement processing failed';
-              console.error('Settlement failed:', errorReason);
-              if (!res.headersSent) {
-                res.statusCode = 402;
-                res.setHeader('Content-Type', 'application/json');
-              }
-              return originalEnd(JSON.stringify({
-                x402Version: protocolVersion,
-                error: 'Payment settlement failed',
-                details: errorReason,
-              }), encodingOrCallback, callback);
-            }
-          } catch (err: any) {
-            console.error('Settlement error:', err);
-            // Settlement error - DO NOT send data, return 500 error
-            if (!res.headersSent) {
-              res.statusCode = 500;
-              res.setHeader('Content-Type', 'application/json');
-            }
-            return originalEnd(JSON.stringify({
-              x402Version: protocolVersion,
-              error: 'Settlement processing error',
-              details: 'An error occurred while settling the payment. Please try again.',
-            }), encodingOrCallback, callback);
-          }
-        }
-
-        return originalEnd(chunk, encodingOrCallback, callback);
-      } as any;
+      if (!registered) {
+        return true;
+      }
     }
 
     // Allow request to continue (payment verified or route not protected)

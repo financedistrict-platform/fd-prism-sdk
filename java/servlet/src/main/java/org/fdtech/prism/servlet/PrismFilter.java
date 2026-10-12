@@ -107,7 +107,7 @@ public class PrismFilter implements Filter {
 
         chain.doFilter(request, responseWrapper);
 
-        if (responseWrapper.getStatus() < 400) {
+        if (!responseWrapper.errorSent() && responseWrapper.getStatus() < 400) {
             String settlementHeader = middleware.settle(decision);
 
             if (settlementHeader == null) {
@@ -141,6 +141,7 @@ public class PrismFilter implements Filter {
         private final ByteArrayOutputStream buffer = new ByteArrayOutputStream();
         private ServletOutputStream outputStream;
         private PrintWriter writer;
+        private boolean errorSent;
 
         public ResponseWrapper(HttpServletResponse response) {
             super(response);
@@ -216,7 +217,34 @@ public class PrismFilter implements Filter {
             setHeader("Location", location);
         }
 
+        @Override
+        public void sendError(int statusCode) throws IOException {
+            discardBufferedOutput();
+            super.sendError(statusCode);
+        }
+
+        @Override
+        public void sendError(int statusCode, String message) throws IOException {
+            discardBufferedOutput();
+            super.sendError(statusCode, message);
+        }
+
+        boolean errorSent() {
+            return errorSent;
+        }
+
+        private void discardBufferedOutput() {
+            if (writer != null) {
+                writer.flush();
+            }
+            buffer.reset();
+            errorSent = true;
+        }
+
         public void commit() throws IOException {
+            if (errorSent) {
+                return;
+            }
             if (writer != null) {
                 writer.flush();
             }

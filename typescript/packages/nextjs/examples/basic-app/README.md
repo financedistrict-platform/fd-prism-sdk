@@ -4,17 +4,15 @@ Basic Next.js App Router application demonstrating payment-protected API routes 
 
 ## Features
 
-- âœ… Middleware-based payment protection for API routes
+- âœ… Route-level payment protection with settlement (`withPrismPayment`)
 - âœ… Next.js 14+ App Router support
 - âœ… TypeScript
 - âœ… Multiple payment configurations (ETH and USD)
-- âœ… Payment info passed via headers
 
 ## Structure
 
 ```
 basic-app/
-â”œâ”€â”€ middleware.ts              # Prism middleware configuration
 â”œâ”€â”€ app/
 â”‚   â”œâ”€â”€ page.tsx              # Home page (free)
 â”‚   â””â”€â”€ api/
@@ -101,48 +99,26 @@ Response (200 OK):
 
 ## How It Works
 
-1. **Middleware** (`middleware.ts`):
-   - Intercepts API requests matching `/api/:path*`
-   - Checks for payment via `X-PAYMENT` header
-   - Returns 402 if payment required
-   - Passes payment info to route handlers via headers
+Each paid route is wrapped with `withPrismPayment` (`app/api/*/route.ts`):
 
-2. **Protected Routes** (`app/api/*/route.ts`):
-   - Access payment info via `request.headers.get('x-prism-payer')`
-   - Return protected content
-   - Settlement happens automatically after successful response
+1. Without a payment header it returns 402 with the payment requirements.
+2. With a payment header it verifies the proof, runs the handler, then settles the payment.
+3. If settlement fails, the handler response is withheld and the client gets an error.
+
+Next.js `middleware.ts` runs before the route handler and cannot see its response, so it cannot settle a payment. Do not use middleware to gate paid routes; a route that is not wrapped with `withPrismPayment` is not protected.
 
 ## Configuration
 
-Edit `middleware.ts` to add more protected routes:
+Shared settings live in `lib/prism-config.ts`. Price and description are set per route:
 
 ```typescript
-export const middleware = createPrismMiddleware({
-  apiKey: 'your-api-key',
-  routes: {
-    '/api/premium': { price: 0.01, description: 'Premium API' },
-    '/api/data': { price: 0.005, description: 'Data API' },
-    '/api/ai': { price: '$0.05', description: 'AI API' },
-  },
-});
-```
-
-## Alternative: Route-Level Protection
-
-Instead of middleware, you can protect individual routes:
-
-```typescript
-// app/api/premium/route.ts
+// app/api/data/route.ts
 import { withPrismPayment } from '@financedistrict/prism-x402-sdk-nextjs';
+import { prismConfig } from '../../../lib/prism-config';
 
 export const GET = withPrismPayment(
-  async (request: Request) => {
-    return Response.json({ message: 'Premium content' });
-  },
-  { price: 0.01, description: 'Premium API' },
-  {
-    apiKey: process.env.PRISM_API_KEY || 'dev-key',
-    baseUrl: process.env.PRISM_BASE_URL,
-  }
+  async () => Response.json({ message: 'Data' }),
+  { price: 0.005, description: 'Data API' },
+  prismConfig
 );
 ```

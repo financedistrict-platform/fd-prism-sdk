@@ -5,15 +5,18 @@ import {
   RoutesConfig,
   HeaderAdapter,
   detectProtocolVersion,
+  holdResponseUntilSettled,
+  createResponseSettler,
+  resolveMaxHeldResponseBytes,
 } from '@financedistrict/prism-x402-sdk';
 
 /**
  * Create Prism payment middleware for Express
- * 
+ *
  * @param config - Prism middleware configuration
  * @param routes - Routes configuration with payment requirements
  * @returns Express middleware function
- * 
+ *
  * @example
  * ```typescript
  * app.use(prismPaymentMiddleware(
@@ -39,6 +42,7 @@ export function prismPaymentMiddleware(
 ) {
   // Create middleware core instance
   const core = new PrismMiddlewareCore(config, routes);
+  const maxHeldBytes = resolveMaxHeldResponseBytes(config.maxHeldResponseBytes);
 
   return async function (req: Request, res: Response, next: NextFunction) {
     // Construct resource URL — prefer config.resourceBaseUrl to avoid Host header injection
@@ -83,67 +87,15 @@ export function prismPaymentMiddleware(
       res.locals.payment = result.paymentInfo.payment;
       res.locals.payer = result.paymentInfo.payer;
 
-      // Intercept res.end() to perform settlement before sending response
-      const originalEnd = res.end.bind(res);
-      let endCalled = false;
+      const registered = holdResponseUntilSettled(
+        res,
+        createResponseSettler(core, result.paymentInfo, res, protocolVersion),
+        { protocolVersion, maxHeldBytes }
+      );
 
-      res.end = async function (chunk?: any, encodingOrCallback?: any, callback?: any): Promise<any> {
-        if (endCalled) {
-          return originalEnd(chunk, encodingOrCallback, callback);
-        }
-        endCalled = true;
-
-        // Perform settlement BEFORE sending response (if status < 400)
-        if (res.statusCode < 400) {
-          try {
-            const settlementResult = await core.settlementCallback(
-              result.paymentInfo!.payment,
-              result.paymentInfo!.paymentRequirements,
-              res.statusCode
-            );
-
-            if (settlementResult && settlementResult.success && settlementResult.transaction) {
-              // Set settlement response header (v1 or v2 format)
-              if (!res.headersSent) {
-                const settlementResponse = JSON.stringify(settlementResult);
-                const settlementBase64 = Buffer.from(settlementResponse).toString('base64');
-                HeaderAdapter.setSettlementResponse(
-                  (name, value) => res.setHeader(name, value),
-                  settlementBase64,
-                  protocolVersion
-                );
-              }
-            } else if (!settlementResult || (settlementResult && !settlementResult.success)) {
-              // Settlement failed or returned null - DO NOT send data, return 402 Payment Required
-              const errorReason = settlementResult?.errorReason || 'Settlement processing failed';
-              console.error('Settlement failed:', errorReason);
-              if (!res.headersSent) {
-                res.status(402);
-                res.setHeader('Content-Type', 'application/json');
-              }
-              return originalEnd(JSON.stringify({
-                x402Version: protocolVersion,
-                error: 'Payment settlement failed',
-                details: errorReason,
-              }));
-            }
-          } catch (error: any) {
-            console.error('Settlement error:', error);
-            // Settlement eprotocolVersionror - DO NOT send data, return 500 error
-            if (!res.headersSent) {
-              res.status(500);
-              res.setHeader('Content-Type', 'application/json');
-            }
-            return originalEnd(JSON.stringify({
-              x402Version: protocolVersion,
-              error: 'Settlement processing error',
-              details: 'An error occurred while settling the payment. Please try again.',
-            }));
-          }
-        }
-
-        return originalEnd(chunk, encodingOrCallback, callback);
-      } as any;
+      if (!registered) {
+        return;
+      }
     }
 
     // Execute the route handler

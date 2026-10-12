@@ -187,6 +187,12 @@ fastify.addHook('onSend', async (request, reply, payload) => {
 });
 ```
 
+<Warning>
+  The `onSend` hook does not run for responses written through `reply.raw` or after `reply.hijack()`.
+  Such responses reach the client before settlement. Do not use `reply.raw` or `reply.hijack()` on paid
+  routes; answer with `reply.send()`. The Fastify plugin does not apply `maxHeldResponseBytes`.
+</Warning>
+
 See [Settlement Validation](/concepts/settlement-validation) for details.
 
 ---

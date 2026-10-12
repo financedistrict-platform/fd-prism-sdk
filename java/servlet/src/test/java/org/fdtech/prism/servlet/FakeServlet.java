@@ -61,6 +61,7 @@ final class FakeServlet {
         private final Map<String, String> headers = new LinkedHashMap<>();
         private int status = 200;
         private boolean committed;
+        private boolean errorSent;
         private PrintWriter writer;
         private String characterEncoding = "ISO-8859-1";
         private final HttpServletResponse proxy = (HttpServletResponse) Proxy.newProxyInstance(
@@ -76,6 +77,16 @@ final class FakeServlet {
 
         String header(String name) {
             return headers.get(name);
+        }
+
+        boolean errorSent() {
+            return errorSent;
+        }
+
+        private void rejectWriteAfterError() {
+            if (errorSent) {
+                throw new IllegalStateException("response closed by sendError");
+            }
         }
 
         boolean committed() {
@@ -143,10 +154,17 @@ final class FakeServlet {
                     status = HttpServletResponse.SC_FOUND;
                     headers.put("Location", (String) args[0]);
                     return null;
+                case "sendError":
+                    rejectWriteAfterError();
+                    committed = true;
+                    errorSent = true;
+                    status = (Integer) args[0];
+                    return null;
                 case "getOutputStream":
                     return new ServletOutputStream() {
                         @Override
                         public void write(int b) throws IOException {
+                            rejectWriteAfterError();
                             committed = true;
                             sent.write(b);
                         }
@@ -164,6 +182,7 @@ final class FakeServlet {
                     writer = new PrintWriter(new OutputStreamWriter(new ByteArrayOutputStream() {
                         @Override
                         public synchronized void write(byte[] bytes, int offset, int length) {
+                            rejectWriteAfterError();
                             committed = true;
                             sent.write(bytes, offset, length);
                         }

@@ -92,6 +92,7 @@ interface PrismMiddlewareConfig {
   apiKey: string; // Your Prism API key
   baseUrl?: string; // Gateway URL (optional, defaults to production)
   debug?: boolean; // Enable debug logging (default: false)
+  maxHeldResponseBytes?: number; // Largest paid response held before settlement (default: 8388608, 8 MiB)
 }
 ```
 
@@ -182,30 +183,51 @@ app.use(
 
 ---
 
-### Dynamic Pricing (per-route middleware)
+### Dynamic Pricing (override one route)
+
+List the override next to the wildcard in a **single middleware**. An exact route always wins over a wildcard, so the override route is quoted and settled at its own price and every other `/api/*` route keeps the wildcard price:
 
 ```javascript
-// Global middleware for common routes
+app.use(
+  prismPaymentMiddleware(config, {
+    "/api/*": { price: 0.001, description: "API" },
+    "/api/expensive": { price: 0.1, description: "Expensive operation" },
+  })
+);
+
+app.get("/api/expensive", (req, res) => {
+  res.json({ result: "Expensive computation" });
+});
+```
+
+The first `402` already quotes the right price, and the payment is verified and settled once. This works for overrides that are cheaper and for overrides that are more expensive than the wildcard.
+
+#### Alternative: stacked middleware
+
+Stacking a route-level middleware behind a global one also settles **exactly once**, against the route-level requirements. It has caveats, so prefer the single-middleware form above:
+
+```javascript
 app.use(
   prismPaymentMiddleware(config, {
     "/api/*": { price: 0.001, description: "API" },
   })
 );
 
-// Override for specific route with custom middleware
 app.get(
   "/api/expensive",
   prismPaymentMiddleware(config, {
-    "/api/expensive": {
-      price: 0.1,
-      description: "Expensive operation",
-    },
+    "/api/expensive": { price: 0.1, description: "Expensive operation" },
   }),
   (req, res) => {
     res.json({ result: "Expensive computation" });
   }
 );
 ```
+
+- The first `402` quotes the **global** price, because the global middleware answers before the route-level one runs. A client pays the global price first, then receives a second `402` for the route price. Use stacking only for overrides that are **more expensive** than the global price.
+- With a **cheaper** override, the client has already signed the higher global amount and can pay more than the route price.
+- The payment must pass verification in every middleware that matches the route. If the route-level middleware rejects it, the request ends with a `402` and nothing is settled.
+- A payment middleware reached after the handler has already ended the response does nothing: it does not call `next()` and does not settle again. The first middleware's settlement decides whether the response is delivered.
 
 ---
 
@@ -248,36 +270,37 @@ app.get("/api/premium", (req, res) => {
 
 ## Settlement Validation
 
-The Express middleware uses **res.end() interception** to validate settlement before sending data:
+The Express middleware **holds the whole response** until settlement succeeds. `res.write()`, `res.writeHead()`, `res.flushHeaders()` and `res.end()` are intercepted. Nothing reaches the client until `res.end()` is called and settlement has succeeded:
 
 ```javascript
 // Internal implementation (you don't need to write this!)
-const originalEnd = res.end.bind(res);
+res.write = (chunk) => { held.push(chunk); return true; };
+res.writeHead = (status, headers) => { /* record status and headers only */ };
+res.flushHeaders = () => { /* no-op until settled */ };
 
-res.end = async function (chunk, encoding, callback) {
-  // Perform settlement BEFORE sending response
-  const settlementResult = await core.settlementCallback(...);
-
-  if (!settlementResult || !settlementResult.success) {
-    // ❌ Settlement failed - send error instead of data
-    res.status(402);
-    return originalEnd(JSON.stringify({
-      error: 'Payment settlement failed',
-      details: settlementResult?.errorReason
-    }));
-  }
-
-  // ✅ Settlement succeeded - send original data with transaction hash
-  res.setHeader('X-PAYMENT-RESPONSE', settlementResult.transaction);
-  return originalEnd(chunk, encoding, callback);
+res.end = (chunk) => {
+  held.push(chunk);
+  settle().then((settlementResult) => {
+    if (!settlementResult?.success || !settlementResult.transaction) {
+      // ❌ Settlement failed - drop held data, send 402 instead
+      return sendError(402);
+    }
+    // ✅ Settlement succeeded - set X-PAYMENT-RESPONSE, then release held data
+    release(held);
+  });
 };
 ```
 
 **Key Points:**
 
-- Works with `res.json()`, `res.send()`, `res.sendFile()`, etc.
-- Settlement happens **before** data reaches the client
-- Original response is replaced with 402 error if settlement fails
+- Works with `res.json()`, `res.send()`, `res.sendFile()`, `res.write()`, `stream.pipe(res)` and `res.writeHead()`
+- No byte of the body, and no headers, reach the client before settlement succeeds
+- Held data is dropped and replaced with a 402 error if settlement fails, or a 500 error if settlement throws
+- Responses with a status of 400 or higher are not settled and are sent as the handler wrote them
+- The response is buffered in memory until `res.end()` is called, so open-ended streams (endless SSE, long-polling) deliver nothing on a paid route. Keep paid responses finite, and end the response once per paid unit
+- The buffer is capped at `maxHeldResponseBytes` (default 8 MiB). A response that grows past the cap is discarded, the payment is **not** settled, and the client receives `500` with `Response too large to settle`. Raise the limit for larger paid responses, or serve large assets from an unpaid route after payment
+- If the client disconnects before the response ends, nothing is settled: nothing was delivered, so nothing is charged
+- Writing directly to `res.socket` bypasses the middleware and must not be used on paid routes
 
 See [Settlement Validation](/concepts/settlement-validation) for details.
 
@@ -626,6 +649,7 @@ interface PrismMiddlewareConfig {
   apiKey: string; // Required: Your Prism API key
   baseUrl?: string; // Optional: Gateway URL (default: production)
   debug?: boolean; // Optional: Enable debug logging (default: false)
+  maxHeldResponseBytes?: number; // Optional: Hold limit in bytes (default: 8388608, 8 MiB)
 }
 ```
 
