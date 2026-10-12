@@ -92,6 +92,7 @@ interface PrismMiddlewareConfig {
   apiKey: string; // Your Prism API key
   baseUrl?: string; // Gateway URL (optional, defaults to production)
   debug?: boolean; // Enable debug logging (default: false)
+  maxHeldResponseBytes?: number; // Largest paid response held before settlement (default: 8388608, 8 MiB)
 }
 ```
 
@@ -280,6 +281,8 @@ res.end = (chunk) => {
 - Held data is dropped and replaced with a 402 error if settlement fails, or a 500 error if settlement throws
 - Responses with a status of 400 or higher are not settled and are sent as the handler wrote them
 - The response is buffered in memory until `res.end()` is called, so open-ended streams (endless SSE, long-polling) deliver nothing on a paid route. Keep paid responses finite, and end the response once per paid unit
+- The buffer is capped at `maxHeldResponseBytes` (default 8 MiB). A response that grows past the cap is discarded, the payment is **not** settled, and the client receives `500` with `Response too large to settle`. Raise the limit for larger paid responses, or serve large assets from an unpaid route after payment
+- If the client disconnects before the response ends, nothing is settled: nothing was delivered, so nothing is charged
 - Writing directly to `res.socket` bypasses the middleware and must not be used on paid routes
 
 See [Settlement Validation](/concepts/settlement-validation) for details.
@@ -629,6 +632,7 @@ interface PrismMiddlewareConfig {
   apiKey: string; // Required: Your Prism API key
   baseUrl?: string; // Optional: Gateway URL (default: production)
   debug?: boolean; // Optional: Enable debug logging (default: false)
+  maxHeldResponseBytes?: number; // Optional: Hold limit in bytes (default: 8388608, 8 MiB)
 }
 ```
 
