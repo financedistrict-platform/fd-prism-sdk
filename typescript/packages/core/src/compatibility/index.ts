@@ -16,6 +16,7 @@ export {
 // Protocol version detection (used internally)
 export {
   detectProtocolVersion,
+  getDeclaredProtocolVersion,
   isV1Payload,
   isV2Payload,
   isValidProtocolVersion,

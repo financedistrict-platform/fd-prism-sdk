@@ -125,7 +125,7 @@ public class PrismMiddlewareCore
 
             var payload = decoded.Value;
 
-            var payloadVersion = VersionDetector.DetectProtocolVersion(payload);
+            var payloadVersion = VersionDetector.GetDeclaredProtocolVersion(payload);
             if (!payloadVersion.HasValue || !_allowedVersions.Contains(payloadVersion.Value))
             {
                 LogDebug($"[PrismMiddlewareCore] Payload version {payloadVersion} not in allowed versions — rejecting.");
