@@ -24,6 +24,7 @@ import {
 } from '../utils';
 import {
   detectProtocolVersion,
+  getDeclaredProtocolVersion,
 } from '../compatibility';
 import type { PaymentPayloadV1 } from '../types/v1';
 import type { PaymentPayload as PaymentPayloadV2 } from '../types/v2';
@@ -264,7 +265,7 @@ export class PrismMiddlewareCore {
         };
       }
 
-      const payloadVersion = detectProtocolVersion(paymentPayload);
+      const payloadVersion = getDeclaredProtocolVersion(paymentPayload);
       if (!payloadVersion || !this.allowedVersions.includes(payloadVersion)) {
         if (this.debug) {
           console.log(`[PrismMiddlewareCore] Protocol version ${payloadVersion} not in allowedVersions: [${this.allowedVersions}]`);

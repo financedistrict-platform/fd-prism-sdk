@@ -149,6 +149,26 @@ describe('PrismMiddlewareCore allowedVersions enforcement', () => {
     expectNoGatewayCalls();
   });
 
+  const { x402Version: _declared, ...flatPayloadWithoutVersion } = v1Payload;
+
+  it.each([
+    ['3', { ...v1Payload, x402Version: 3 }],
+    ['"2"', { ...v1Payload, x402Version: '2' }],
+    ['missing', flatPayloadWithoutVersion],
+  ])('rejects a flat payload declaring x402Version %s under the default allowed versions', async (_label, payload) => {
+    const result = await createCore().handleRequest({
+      path: ROUTE_PATH,
+      paymentHeader: encode(payload),
+      resourceUrl: RESOURCE_URL,
+      protocolVersion: 2,
+    });
+
+    expect(result.handled).toBe(true);
+    expect(result.statusCode).toBe(402);
+    expect(result.paymentInfo).toBeUndefined();
+    expectNoGatewayCalls();
+  });
+
   it('accepts a v1 payload when v1 is explicitly allowed', async () => {
     mockClient.getPaymentRequirements.mockResolvedValue({ x402Version: 1, accepts: [v1Requirement] });
 

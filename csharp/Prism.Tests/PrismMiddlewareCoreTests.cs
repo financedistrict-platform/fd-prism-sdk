@@ -140,6 +140,33 @@ public class PrismMiddlewareCoreTests
         Assert.Empty(client.RequirementsRequests);
     }
 
+    [Theory]
+    [InlineData("\"x402Version\":3,")]
+    [InlineData("\"x402Version\":\"2\",")]
+    [InlineData("")]
+    public async Task FlatPayloadWithUnrecognizedVersion_UnderDefaultAllowedVersions_Rejected402BeforeAnyGatewayCall(string versionField)
+    {
+        var header = Base64(
+            "{" + versionField + "\"scheme\":\"exact\",\"network\":\"base-sepolia\"," +
+            "\"payload\":{\"signature\":\"0xsig\",\"authorization\":{\"from\":\"0xFrom\",\"to\":\"0xPayTo\",\"value\":\"1000000\"," +
+            "\"validAfter\":\"0\",\"validBefore\":\"9999999999\",\"nonce\":\"0xnonce\"}}}");
+        var client = new FakePrismClient();
+        var core = new PrismMiddlewareCore(Config(), Routes(), client);
+
+        var result = await core.HandleRequestAsync(new MiddlewareRequestData
+        {
+            Path = "/api/premium",
+            PaymentHeader = header,
+            ResourceUrl = "https://api.test/api/premium",
+            ProtocolVersion = 2,
+        });
+
+        Assert.True(result.Handled);
+        Assert.Equal(402, result.StatusCode);
+        Assert.Null(result.PaymentInfo);
+        Assert.Empty(client.RequirementsRequests);
+    }
+
     [Fact]
     public async Task V2Payload_WhenOnlyV1Allowed_Rejected402BeforeAnyGatewayCall()
     {

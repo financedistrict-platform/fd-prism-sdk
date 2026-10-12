@@ -469,7 +469,7 @@ class PrismMiddlewareCore:
     ) -> tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]], Literal[1, 2], Optional[MiddlewareResult]]:
         try:
             submitted_payment = self._decode_payment_header(payment_header)
-            payload_version = submitted_payment.get('x402Version', protocol_version)
+            payload_version = submitted_payment.get('x402Version')
         except Exception as e:
             print(f"[Prism] Invalid payment header: {e}")
             return None, None, protocol_version, MiddlewareResult(
@@ -478,7 +478,7 @@ class PrismMiddlewareCore:
                 body={'error': 'Invalid payment header'}
             )
 
-        if payload_version not in self.allowed_versions:
+        if type(payload_version) is not int or payload_version not in self.allowed_versions:
             return None, None, protocol_version, MiddlewareResult(
                 handled=True,
                 status_code=402,

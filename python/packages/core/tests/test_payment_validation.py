@@ -328,6 +328,23 @@ class TestAllowedVersions:
 
         assert_rejected_before_gateway(result, client)
 
+    @pytest.mark.parametrize('declared', [3, '2', True, None], ids=['three', 'string-two', 'boolean', 'null'])
+    def test_rejects_flat_payload_declaring_an_unrecognised_version(self, submit, client, declared):
+        payload = v1_payload()
+        payload['x402Version'] = declared
+
+        result = submit(payload, make_core(allowed_versions=[1, 2]))
+
+        assert_rejected_before_gateway(result, client)
+
+    def test_rejects_flat_payload_without_a_declared_version(self, submit, client):
+        payload = v1_payload()
+        del payload['x402Version']
+
+        result = submit(payload)
+
+        assert_rejected_before_gateway(result, client)
+
     def test_accepts_v2_payload_under_the_default_allowed_versions(self, submit, client):
         result = submit(v2_payload())
 
