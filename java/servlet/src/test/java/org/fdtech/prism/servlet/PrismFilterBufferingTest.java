@@ -34,6 +34,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PrismFilterBufferingTest {
     private static final String SECRET = "{\"secret\":\"premium-data\"}";
+    private static final String PROOF = TestProofs.forRoute("/api/premium");
 
     private HttpServer gateway;
     private final List<String> gatewayCalls = Collections.synchronizedList(new ArrayList<>());
@@ -85,10 +86,10 @@ class PrismFilterBufferingTest {
     void protectedRouteSettlesAndReturnsTheBufferedBody() throws Exception {
         FakeResponse response = new FakeResponse();
 
-        filter.doFilter(request("/api/premium", "Bearer paid-proof"), response.proxy(), servletWriting(SECRET, false));
+        filter.doFilter(request("/api/premium", "Bearer " + PROOF), response.proxy(), servletWriting(SECRET, false));
 
         assertEquals(SECRET, response.body());
-        assertEquals("proof=paid-proof", response.headers.get("X-Settlement"));
+        assertEquals("proof=" + PROOF, response.headers.get("X-Settlement"));
         assertEquals(List.of("/v1/verify-payment", "/v1/settlement-callback"), gatewayCalls);
     }
 
@@ -97,7 +98,7 @@ class PrismFilterBufferingTest {
         FakeResponse response = new FakeResponse();
         settlementStatus = 500;
 
-        filter.doFilter(request("/api/premium", "Bearer paid-proof"), response.proxy(), servletWriting(SECRET, true));
+        filter.doFilter(request("/api/premium", "Bearer " + PROOF), response.proxy(), servletWriting(SECRET, true));
 
         assertEquals(402, response.status);
         assertFalse(response.body().contains("premium-data"), "content leaked: " + response.body());
@@ -114,7 +115,7 @@ class PrismFilterBufferingTest {
             flushedBeforeSettlement.add(response.flushed);
         };
 
-        filter.doFilter(request("/api/premium", "Bearer paid-proof"), response.proxy(), chain);
+        filter.doFilter(request("/api/premium", "Bearer " + PROOF), response.proxy(), chain);
 
         assertEquals(List.of(false), flushedBeforeSettlement);
         assertEquals(SECRET, response.body());

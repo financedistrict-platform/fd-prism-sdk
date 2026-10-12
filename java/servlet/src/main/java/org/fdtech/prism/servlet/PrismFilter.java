@@ -21,6 +21,8 @@ import java.util.Map;
  * This can be used with any servlet-based Java application (Tomcat, Jetty, etc.).
  */
 public class PrismFilter implements Filter {
+    private static final String REQUEST_SCOPE_ATTRIBUTE = PrismFilter.class.getName() + ".requestScope";
+
     private PrismMiddleware middleware;
 
     /**
@@ -83,7 +85,8 @@ public class PrismFilter implements Filter {
 
         PrismDecision decision = middleware.handleRequest(
                 routedPath(httpRequest),
-                httpRequest.getHeader("Authorization")
+                httpRequest.getHeader("Authorization"),
+                requestScope(httpRequest)
         );
 
         PrismResponse prismResponse = decision.getResponse();
@@ -123,9 +126,20 @@ public class PrismFilter implements Filter {
             }
 
             httpResponse.setHeader("X-Settlement", settlementHeader);
+        } else {
+            middleware.release(decision);
         }
 
         responseWrapper.commit();
+    }
+
+    private static Object requestScope(HttpServletRequest request) {
+        Object scope = request.getAttribute(REQUEST_SCOPE_ATTRIBUTE);
+        if (scope == null) {
+            scope = new Object();
+            request.setAttribute(REQUEST_SCOPE_ATTRIBUTE, scope);
+        }
+        return scope;
     }
 
     private static String routedPath(HttpServletRequest request) {

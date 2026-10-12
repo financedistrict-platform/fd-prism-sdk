@@ -349,6 +349,70 @@ See [Settlement Validation](/concepts/settlement-validation) for details.
 
 ---
 
+## One Proof, One Execution
+
+Before it calls the Gateway, the filter reserves the proof. The reservation key is the authorization's `from` address plus its `nonce` (case-insensitive), read from the base64 x402 payload in the `Authorization: Bearer` header. Every other request carrying a reserved proof gets `402` (`Payment proof is already being processed or has already been used`) and never reaches your servlet. A bearer value that is not a base64 x402 payload with an authorization `from` and `nonce`, or whose `validBefore` has passed, is answered with the normal payment-required `402` without a Gateway call.
+
+| Event                                                          | Reservation                                                                 |
+| -------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| Gateway rejects the payment, or verification throws            | Released, the client may retry                                              |
+| Servlet responds with status `>= 400` or calls `sendError`     | Released                                                                    |
+| Gateway refuses the settlement callback with a `4xx`           | Released, the client may retry with the same proof                          |
+| Settlement times out, fails to connect or gets a `5xx` (outcome unknown) | Kept until `validBefore` |
+| Settlement succeeds                                            | Kept until the authorization's `validBefore`                                |
+| Servlet throws                                                 | Held until the reservation ends                                             |
+
+A reservation lasts until the earlier of `validBefore` and the reservation limit, 600 seconds by default:
+
+```java
+PrismConfig config = new PrismConfig.Builder()
+    .apiKey("your-api-key")
+    .replayReservationSeconds(900)
+    .addRoute("/api/premium", 1000L, "Premium content")
+    .build();
+```
+
+For Spring Boot, set `prism.replay-reservation-seconds`.
+
+<Warning>
+  A servlet that runs longer than the reservation lets the same proof reserve
+  again and run a second time. Keep the limit above your slowest paid handler,
+  or use settle-first below.
+</Warning>
+
+At most 10,000 proofs are tracked. Expired entries are dropped first, then the oldest settled proof. If every slot holds an active reservation, new proofs are refused with `402`.
+
+A request that passes through more than one `PrismFilter` (stacked filters, forwards, request wrappers) shares one reservation: the filter tags the request with an attribute, so the inner pass is not rejected as a replay and the payment is settled once.
+
+<Note>
+  The guard lives in the process. Filters and middleware built from the same
+  `PrismConfig` share one guard. Several JVMs behind a load balancer do not
+  coordinate reservations.
+</Note>
+
+### Routes with side effects: settle before the servlet
+
+By default the payment settles after your servlet ran. For a servlet with side effects, settle first. The servlet is reached only after settlement succeeded:
+
+```java
+PrismConfig config = new PrismConfig.Builder()
+    .apiKey("your-api-key")
+    .addRoute("/api/orders", 500L, "Place an order", true)
+    .build();
+```
+
+For Spring Boot, set `prism.routes[n].settle-before-handler=true`.
+
+If the Gateway refuses settlement, or settlement fails, the client gets `402` and the servlet never runs. A refusal (`4xx`) releases the proof, any other failure keeps it reserved. The settlement the filter performs after the servlet reuses the stored result, so the payment is never settled twice. If the servlet fails after an early settlement, the payment has already been taken and the proof stays consumed.
+
+<Warning>
+  Do not stack two filters on a settle-first route. The first filter settles
+  the proof before the inner filter runs, and the inner pass is then rejected
+  as already used.
+</Warning>
+
+---
+
 ## Error Handling
 
 ### Payment Errors

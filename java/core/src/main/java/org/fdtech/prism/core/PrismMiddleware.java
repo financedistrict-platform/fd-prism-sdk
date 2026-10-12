@@ -12,15 +12,24 @@ import java.util.Map;
  * This is framework-agnostic and can be used by servlet, Spring, or other frameworks.
  */
 public class PrismMiddleware {
+    private static final String PROOF_IN_USE = "Payment proof is already being processed or has already been used";
+    private static final String SETTLEMENT_FAILED = "Payment settlement failed";
+
     private final PrismClient client;
     private final Map<String, RoutePaymentConfig> routeMap;
+    private final PaymentReplayGuard replayGuard;
 
     public PrismMiddleware(PrismConfig config) {
         this(config, new PrismClient(config.getBaseUrl(), config.getApiKey()));
     }
 
     public PrismMiddleware(PrismConfig config, PrismClient client) {
+        this(config, client, config.replayGuard());
+    }
+
+    PrismMiddleware(PrismConfig config, PrismClient client, PaymentReplayGuard replayGuard) {
         this.client = client;
+        this.replayGuard = replayGuard;
         this.routeMap = new HashMap<>();
 
         for (RoutePaymentConfig route : config.getRoutes()) {
@@ -54,6 +63,24 @@ public class PrismMiddleware {
      *         settlement, or an unprotected request that should simply continue
      */
     public PrismDecision handleRequest(String path, String authorizationHeader) {
+        return handleRequest(path, authorizationHeader, null);
+    }
+
+    /**
+     * Handle incoming request and check if payment is required.
+     *
+     * <p>A payment proof is admitted once: it is reserved before the Gateway is called, and every
+     * other request carrying the same proof is rejected with {@code 402}. A request that passes
+     * through the middleware more than once (stacked filters) shares its reservation when it
+     * presents the same {@code requestScope} object each time.
+     *
+     * @param path The request path relative to the application root
+     * @param authorizationHeader The Authorization header (may be null)
+     * @param requestScope An object that identifies the current request, or null
+     * @return The decision: an immediate response, a verified payment awaiting
+     *         settlement, or an unprotected request that should simply continue
+     */
+    public PrismDecision handleRequest(String path, String authorizationHeader, Object requestScope) {
         String normalized = PathNormalizer.normalize(path);
         if (normalized == null) {
             return PrismDecision.reject(PrismResponse.badRequest());
@@ -69,16 +96,32 @@ public class PrismMiddleware {
             return PrismDecision.reject(requestPayment(routeConfig));
         }
 
+        PaymentProof identity = PaymentProof.parse(proof);
+        if (identity == null || replayGuard.windowClosed(identity.validBeforeMillis())) {
+            return PrismDecision.reject(requestPayment(routeConfig));
+        }
+
+        if (!replayGuard.tryReserve(identity.key(), identity.validBeforeMillis(), requestScope)) {
+            return PrismDecision.reject(PrismResponse.invalidPayment(PROOF_IN_USE));
+        }
+
         try {
             JsonObject verification = client.verifyPayment(proof, routeConfig);
             if (!isValid(verification)) {
+                replayGuard.release(identity.key());
                 return PrismDecision.reject(requestPayment(routeConfig));
             }
-            return PrismDecision.verified(proof, routeConfig);
-        } catch (IOException e) {
+        } catch (IOException | RuntimeException e) {
+            replayGuard.release(identity.key());
             System.err.println("Payment verification error: " + e.getMessage());
             return PrismDecision.reject(requestPayment(routeConfig));
         }
+
+        PrismDecision verified = PrismDecision.verified(proof, routeConfig, identity);
+        if (routeConfig.isSettleBeforeHandler() && settle(verified) == null) {
+            return PrismDecision.reject(PrismResponse.invalidPayment(SETTLEMENT_FAILED));
+        }
+        return verified;
     }
 
     /**
@@ -99,6 +142,12 @@ public class PrismMiddleware {
             return null;
         }
 
+        PaymentProof identity = decision.identity();
+        String alreadySettled = replayGuard.settlementFor(identity.key());
+        if (alreadySettled != null) {
+            return alreadySettled;
+        }
+
         try {
             client.settlementCallback(
                     decision.getProof(),
@@ -106,11 +155,35 @@ public class PrismMiddleware {
                     "completed",
                     "Payment processed successfully"
             );
-            return "proof=" + decision.getProof();
-        } catch (IOException e) {
+        } catch (IOException | RuntimeException e) {
+            if (isDefiniteRefusal(e)) {
+                replayGuard.release(identity.key());
+            } else {
+                replayGuard.markConsumed(identity.key(), identity.validBeforeMillis(), null);
+            }
             System.err.println("Settlement failed for route " + decision.getRoute().getPath() + ": " + e.getMessage());
             return null;
         }
+
+        String settlement = "proof=" + decision.getProof();
+        replayGuard.markConsumed(identity.key(), identity.validBeforeMillis(), settlement);
+        return settlement;
+    }
+
+    /**
+     * Give up the reservation of a verified payment whose request ended without a settlement
+     * (the protected response was an error). A payment that already settled stays consumed.
+     *
+     * @param decision The decision returned by {@link #handleRequest(String, String)}
+     */
+    public void release(PrismDecision decision) {
+        if (decision.requiresSettlement()) {
+            replayGuard.release(decision.identity().key());
+        }
+    }
+
+    private static boolean isDefiniteRefusal(Exception failure) {
+        return failure instanceof PrismGatewayException && ((PrismGatewayException) failure).isDefiniteRefusal();
     }
 
     /**

@@ -27,14 +27,16 @@ public class PrismAutoConfiguration {
     public PrismConfig prismConfig(PrismProperties properties) {
         PrismConfig.Builder builder = new PrismConfig.Builder()
                 .apiKey(properties.getApiKey())
-                .baseUrl(properties.getBaseUrl());
+                .baseUrl(properties.getBaseUrl())
+                .replayReservationSeconds(properties.getReplayReservationSeconds());
 
         // Add routes from properties
         for (PrismProperties.RouteConfig routeConfig : properties.getRoutes()) {
             builder.addRoute(
                     routeConfig.getPath(),
                     routeConfig.getPrice(),
-                    routeConfig.getDescription()
+                    routeConfig.getDescription(),
+                    routeConfig.isSettleBeforeHandler()
             );
         }
 

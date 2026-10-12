@@ -50,6 +50,13 @@ public class PrismResponse {
         return new PrismResponse(402, headers, body);
     }
 
+    public static PrismResponse invalidPayment(String message) {
+        Map<String, String> headers = new HashMap<>();
+        headers.put("Content-Type", "application/json");
+
+        return new PrismResponse(402, headers, "{\"x402Version\":2,\"error\":\"" + message + "\"}");
+    }
+
     public static PrismResponse badRequest() {
         Map<String, String> headers = new HashMap<>();
         headers.put("Content-Type", "application/json");

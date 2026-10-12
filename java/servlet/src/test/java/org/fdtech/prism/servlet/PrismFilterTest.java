@@ -24,8 +24,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.jupiter.api.Assertions.*;
 
 class PrismFilterTest {
-    private static final String PAID_PREMIUM = "Bearer paid:/api/premium";
-
     private final List<String> verifiedFor = new ArrayList<>();
     private final List<String> settledFor = new ArrayList<>();
     private final AtomicInteger gatewayCalls = new AtomicInteger();
@@ -54,7 +52,7 @@ class PrismFilterTest {
                 gatewayCalls.incrementAndGet();
                 verifiedFor.add(route.getPath());
                 JsonObject json = new JsonObject();
-                json.addProperty("valid", proof.equals("paid:" + route.getPath()));
+                json.addProperty("valid", TestProofs.paidFor(proof).equals(route.getPath()));
                 return json;
             }
 
@@ -70,6 +68,10 @@ class PrismFilterTest {
             }
         };
         filter = new PrismFilter(new PrismMiddleware(config, client));
+    }
+
+    private static String paidPremium() {
+        return "Bearer " + TestProofs.forRoute("/api/premium");
     }
 
     private static final class Chain implements FilterChain {
@@ -166,7 +168,7 @@ class PrismFilterTest {
 
     @Test
     void aProofForACheapRouteDoesNotUnlockAnExpensiveOne() throws Exception {
-        HttpServletRequest request = FakeServlet.request("/api/premium", "/api", "/premium", "Bearer paid:/api/cheap");
+        HttpServletRequest request = FakeServlet.request("/api/premium", "/api", "/premium", "Bearer " + TestProofs.forRoute("/api/cheap"));
         FakeServlet.Response response = FakeServlet.response();
         Chain chain = new Chain();
 
@@ -183,7 +185,8 @@ class PrismFilterTest {
         List<Integer> bytesSentAtSettlement = new ArrayList<>();
         FakeServlet.Response response = FakeServlet.response();
         beforeSettlement = () -> bytesSentAtSettlement.add(response.sentBytes());
-        HttpServletRequest request = FakeServlet.request("/api/premium", "/api", "/premium", PAID_PREMIUM);
+        String proof = TestProofs.forRoute("/api/premium");
+        HttpServletRequest request = FakeServlet.request("/api/premium", "/api", "/premium", "Bearer " + proof);
         Chain chain = new Chain();
         chain.flushEarly = true;
 
@@ -193,7 +196,7 @@ class PrismFilterTest {
         assertEquals(List.of(0), bytesSentAtSettlement);
         assertEquals(List.of("/api/premium"), settledFor);
         assertEquals(200, response.status());
-        assertEquals("proof=paid:/api/premium", response.header("X-Settlement"));
+        assertEquals("proof=" + proof, response.header("X-Settlement"));
         assertEquals("ran", response.header("X-Handler"));
         assertEquals("premium content", response.body());
     }
@@ -201,7 +204,7 @@ class PrismFilterTest {
     @Test
     void failedSettlementReplacesTheResponseEvenAfterAnEarlyFlush() throws Exception {
         settlementFailure = new IOException("settlement rejected");
-        HttpServletRequest request = FakeServlet.request("/api/premium", "/api", "/premium", PAID_PREMIUM);
+        HttpServletRequest request = FakeServlet.request("/api/premium", "/api", "/premium", paidPremium());
         FakeServlet.Response response = FakeServlet.response();
         Chain chain = new Chain();
         chain.flushEarly = true;
@@ -218,7 +221,7 @@ class PrismFilterTest {
     @Test
     void aRedirectIsNotSentBeforeSettlement() throws Exception {
         settlementFailure = new IOException("settlement rejected");
-        HttpServletRequest request = FakeServlet.request("/api/premium", "/api", "/premium", PAID_PREMIUM);
+        HttpServletRequest request = FakeServlet.request("/api/premium", "/api", "/premium", paidPremium());
         FakeServlet.Response response = FakeServlet.response();
         Chain chain = new Chain();
         chain.redirect = "/somewhere";
@@ -231,7 +234,7 @@ class PrismFilterTest {
 
     @Test
     void aSettledRedirectIsDelivered() throws Exception {
-        HttpServletRequest request = FakeServlet.request("/api/premium", "/api", "/premium", PAID_PREMIUM);
+        HttpServletRequest request = FakeServlet.request("/api/premium", "/api", "/premium", paidPremium());
         FakeServlet.Response response = FakeServlet.response();
         Chain chain = new Chain();
         chain.redirect = "/somewhere";
@@ -245,7 +248,7 @@ class PrismFilterTest {
 
     @Test
     void errorResponsesAreNotSettled() throws Exception {
-        HttpServletRequest request = FakeServlet.request("/api/premium", "/api", "/premium", PAID_PREMIUM);
+        HttpServletRequest request = FakeServlet.request("/api/premium", "/api", "/premium", paidPremium());
         FakeServlet.Response response = FakeServlet.response();
         Chain chain = new Chain();
         chain.status = 500;
@@ -260,7 +263,7 @@ class PrismFilterTest {
 
     @Test
     void sendErrorDiscardsBufferedOutputAndIsNotSettled() throws Exception {
-        HttpServletRequest request = FakeServlet.request("/api/premium", "/api", "/premium", PAID_PREMIUM);
+        HttpServletRequest request = FakeServlet.request("/api/premium", "/api", "/premium", paidPremium());
         FakeServlet.Response response = FakeServlet.response();
         Chain chain = new Chain();
         chain.body = "stale premium content";
@@ -276,7 +279,7 @@ class PrismFilterTest {
 
     @Test
     void sendErrorWithAnOkStatusIsNotSettled() throws Exception {
-        HttpServletRequest request = FakeServlet.request("/api/premium", "/api", "/premium", PAID_PREMIUM);
+        HttpServletRequest request = FakeServlet.request("/api/premium", "/api", "/premium", paidPremium());
         FakeServlet.Response response = FakeServlet.response();
         Chain chain = new Chain();
         chain.error = 200;
@@ -289,7 +292,7 @@ class PrismFilterTest {
 
     @Test
     void bufferedOutputKeepsTheResponseCharacterEncoding() throws Exception {
-        HttpServletRequest request = FakeServlet.request("/api/premium", "/api", "/premium", PAID_PREMIUM);
+        HttpServletRequest request = FakeServlet.request("/api/premium", "/api", "/premium", paidPremium());
         FakeServlet.Response response = FakeServlet.response();
         response.proxy().setCharacterEncoding("UTF-8");
         Chain chain = new Chain();
@@ -302,7 +305,7 @@ class PrismFilterTest {
 
     @Test
     void invalidPathsAreRejectedWithoutReachingTheApplication() throws Exception {
-        HttpServletRequest request = FakeServlet.request("/api/premium%00", "/api", "/premium\u0000", PAID_PREMIUM);
+        HttpServletRequest request = FakeServlet.request("/api/premium%00", "/api", "/premium\u0000", paidPremium());
         FakeServlet.Response response = FakeServlet.response();
         Chain chain = new Chain();
 

@@ -11,10 +11,14 @@ public class PrismConfig {
     private final String apiKey;
     private final String baseUrl;
     private final List<RoutePaymentConfig> routes;
+    private final long replayReservationSeconds;
+    private final PaymentReplayGuard replayGuard;
 
     private PrismConfig(Builder builder) {
         this.apiKey = builder.apiKey;
         this.baseUrl = builder.baseUrl;
+        this.replayReservationSeconds = builder.replayReservationSeconds;
+        this.replayGuard = new PaymentReplayGuard(builder.replayReservationSeconds);
         this.routes = Collections.unmodifiableList(new ArrayList<>(builder.routes));
     }
 
@@ -30,6 +34,14 @@ public class PrismConfig {
         return routes;
     }
 
+    public long getReplayReservationSeconds() {
+        return replayReservationSeconds;
+    }
+
+    PaymentReplayGuard replayGuard() {
+        return replayGuard;
+    }
+
     /**
      * Builder for PrismConfig.
      */
@@ -37,6 +49,7 @@ public class PrismConfig {
         private String apiKey;
         private String baseUrl = "https://prism-gw.test.1stdigital.tech";
         private final List<RoutePaymentConfig> routes = new ArrayList<>();
+        private long replayReservationSeconds = PaymentReplayGuard.DEFAULT_RESERVATION_SECONDS;
 
         public Builder apiKey(String apiKey) {
             this.apiKey = apiKey;
@@ -57,12 +70,28 @@ public class PrismConfig {
             return addRoute(new RoutePaymentConfig(path, price, description));
         }
 
+        public Builder addRoute(String path, long price, String description, boolean settleBeforeHandler) {
+            return addRoute(new RoutePaymentConfig(path, price, description, settleBeforeHandler));
+        }
+
+        /**
+         * Seconds an admitted payment proof stays reserved while its request is handled
+         * (default 600). A reservation never outlives the proof's own validBefore.
+         */
+        public Builder replayReservationSeconds(long seconds) {
+            this.replayReservationSeconds = seconds;
+            return this;
+        }
+
         public PrismConfig build() {
             if (apiKey == null || apiKey.isEmpty()) {
                 throw new IllegalStateException("API key is required");
             }
             if (baseUrl == null || baseUrl.isEmpty()) {
                 throw new IllegalStateException("Base URL is required");
+            }
+            if (replayReservationSeconds <= 0) {
+                throw new IllegalStateException("Replay reservation seconds must be positive");
             }
             return new PrismConfig(this);
         }
