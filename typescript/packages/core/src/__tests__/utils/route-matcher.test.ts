@@ -54,6 +54,19 @@ describe('findMatchingRoute', () => {
     expect(findMatchingRoute('/', rootWildcard)).toBe('/*');
   });
 
+  it.each(['/api/*/', '/api/*//', '/API/*/'])('treats the wildcard key %s as a wildcard', (key) => {
+    const slashed: RoutesConfig = { [key]: { price: 0.01 } };
+    expect(findMatchingRoute('/api/users', slashed)).toBe(key);
+    expect(findMatchingRoute('/API/Users/', slashed)).toBe(key);
+    expect(findMatchingRoute('/api', slashed)).toBe(key);
+    expect(findMatchingRoute('/api-extra', slashed)).toBeNull();
+  });
+
+  it('treats a root wildcard key with a trailing slash as a wildcard', () => {
+    const rootSlashed: RoutesConfig = { '/*/': { price: 0.01 } };
+    expect(findMatchingRoute('/anything/here', rootSlashed)).toBe('/*/');
+  });
+
   it('prefers an exact match over a wildcard', () => {
     const mixed: RoutesConfig = {
       '/data/*': { price: 0.005 },
