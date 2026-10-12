@@ -36,16 +36,17 @@ function normalizePath(path: string): string {
 export function findMatchingRoute(path: string, routes: RoutesConfig): string | null {
   const normalizedPath = normalizePath(path);
   const routeKeys = Object.keys(routes);
+  const patterns = routeKeys.map((route) => ({ route, pattern: normalizePath(route) }));
 
-  for (const route of routeKeys) {
-    if (!route.endsWith('/*') && normalizePath(route) === normalizedPath) {
+  for (const { route, pattern } of patterns) {
+    if (!pattern.endsWith('/*') && pattern === normalizedPath) {
       return route;
     }
   }
 
-  for (const route of routeKeys) {
-    if (route.endsWith('/*')) {
-      const prefix = normalizePath(route.slice(0, -2));
+  for (const { route, pattern } of patterns) {
+    if (pattern.endsWith('/*')) {
+      const prefix = normalizePath(pattern.slice(0, -2));
       if (normalizedPath === prefix || normalizedPath.startsWith(prefix + '/')) {
         return route;
       }
