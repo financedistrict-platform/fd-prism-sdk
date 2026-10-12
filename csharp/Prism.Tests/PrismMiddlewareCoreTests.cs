@@ -34,6 +34,37 @@ public class PrismMiddlewareCoreTests
         ["/api/premium"] = new RoutePaymentConfig { Price = "$0.01", Description = "Premium" },
     };
 
+    [Theory]
+    [InlineData("/api/premium", "/API/Premium/")]
+    [InlineData("/api/premium", "/api/premium/")]
+    [InlineData("/api/*", "/API/*/")]
+    [InlineData("/", "")]
+    public void RoutesThatCollideAfterNormalizationAreRejected(string first, string second)
+    {
+        var routes = new Dictionary<string, RoutePaymentConfig>
+        {
+            [first] = new RoutePaymentConfig { Price = "$0.01" },
+            [second] = new RoutePaymentConfig { Price = "$0.02" },
+        };
+
+        Assert.Throws<ArgumentException>(() => new PrismMiddlewareCore(Config(), routes, new FakePrismClient()));
+    }
+
+    [Fact]
+    public void DistinctRoutesAreAccepted()
+    {
+        var routes = new Dictionary<string, RoutePaymentConfig>
+        {
+            ["/api/premium"] = new RoutePaymentConfig { Price = "$0.01" },
+            ["/api/premium/extra"] = new RoutePaymentConfig { Price = "$0.02" },
+            ["/api/*"] = new RoutePaymentConfig { Price = "$0.03" },
+        };
+
+        var core = new PrismMiddlewareCore(Config(), routes, new FakePrismClient());
+
+        Assert.NotNull(core);
+    }
+
     [Fact]
     public async Task NoMatchingRoute_PassesThroughUnprotected()
     {
