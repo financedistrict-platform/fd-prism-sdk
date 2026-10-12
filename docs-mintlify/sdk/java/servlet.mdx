@@ -358,7 +358,7 @@ Before it calls the Gateway, the filter reserves the proof. The reservation key 
 | Gateway rejects the payment, or verification throws            | Released, the client may retry                                              |
 | Servlet responds with status `>= 400` or calls `sendError`     | Released                                                                    |
 | Gateway refuses the settlement callback with a `4xx`           | Released, the client may retry with the same proof                          |
-| Settlement times out, fails to connect or gets a `5xx` (outcome unknown) | Kept until `validBefore` or the reservation limit, whichever comes first |
+| Settlement times out, fails to connect or gets a `5xx` (outcome unknown) | Kept until `validBefore` |
 | Settlement succeeds                                            | Kept until the authorization's `validBefore`                                |
 | Servlet throws                                                 | Held until the reservation ends                                             |
 

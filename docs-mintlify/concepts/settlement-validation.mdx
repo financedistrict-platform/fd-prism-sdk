@@ -318,7 +318,7 @@ Settlement validation does not stop many requests from arriving with the same pr
 | Gateway rejects the payment, or verification throws          | Released, the client may retry                       |
 | Handler responds with status `>= 400` and the status reaches `settlementCallback` | Released                    |
 | The Gateway answers that settlement failed                   | Released, the client may retry with the same payload |
-| Settlement throws, times out or gets a server error (outcome unknown) | Kept until the authorization's `validBefore` or the reservation limit, whichever comes first; the payment may have been broadcast, so the proof does not run the handler again |
+| Settlement throws, times out or gets a server error (outcome unknown) | Kept until the authorization's `validBefore`; the payment may have been broadcast, so the proof does not run the handler again |
 | Settlement succeeds                                          | Kept until the authorization's `validBefore`         |
 | Handler or adapter never reports back (error responses, thrown handlers) | Held until the reservation ends |
 
