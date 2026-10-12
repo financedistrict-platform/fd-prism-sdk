@@ -58,8 +58,8 @@ pip install prism-fastapi
 ### Flask Example
 
 ```python
-from flask import Flask, g, jsonify
-from prism_flask import prism_payment_middleware
+from flask import Flask, jsonify
+from prism_flask import get_payer, prism_payment_middleware
 from prism_sdk_core import PrismMiddlewareConfig, RoutePaymentConfig
 
 app = Flask(__name__)
@@ -75,7 +75,7 @@ prism_payment_middleware(
 
 @app.route('/api/premium')
 def premium():
-    return jsonify({'message': 'Premium content', 'payer': getattr(g, '_prism_payer', None)})
+    return jsonify({'message': 'Premium content', 'payer': get_payer()})
 
 @app.route('/api/free')
 def free():

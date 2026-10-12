@@ -2,8 +2,8 @@
 Basic Flask Server Example with Prism Payment Middleware
 """
 
-from flask import Flask, g, jsonify
-from prism_flask import prism_payment_middleware
+from flask import Flask, jsonify
+from prism_flask import get_payer, get_payment, prism_payment_middleware
 from prism_sdk_core import PrismMiddlewareConfig, RoutePaymentConfig
 
 app = Flask(__name__)
@@ -51,8 +51,8 @@ def home():
 @app.route('/api/premium')
 def premium():
     """Payment-protected premium endpoint"""
-    payer = getattr(g, 'prism_payer', None)
-    payment = getattr(g, 'prism_payment', None)
+    payer = get_payer()
+    payment = get_payment()
     
     return jsonify({
         'message': 'Welcome to Premium API!',
@@ -72,7 +72,7 @@ def premium():
 @app.route('/api/weather')
 def weather():
     """Payment-protected weather endpoint"""
-    payer = getattr(g, 'prism_payer', None)
+    payer = get_payer()
     
     return jsonify({
         'location': 'San Francisco',

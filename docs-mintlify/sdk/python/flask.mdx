@@ -14,7 +14,7 @@ The **prism-flask** package provides Flask middleware for payment-protecting you
   </Card>
   
   <Card title="Request Context" icon="layer-group">
-    Payment info in `g.prism_payer`
+    Payment info via `get_payer()`
   </Card>
 
   <Card title="Minimal Setup" icon="bolt">
@@ -49,8 +49,8 @@ The **prism-flask** package provides Flask middleware for payment-protecting you
 ## Quick Start
 
 ```python
-from flask import Flask, g, jsonify
-from prism_flask import prism_payment_middleware
+from flask import Flask, jsonify
+from prism_flask import get_payer, prism_payment_middleware
 from prism_sdk_core import PrismMiddlewareConfig, RoutePaymentConfig
 
 app = Flask(__name__)
@@ -72,7 +72,7 @@ prism_payment_middleware(
 
 @app.route('/api/premium')
 def premium():
-    payer = getattr(g, 'prism_payer', None)
+    payer = get_payer()
     return jsonify({
         'message': 'Premium content!',
         'payer': payer
@@ -225,19 +225,19 @@ def report():
 
 ## Accessing Payment Information
 
-Payment info is stored in Flask's `g` context object:
+Read payment info with the `get_payer()` and `get_payment()` helpers. They return `None` when no payment was verified for the request:
 
 ```python
-from flask import g
+from prism_flask import get_payer, get_payment
 
 @app.route('/api/premium')
 def premium():
     # Access payer wallet address
-    payer = getattr(g, 'prism_payer', None)
+    payer = get_payer()
     # Returns: '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb' or None
 
     # Access full payment object
-    payment = getattr(g, 'prism_payment', None)
+    payment = get_payment()
     """
     {
         'scheme': 'eip3009',
@@ -260,16 +260,10 @@ def premium():
 
 ---
 
-### Safe Access Helper
+### Gating on the Payer
 
 ```python
-def get_payer():
-    """Safely get payer address from request context"""
-    return getattr(g, 'prism_payer', None)
-
-def get_payment():
-    """Safely get full payment object from request context"""
-    return getattr(g, 'prism_payment', None)
+from prism_flask import get_payer
 
 @app.route('/api/data')
 def data():
@@ -427,8 +421,9 @@ def app():
 
     @app.route('/api/premium')
     def premium():
-        from flask import g, jsonify
-        payer = getattr(g, 'prism_payer', None)
+        from flask import jsonify
+        from prism_flask import get_payer
+        payer = get_payer()
         return jsonify({'message': 'Premium', 'payer': payer})
 
     return app
@@ -564,7 +559,8 @@ prism_payment_middleware(
 
 ```python
 import logging
-from flask import Flask, g
+from flask import Flask, request
+from prism_flask import get_payer
 
 # Configure logging
 logging.basicConfig(
@@ -585,8 +581,8 @@ def log_response(response):
     """Log payment events"""
     if response.status_code == 402:
         logger.info(f'Payment required: {request.path}')
-    elif response.status_code == 200 and hasattr(g, 'prism_payer'):
-        payer = getattr(g, 'prism_payer')
+    elif response.status_code == 200 and get_payer():
+        payer = get_payer()
         tx_hash = response.headers.get('X-PAYMENT-RESPONSE')
         logger.info(f'Payment succeeded: {request.path} | Payer: {payer} | TX: {tx_hash}')
 
@@ -626,20 +622,12 @@ loglevel = "info"
 Full type hint support with mypy:
 
 ```python
-from typing import Optional, Dict, Any
-from flask import Flask, g, jsonify, Response
-from prism_flask import prism_payment_middleware
+from typing import Optional
+from flask import Flask, jsonify, Response
+from prism_flask import get_payer, prism_payment_middleware
 from prism_sdk_core import PrismMiddlewareConfig, RoutePaymentConfig
 
 app: Flask = Flask(__name__)
-
-def get_payer() -> Optional[str]:
-    """Get payer address from request context"""
-    return getattr(g, 'prism_payer', None)
-
-def get_payment() -> Optional[Dict[str, Any]]:
-    """Get payment object from request context"""
-    return getattr(g, 'prism_payment', None)
 
 @app.route('/api/premium')
 def premium() -> Response:
@@ -659,8 +647,8 @@ def premium() -> Response:
 ### AI Agent API
 
 ```python
-from flask import Flask, request, jsonify, g
-from prism_flask import prism_payment_middleware
+from flask import Flask, request, jsonify
+from prism_flask import get_payer, prism_payment_middleware
 from prism_sdk_core import PrismMiddlewareConfig, RoutePaymentConfig
 
 app = Flask(__name__)
@@ -685,7 +673,7 @@ def ai_chat():
     """AI chat endpoint"""
     data = request.get_json()
     message = data.get('message')
-    payer = getattr(g, 'prism_payer')
+    payer = get_payer()
 
     # Call AI service
     response = call_ai_service(message)
@@ -705,7 +693,7 @@ def ai_chat():
 @app.route('/articles/<int:article_id>')
 def get_article(article_id):
     """Payment-protected article access"""
-    payer = getattr(g, 'prism_payer')
+    payer = get_payer()
 
     article = db.get_article(article_id)
 
@@ -724,6 +712,7 @@ def get_article(article_id):
 
 ```python
 from flask_limiter import Limiter
+from prism_flask import get_payer
 from flask_limiter.util import get_remote_address
 
 limiter = Limiter(
@@ -736,7 +725,7 @@ limiter = Limiter(
 @limiter.limit("10 per minute")  # Additional rate limit for premium
 def premium():
     """Rate-limited premium endpoint"""
-    payer = getattr(g, 'prism_payer')
+    payer = get_payer()
 
     return jsonify({
         'message': 'Premium content',
@@ -763,13 +752,13 @@ def premium():
 
 {" "}
 
-<Accordion title="g.prism_payer is None even with valid payment">
+<Accordion title="get_payer() is None even with valid payment">
   **Check:** 1. Payment header is properly formatted JSON string 2. Middleware
   is configured BEFORE route definitions 3. Route path matches configured route
   pattern 4. Payment signature is valid **Debug:** ```python @app.before_request
   def debug_payment(): print(f'Path: {request.path}') print(f'Payment header:{" "}
   {request.headers.get("X-PAYMENT")}') print(f'Payer:{" "}
-  {getattr(g, "prism_payer", "NOT SET")}') ```
+  {get_payer() or "NOT SET"}') ```
 </Accordion>
 
 {" "}
@@ -831,14 +820,15 @@ prism_payment_middleware(app, config, routes)
 Works with Flask Blueprints:
 
 ```python
-from flask import Blueprint, g, jsonify
+from flask import Blueprint, jsonify
+from prism_flask import get_payer
 
 api_bp = Blueprint('api', __name__, url_prefix='/api')
 
 @api_bp.route('/premium')
 def premium():
     """Blueprint route - payment still works!"""
-    payer = getattr(g, 'prism_payer')
+    payer = get_payer()
     return jsonify({'message': 'Premium', 'payer': payer})
 
 # Register blueprint

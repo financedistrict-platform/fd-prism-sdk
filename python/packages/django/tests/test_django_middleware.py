@@ -14,7 +14,13 @@ from django.test import RequestFactory, override_settings
 from django.core.exceptions import ImproperlyConfigured
 from django.http import HttpResponse
 
-from prism_django import PrismPaymentMiddleware, AsyncPrismPaymentMiddleware, require_payment
+from prism_django import (
+    PrismPaymentMiddleware,
+    AsyncPrismPaymentMiddleware,
+    get_payer,
+    get_payment,
+    require_payment,
+)
 from prism_sdk_core import PrismMiddlewareConfig, RoutePaymentConfig
 
 # ---------------------------------------------------------------------------
@@ -265,3 +271,30 @@ async def test_async_middleware_valid_payment_returns_200(MockClient):
     request = factory.get('/api/premium/', HTTP_PAYMENT_SIGNATURE=VALID_HEADER)
     response = await mw(request)
     assert response.status_code == 200
+
+
+def test_get_payer_returns_verified_payer():
+    request = factory.get('/')
+    request._prism_payer = '0xPAYER'
+    assert get_payer(request) == '0xPAYER'
+
+
+def test_get_payment_returns_verified_payment():
+    request = factory.get('/')
+    request._prism_payment = {'signature': '0xSIG'}
+    assert get_payment(request) == {'signature': '0xSIG'}
+
+
+def test_accessors_return_none_when_unpaid():
+    request = factory.get('/')
+    assert get_payer(request) is None
+    assert get_payment(request) is None
+
+
+def test_accessors_ignore_unprefixed_attributes():
+    request = factory.get('/')
+    request.prism_payer = '0xSPOOF'
+    request.prism_payment = {'signature': '0xSPOOF'}
+    assert get_payer(request) is None
+    assert get_payment(request) is None
+

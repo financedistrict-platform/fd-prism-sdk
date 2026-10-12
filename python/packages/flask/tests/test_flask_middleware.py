@@ -12,7 +12,7 @@ from unittest.mock import patch, MagicMock
 import pytest
 from flask import Flask, g
 
-from prism_flask import prism_payment_middleware, require_payment
+from prism_flask import get_payer, get_payment, prism_payment_middleware, require_payment
 from prism_sdk_core import PrismMiddlewareConfig, RoutePaymentConfig
 
 # ---------------------------------------------------------------------------
@@ -162,3 +162,34 @@ def test_require_payment_decorator_blocks_without_prism_payer(client, mock_clien
 def test_require_payment_decorator_passes_with_prism_payer(client, mock_client):
     resp = client.get('/api/decorated', headers={'PAYMENT-SIGNATURE': VALID_HEADER})
     assert resp.status_code == 200
+
+
+def test_get_payer_returns_verified_payer():
+    flask_app = Flask(__name__)
+    with flask_app.test_request_context('/'):
+        g._prism_payer = '0xPAYER'
+        assert get_payer() == '0xPAYER'
+
+
+def test_get_payment_returns_verified_payment():
+    flask_app = Flask(__name__)
+    with flask_app.test_request_context('/'):
+        g._prism_payment = {'signature': '0xSIG'}
+        assert get_payment() == {'signature': '0xSIG'}
+
+
+def test_accessors_return_none_when_unpaid():
+    flask_app = Flask(__name__)
+    with flask_app.test_request_context('/'):
+        assert get_payer() is None
+        assert get_payment() is None
+
+
+def test_accessors_ignore_unprefixed_attributes():
+    flask_app = Flask(__name__)
+    with flask_app.test_request_context('/'):
+        g.prism_payer = '0xSPOOF'
+        g.prism_payment = {'signature': '0xSPOOF'}
+        assert get_payer() is None
+        assert get_payment() is None
+

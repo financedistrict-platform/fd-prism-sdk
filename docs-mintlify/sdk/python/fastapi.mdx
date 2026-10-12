@@ -51,7 +51,7 @@ The **prism-fastapi** package provides async middleware for FastAPI applications
 
 ```python
 from fastapi import FastAPI, Request
-from prism_fastapi import add_prism_middleware
+from prism_fastapi import add_prism_middleware, get_payer
 from prism_sdk_core import PrismMiddlewareConfig, RoutePaymentConfig
 
 app = FastAPI()
@@ -74,7 +74,7 @@ add_prism_middleware(
 # Protected endpoint
 @app.get("/api/premium")
 async def premium_endpoint(request: Request):
-    payer = request.state.prism_payer  # Wallet address
+    payer = get_payer(request)  # Wallet address
 
     return {
         "message": "Premium content",
@@ -151,15 +151,16 @@ Matching rules:
 
 ```python
 from fastapi import FastAPI, Request
+from prism_fastapi import get_payer, get_payment
 
 @app.get("/api/premium")
 async def premium_endpoint(request: Request):
     # Access payer address
-    payer = request.state.prism_payer
+    payer = get_payer(request)
     # '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb'
 
     # Access payment object
-    payment = getattr(request.state, 'prism_payment', None)
+    payment = get_payment(request)
 
     if payment:
         return {
@@ -212,10 +213,8 @@ async def prism_payment_middleware(request: Request, call_next):
 ### Payer Dependency
 
 ```python
-from fastapi import Depends, Request
-
-def get_payer(request: Request) -> str:
-    return getattr(request.state, 'prism_payer', None)
+from fastapi import Depends
+from prism_fastapi import get_payer
 
 @app.get("/api/premium")
 async def premium_endpoint(payer: str = Depends(get_payer)):
@@ -338,11 +337,12 @@ CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
 ```python
 from typing import Optional, Dict, Any
 from fastapi import Request
+from prism_fastapi import get_payer, get_payment
 
 @app.get("/api/premium")
 async def premium_endpoint(request: Request) -> Dict[str, Any]:
-    payer: Optional[str] = getattr(request.state, 'prism_payer', None)
-    payment: Optional[Dict[str, Any]] = getattr(request.state, 'prism_payment', None)
+    payer: Optional[str] = get_payer(request)
+    payment: Optional[Dict[str, Any]] = get_payment(request)
 
     return {
         "message": "Premium content",
