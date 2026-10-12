@@ -168,6 +168,26 @@ urlpatterns = [
 
 ---
 
+### Per-View Price with `require_payment`
+
+`require_payment(price, description)` sets the price for a single view. That price is the one enforced: the middleware requests, verifies and settles payment against it, even when a cheaper wildcard route in `PRISM_CONFIG['ROUTES']` also covers the path. A view that is not covered by any configured route is still charged when it is decorated.
+
+```python
+# views.py
+from django.http import JsonResponse
+from prism_django import require_payment
+
+@require_payment(price=0.50, description='Full report')
+def report_view(request):
+    return JsonResponse({'report': '...'})
+```
+
+- `price` must be a finite, non-negative number or numeric string (a leading `$` is allowed). Anything else raises `ValueError` when the decorator is applied.
+- The middleware finds the decorator by resolving the request path with the active URLconf. Keep `functools.wraps` on any decorator stacked above it. If the middleware cannot see the decorator, the view is not run and the response is a `500` instead of serving it at the wrong price.
+- Decorate function views. A decorator applied to a class-based view through `method_decorator` is not visible to the URL resolver, so the price in `PRISM_CONFIG['ROUTES']` is the one charged and the view returns the `500` above when the two prices differ.
+
+---
+
 ## Accessing Payment Info
 
 ```python

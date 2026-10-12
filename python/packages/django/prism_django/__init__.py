@@ -5,17 +5,22 @@ Django middleware for x402 payment protocol
 
 from __future__ import annotations
 
+from functools import wraps
 from typing import Dict, Callable, Optional, Tuple
 from django.core.exceptions import ImproperlyConfigured
 from django.http import JsonResponse, HttpRequest, HttpResponse
 from django.conf import settings
+from django.urls import Resolver404, resolve
 from prism_sdk_core import (
     PrismMiddlewareCore,
     PrismMiddlewareConfig,
     RoutePaymentConfig,
     HeaderAdapter,
+    bind_decorator_route,
     detect_protocol_version,
-    normalize_routes
+    get_decorator_route,
+    normalize_routes,
+    prices_match
 )
 
 CONFIG_KEY_FIELDS = {
@@ -26,6 +31,17 @@ CONFIG_KEY_FIELDS = {
     'X402_VERSION': 'x402_version',
 }
 ROUTES_KEY = 'ROUTES'
+
+
+def find_decorated_route(request: HttpRequest) -> Optional[RoutePaymentConfig]:
+    urlconf = getattr(request, 'urlconf', None) or getattr(settings, 'ROOT_URLCONF', None)
+    if urlconf is None:
+        return None
+    try:
+        match = resolve(request.path_info, urlconf=urlconf)
+    except Resolver404:
+        return None
+    return get_decorator_route(match.func)
 
 
 def load_prism_settings() -> Tuple[PrismMiddlewareConfig, Dict[str, RoutePaymentConfig]]:
@@ -115,7 +131,8 @@ class PrismPaymentMiddleware:
             path=request.path,
             resource_url=resource_url,
             payment_header=payment_header,
-            protocol_version=protocol_version
+            protocol_version=protocol_version,
+            route_override=find_decorated_route(request)
         )
         
         # If middleware handled (returned 402 or error)
@@ -138,6 +155,7 @@ class PrismPaymentMiddleware:
             request._prism_payment = result.payment_info['payment']
             request._prism_payer = result.payment_info['payer']
             request._prism_requirements = result.payment_info['payment_requirements']
+            request._prism_route_price = result.payment_info['route_price']
         
         # Call the view
         response = self.get_response(request)
@@ -186,20 +204,25 @@ class PrismPaymentMiddleware:
         return response
 
 
-# Decorator for protecting individual views
 def require_payment(price: float | str, description: str):
     """
-    Decorator for protecting individual Django views
-    
+    Decorator for protecting individual Django views.
+
+    The price given here is the price enforced for the view: the middleware
+    requests, verifies and settles payment against it instead of the price of
+    any middleware route that also covers the path. A view whose verified price
+    differs from the decorator's price is not run.
+
     Example:
         from prism_django import require_payment
-        
+
         @require_payment(price=0.01, description='Premium API')
         def premium_view(request):
             payer = getattr(request, '_prism_payer', None)
             return JsonResponse({'message': 'Premium content', 'payer': payer})
     """
     def decorator(view_func: Callable):
+        @wraps(view_func)
         def wrapped_view(request: HttpRequest, *args, **kwargs):
             # Use _prism_payment_verified flag (underscore-prefixed, set only by Prism middleware)
             # to prevent bypass via accidental attribute collision with other middleware
@@ -212,8 +235,15 @@ def require_payment(price: float | str, description: str):
                     status=402
                 )
 
+            if not prices_match(getattr(request, '_prism_route_price', None), price):
+                return JsonResponse(
+                    {'error': 'Payment configuration mismatch'},
+                    status=500
+                )
+
             return view_func(request, *args, **kwargs)
 
+        bind_decorator_route(wrapped_view, price, description)
         return wrapped_view
     return decorator
 
@@ -259,6 +289,7 @@ class AsyncPrismPaymentMiddleware:
             resource_url=resource_url,
             payment_header=payment_header,
             protocol_version=protocol_version,
+            route_override=find_decorated_route(request),
         )
 
         if result.handled:
@@ -274,6 +305,7 @@ class AsyncPrismPaymentMiddleware:
             request._prism_payment = result.payment_info['payment']
             request._prism_payer = result.payment_info['payer']
             request._prism_requirements = result.payment_info['payment_requirements']
+            request._prism_route_price = result.payment_info['route_price']
 
         response = await self.get_response(request)
 
