@@ -10,6 +10,7 @@
   "scripts": {
     "build": "turbo run build",
     "test": "turbo run test",
+    "test:manifests": "node --test scripts/check-peer-ranges.test.mjs",
     "lint": "turbo run lint",
     "clean": "turbo run clean",
     "dev": "turbo run dev --parallel"

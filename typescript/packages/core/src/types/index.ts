@@ -88,6 +88,8 @@ export interface PrismMiddlewareConfig {
   // Host header injection attacks. Recommended for production deployments.
   resourceBaseUrl?: string;
 
+  maxHeldResponseBytes?: number;
+
   // INTERNAL: Optional client instance for dependency injection (used in testing)
   // When provided, middleware will use this client instead of creating new one
   client?: any;

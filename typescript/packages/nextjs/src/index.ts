@@ -1,9 +1,8 @@
 /**
  * @financedistrict/prism-x402-sdk-nextjs
- * Next.js middleware for Prism payment protocol
+ * Route handler wrappers for the Prism payment protocol
  */
 
-import { NextRequest, NextResponse } from 'next/server';
 import {
   PrismMiddlewareCore,
   PrismMiddlewareConfig,
@@ -13,125 +12,38 @@ import {
   detectProtocolVersion,
 } from '@financedistrict/prism-x402-sdk';
 
-/**
- * Prism Next.js configuration
- */
-export interface PrismNextConfig extends PrismMiddlewareConfig {
-  routes: Record<string, RoutePaymentConfig>;
+export interface VerifiedPaymentInfo {
+  payer: string | null;
+  amount: string | null;
 }
 
-/**
- * Create Prism middleware for Next.js App Router
- * 
- * Note: Next.js App Router middleware cannot intercept responses after the route
- * handler executes. This means settlement (and X-PAYMENT-RESPONSE header) cannot
- * be performed in middleware. Use {@link withPrismPayment} on individual route
- * handlers for the full payment flow including settlement.
- * 
- * @example
- * ```typescript
- * // middleware.ts
- * import { createPrismMiddleware } from '@financedistrict/prism-x402-sdk-nextjs';
- * 
- * export const middleware = createPrismMiddleware({
- *   apiKey: 'your-api-key',
- *   baseUrl: 'https://prism-api.1stdigital.tech',
- *   routes: {
- *     '/api/premium': { price: 0.01, description: 'Premium API' },
- *     '/api/weather': { price: '$0.001', description: 'Weather data' }
- *   }
- * });
- * 
- * export const config = {
- *   matcher: '/api/:path*'
- * };
- * ```
- */
-export function createPrismMiddleware(config: PrismNextConfig) {
-  const { routes, ...middlewareConfig } = config;
-  const core = new PrismMiddlewareCore(middlewareConfig, routes);
+const verifiedPayments = new WeakMap<Request, VerifiedPaymentInfo>();
 
-  console.warn(
-    '[prism-nextjs] createPrismMiddleware() only handles payment verification. ' +
-    'Settlement and X-PAYMENT-RESPONSE header are not supported in Next.js middleware. ' +
-    'Use withPrismPayment() on individual route handlers for the full payment flow.'
-  );
+const UNTRUSTED_HEADER_PREFIX = 'x-prism-';
 
-  return async function middleware(request: NextRequest): Promise<NextResponse> {
-    const pathname = request.nextUrl.pathname;
-    const resourceUrl = request.url;
+const PAYMENT_HEADER_NAMES = new Set(
+  [...HeaderAdapter.getAllPaymentHeaders(), ...HeaderAdapter.getAllResponseHeaders()].map((name) =>
+    name.toLowerCase()
+  )
+);
 
-    // Get payment header (supports both v1 X-PAYMENT and v2 PAYMENT-SIGNATURE)
-    const paymentHeader = HeaderAdapter.getPaymentPayload((name) => request.headers.get(name) || null);
-
-    // Detect protocol version from header name or payload
-    let protocolVersion: 1 | 2 = middlewareConfig.x402Version || 2; // Default to v2
-    if (paymentHeader) {
-      const detected = detectProtocolVersion(paymentHeader);
-      if (detected) {
-        protocolVersion = detected;
-      }
+function stripUntrustedHeaders(headers: Headers): void {
+  const names: string[] = [];
+  headers.forEach((_, name) => names.push(name.toLowerCase()));
+  for (const name of names) {
+    if (name.startsWith(UNTRUSTED_HEADER_PREFIX) || PAYMENT_HEADER_NAMES.has(name)) {
+      headers.delete(name);
     }
-
-    // Process request through middleware core
-    const result: MiddlewareResult = await core.handleRequest({
-      path: pathname,
-      paymentHeader: paymentHeader || undefined,
-      resourceUrl,
-      protocolVersion,
-    });
-
-    // If middleware handled the request (returned error or 402)
-    if (result.handled) {
-      // Build response with headers
-      const responseHeaders: Record<string, string> = {
-        'Content-Type': 'application/json',
-        ...(result.headers || {}),
-      };
-
-      return new NextResponse(
-        JSON.stringify(result.body),
-        {
-          status: result.statusCode!,
-          headers: responseHeaders,
-        }
-      );
-    }
-
-    // Payment verified or route not protected.
-    // Clone the incoming request headers and overwrite them with the verified
-    // values so the downstream Route Handler receives the verified payer/payment
-    // info rather than any client-forged x-prism-* headers on the original request.
-    const forwardedHeaders = new Headers(request.headers);
-
-    if (result.paymentInfo) {
-      forwardedHeaders.set('x-prism-payer', result.paymentInfo.payer);
-      forwardedHeaders.set('x-prism-payment', JSON.stringify(result.paymentInfo.payment));
-    } else {
-      forwardedHeaders.delete('x-prism-payer');
-      forwardedHeaders.delete('x-prism-payment');
-    }
-
-    const response = NextResponse.next({
-      request: {
-        headers: forwardedHeaders,
-      },
-    });
-
-    // Also set on the outgoing response for clients that read these directly.
-    if (result.paymentInfo) {
-      response.headers.set('x-prism-payer', result.paymentInfo.payer);
-      response.headers.set('x-prism-payment', JSON.stringify(result.paymentInfo.payment));
-    }
-
-    return response;
-  };
+  }
 }
 
 /**
  * Prism API route wrapper for App Router
- * Wraps Next.js route handlers with payment protection
- * 
+ * Wraps Next.js route handlers with payment protection: it verifies the proof,
+ * runs the handler, then settles the payment before returning the response.
+ * Next.js middleware cannot observe the handler response, so it cannot settle;
+ * protect each paid route with this wrapper instead.
+ *
  * @example
  * ```typescript
  * // app/api/premium/route.ts
@@ -139,11 +51,7 @@ export function createPrismMiddleware(config: PrismNextConfig) {
  * 
  * export const GET = withPrismPayment(
  *   async (request: Request) => {
- *     const payer = request.headers.get('x-prism-payer');
- *     return Response.json({ 
- *       message: 'Premium content',
- *       payer 
- *     });
+ *     return Response.json({ message: 'Premium content' });
  *   },
  *   { 
  *     price: 0.01, 
@@ -165,6 +73,7 @@ export function withPrismPayment(
     // Get payment header
     const url = new URL(request.url);
     const paymentHeader = HeaderAdapter.getPaymentPayload((name) => request.headers.get(name) || null);
+    stripUntrustedHeaders(request.headers);
 
     // Detect protocol version
     let protocolVersion: 1 | 2 = middlewareConfig.x402Version || 2;
@@ -201,6 +110,14 @@ export function withPrismPayment(
           },
         }
       );
+    }
+
+    if (result.paymentInfo) {
+      const requirements = result.paymentInfo.paymentRequirements;
+      verifiedPayments.set(request, {
+        payer: result.paymentInfo.payer ?? null,
+        amount: requirements?.amount ?? requirements?.maxAmountRequired ?? null,
+      });
     }
 
     // Payment verified, call original handler
@@ -289,20 +206,13 @@ export function withPrismPayment(
  * Helper to extract payer from request in route handlers
  */
 export function getPayer(request: Request): string | null {
-  return request.headers.get('x-prism-payer');
+  return verifiedPayments.get(request)?.payer ?? null;
 }
 
 /**
  * Helper to extract payment info from request in route handlers
  */
-export function getPaymentInfo(request: Request): {
-  payer: string | null;
-  amount: string | null;
-  transactionId: string | null;
-} {
-  return {
-    payer: request.headers.get('x-prism-payer'),
-    amount: request.headers.get('x-prism-amount'),
-    transactionId: request.headers.get('x-prism-transaction-id'),
-  };
+export function getPaymentInfo(request: Request): VerifiedPaymentInfo {
+  const info = verifiedPayments.get(request);
+  return { payer: info?.payer ?? null, amount: info?.amount ?? null };
 }

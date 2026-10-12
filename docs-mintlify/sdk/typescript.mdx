@@ -276,6 +276,13 @@ interface RoutePaymentConfig {
 <ParamField path="price" type="number | string" required>
   Price to charge per request **Formats:** - Number: `0.001` (USDC) - String:
   `"$0.001"` (explicit USD) - String: `"0.001 USDC"` (explicit token)
+  <Warning>
+    Strings must be a plain positive decimal with an optional leading currency
+    symbol and an optional trailing `USD` or `USDC`. Thousands separators
+    (`"1,000"`), exponents (`"1e3"`), signs, other currency codes (`"10 EUR"`)
+    and stray text are rejected with an error instead of being read as a
+    different amount. Zero, negative and non-finite numbers are rejected too.
+  </Warning>
   <Tip>Use small decimals for micropayments: `0.001` = $0.001 = 0.1¢</Tip>
 </ParamField>
 
@@ -327,8 +334,12 @@ interface RoutePaymentConfig {
 Matches:
 
 - ✅ `/api/weather`
+- ✅ `/API/Weather` (matching is case-insensitive)
+- ✅ `/api/weather/` (trailing slashes are ignored)
 - ❌ `/api/weather/forecast`
 - ❌ `/api/weather-data`
+
+Route keys and request paths are normalised the same way (lower-cased, trailing slashes removed), so a protected route cannot be reached through a different spelling that Express or NestJS would still route to the same handler.
 
 ### Wildcard Routes
 
@@ -369,7 +380,7 @@ Matches:
 
 ### Route Priority
 
-When multiple patterns match, **most specific wins**:
+When multiple patterns match, **most specific wins**. An exact route beats every wildcard, and among wildcards the one with the longest matching prefix wins. The result never depends on price or on the order of the keys in the config:
 
 ```typescript
 {
@@ -379,7 +390,9 @@ When multiple patterns match, **most specific wins**:
 }
 ```
 
-Request to `/api/premium/gold` → uses `0.05` price
+- `/api/premium/gold` → uses `0.05` (exact route)
+- `/api/premium/silver` → uses `0.01` (longest wildcard prefix, even though `/api/*` is cheaper and listed first)
+- `/api/free` → uses `0.001`
 
 ## Accessing Payment Info
 

@@ -6,27 +6,28 @@ error scenarios, settlement, config normalization, and require_payment decorator
 from __future__ import annotations
 
 import json
-import base64
 from unittest.mock import patch, MagicMock
 
 import pytest
 from django.test import RequestFactory, override_settings
+from django.core.exceptions import ImproperlyConfigured
 from django.http import HttpResponse
 
-from prism_django import PrismPaymentMiddleware, AsyncPrismPaymentMiddleware, require_payment
+from prism_django import (
+    PrismPaymentMiddleware,
+    AsyncPrismPaymentMiddleware,
+    get_payer,
+    get_payment,
+    require_payment,
+)
 from prism_sdk_core import PrismMiddlewareConfig, RoutePaymentConfig
+from .payments import header_for, requirements_for
 
 # ---------------------------------------------------------------------------
 # Shared mock data
 # ---------------------------------------------------------------------------
 
-MOCK_REQUIREMENTS = {
-    'x402Version': 2,
-    'amount': '1000000',
-    'network': 'eip155:84532',
-    'paymentAddress': '0xTEST',
-    'accepted': [{'url': 'http://testserver/api/premium/', 'description': 'Premium API'}],
-}
+MOCK_REQUIREMENTS = requirements_for()
 MOCK_VERIFICATION_VALID = {'valid': True, 'payment': {'signature': '0xSIG'}, 'payer': '0xPAYER'}
 MOCK_VERIFICATION_INVALID = {'valid': False, 'error': 'Invalid signature'}
 MOCK_SETTLEMENT_SUCCESS = {'success': True, 'transaction': '0xTXHASH'}
@@ -35,11 +36,7 @@ MOCK_SETTLEMENT_FAILURE = {'success': False, 'errorReason': 'Insufficient funds'
 factory = RequestFactory()
 
 
-def make_header(data: dict) -> str:
-    return base64.b64encode(json.dumps(data).encode()).decode()
-
-
-VALID_HEADER = make_header({'x402Version': 2, 'signature': '0xSIG', 'payer': '0xPAYER'})
+VALID_HEADER = header_for()
 
 
 def make_get_response(status: int = 200):
@@ -128,7 +125,11 @@ def test_invalid_payment_returns_402(MockClient):
 
 
 @patch('prism_sdk_core.PrismClient')
-@override_settings(PRISM_CONFIG={'api_key': 'dict-key', 'debug': False})
+@override_settings(PRISM_CONFIG={
+    'API_KEY': 'dict-key',
+    'DEBUG': False,
+    'ROUTES': {'/api/premium/': {'price': 0.01, 'description': 'Premium API'}},
+})
 def test_config_dict_accepted(MockClient):
     """PRISM_CONFIG as plain dict must not raise TypeError."""
     make_middleware(MockClient.return_value)  # no exception == pass
@@ -136,17 +137,19 @@ def test_config_dict_accepted(MockClient):
 
 @patch('prism_sdk_core.PrismClient')
 @override_settings(PRISM_CONFIG=PrismMiddlewareConfig(api_key='obj-key', debug=False))
-def test_config_object_accepted(MockClient):
-    """PRISM_CONFIG as PrismMiddlewareConfig must not raise TypeError."""
-    make_middleware(MockClient.return_value)  # no exception == pass
+def test_config_object_rejected(MockClient):
+    """PRISM_CONFIG must be a dict so that ROUTES can live beside the other keys."""
+    with pytest.raises(ImproperlyConfigured):
+        make_middleware(MockClient.return_value)
 
 
 @patch('prism_sdk_core.PrismClient')
-@override_settings(
-    PRISM_ROUTES={'/api/premium/': RoutePaymentConfig(price=0.01, description='Premium API')}
-)
+@override_settings(PRISM_CONFIG={
+    'API_KEY': 'test',
+    'ROUTES': {'/api/premium/': RoutePaymentConfig(price=0.01, description='Premium API')},
+})
 def test_route_config_object_accepted(MockClient):
-    """PRISM_ROUTES with RoutePaymentConfig values must not raise TypeError."""
+    """ROUTES with RoutePaymentConfig values must not raise TypeError."""
     make_middleware(MockClient.return_value)  # no exception == pass
 
 
@@ -193,8 +196,11 @@ def test_require_payment_decorator_passes_with_prism_payer(MockClient):
 @pytest.mark.asyncio
 @patch('prism_sdk_core.PrismClient')
 @override_settings(
-    PRISM_CONFIG={'api_key': 'test', 'debug': True},
-    PRISM_ROUTES={'/api/premium/': {'price': 0.01, 'description': 'Premium API'}},
+    PRISM_CONFIG={
+        'API_KEY': 'test',
+        'DEBUG': True,
+        'ROUTES': {'/api/premium/': {'price': 0.01, 'description': 'Premium API'}},
+    },
 )
 async def test_async_middleware_free_route(MockClient):
     inst = MockClient.return_value
@@ -212,8 +218,11 @@ async def test_async_middleware_free_route(MockClient):
 @pytest.mark.asyncio
 @patch('prism_sdk_core.PrismClient')
 @override_settings(
-    PRISM_CONFIG={'api_key': 'test', 'debug': True},
-    PRISM_ROUTES={'/api/premium/': {'price': 0.01, 'description': 'Premium API'}},
+    PRISM_CONFIG={
+        'API_KEY': 'test',
+        'DEBUG': True,
+        'ROUTES': {'/api/premium/': {'price': 0.01, 'description': 'Premium API'}},
+    },
 )
 async def test_async_middleware_protected_no_payment_returns_402(MockClient):
     from unittest.mock import AsyncMock
@@ -232,8 +241,11 @@ async def test_async_middleware_protected_no_payment_returns_402(MockClient):
 @pytest.mark.asyncio
 @patch('prism_sdk_core.PrismClient')
 @override_settings(
-    PRISM_CONFIG={'api_key': 'test', 'debug': True},
-    PRISM_ROUTES={'/api/premium/': {'price': 0.01, 'description': 'Premium API'}},
+    PRISM_CONFIG={
+        'API_KEY': 'test',
+        'DEBUG': True,
+        'ROUTES': {'/api/premium/': {'price': 0.01, 'description': 'Premium API'}},
+    },
 )
 async def test_async_middleware_valid_payment_returns_200(MockClient):
     from unittest.mock import AsyncMock
@@ -249,3 +261,30 @@ async def test_async_middleware_valid_payment_returns_200(MockClient):
     request = factory.get('/api/premium/', HTTP_PAYMENT_SIGNATURE=VALID_HEADER)
     response = await mw(request)
     assert response.status_code == 200
+
+
+def test_get_payer_returns_verified_payer():
+    request = factory.get('/')
+    request._prism_payer = '0xPAYER'
+    assert get_payer(request) == '0xPAYER'
+
+
+def test_get_payment_returns_verified_payment():
+    request = factory.get('/')
+    request._prism_payment = {'signature': '0xSIG'}
+    assert get_payment(request) == {'signature': '0xSIG'}
+
+
+def test_accessors_return_none_when_unpaid():
+    request = factory.get('/')
+    assert get_payer(request) is None
+    assert get_payment(request) is None
+
+
+def test_accessors_ignore_unprefixed_attributes():
+    request = factory.get('/')
+    request.prism_payer = '0xSPOOF'
+    request.prism_payment = {'signature': '0xSPOOF'}
+    assert get_payer(request) is None
+    assert get_payment(request) is None
+
