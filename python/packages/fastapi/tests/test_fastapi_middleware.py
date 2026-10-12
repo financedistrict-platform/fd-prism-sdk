@@ -5,8 +5,6 @@ error scenarios, settlement, helpers, and require_payment decorator.
 
 from __future__ import annotations
 
-import json
-import base64
 from unittest.mock import patch, MagicMock, AsyncMock
 
 import pytest
@@ -15,6 +13,7 @@ from fastapi import FastAPI, Request
 
 from prism_fastapi import add_prism_middleware, get_payer, get_payment, require_payment
 from prism_sdk_core import PrismMiddlewareConfig, RoutePaymentConfig
+from .payments import encode, header_for, requirements_for, v1_payment
 
 pytestmark = pytest.mark.asyncio
 
@@ -22,13 +21,7 @@ pytestmark = pytest.mark.asyncio
 # Shared mock data
 # ---------------------------------------------------------------------------
 
-MOCK_REQUIREMENTS = {
-    'x402Version': 2,
-    'amount': '1000000',
-    'network': 'eip155:84532',
-    'paymentAddress': '0xTEST',
-    'accepted': [{'url': 'http://test/api/premium', 'description': 'Premium API'}],
-}
+MOCK_REQUIREMENTS = requirements_for()
 MOCK_VERIFICATION_VALID = {'valid': True, 'payment': {'signature': '0xSIG'}, 'payer': '0xPAYER'}
 MOCK_VERIFICATION_INVALID = {'valid': False, 'error': 'Invalid signature'}
 MOCK_SETTLEMENT_SUCCESS = {'success': True, 'transaction': '0xTXHASH'}
@@ -41,24 +34,7 @@ ROUTES = {
 }
 
 
-def make_header(data: dict) -> str:
-    return base64.b64encode(json.dumps(data).encode()).decode()
-
-
-AUTHORIZATION = {
-    'from': '0xPAYER',
-    'to': '0xTEST',
-    'value': '1000000',
-    'validAfter': '0',
-    'validBefore': '9999999999',
-    'nonce': '0x01',
-}
-PAYLOAD = {'signature': '0xSIG', 'authorization': AUTHORIZATION}
-VALID_HEADER = make_header({
-    'x402Version': 2,
-    'accepted': {'scheme': 'exact', 'network': 'eip155:84532', 'asset': '0xASSET'},
-    'payload': PAYLOAD,
-})
+VALID_HEADER = header_for()
 
 
 # ---------------------------------------------------------------------------
@@ -169,12 +145,7 @@ async def test_invalid_payment_returns_402(async_client, mock_client):
 
 
 async def test_v1_x_payment_header_accepted(v1_client):
-    v1_header = make_header({
-        'x402Version': 1,
-        'scheme': 'exact',
-        'network': 'base-sepolia',
-        'payload': PAYLOAD,
-    })
+    v1_header = encode(v1_payment())
     resp = await v1_client.get('/api/premium', headers={'x-payment': v1_header})
     assert resp.status_code == 200
 

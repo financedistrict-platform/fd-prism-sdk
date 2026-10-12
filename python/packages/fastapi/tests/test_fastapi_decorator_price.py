@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import base64
-import json
 from unittest.mock import AsyncMock, patch
 
 import httpx
@@ -10,34 +8,18 @@ from fastapi import FastAPI, Request
 
 from prism_fastapi import add_prism_middleware, require_payment
 from prism_sdk_core import PrismMiddlewareConfig, RoutePaymentConfig
+from .payments import header_for, requirements_for
 
 pytestmark = pytest.mark.asyncio
 
 CONFIG = PrismMiddlewareConfig(api_key='test-key')
 ROUTES = {'/api/*': RoutePaymentConfig(price=0.01, description='Cheap API')}
 
-PAYMENT = {
-    'x402Version': 2,
-    'accepted': {'scheme': 'exact', 'network': 'eip155:84532', 'asset': '0xASSET'},
-    'payload': {
-        'signature': '0xSIG',
-        'authorization': {
-            'from': '0xPAYER',
-            'to': '0xPAYEE',
-            'value': '10000',
-            'validAfter': '0',
-            'validBefore': '9999999999',
-            'nonce': '0x01',
-        },
-    },
-}
-PAYMENT_HEADERS = {
-    'payment-signature': base64.b64encode(json.dumps(PAYMENT).encode()).decode()
-}
+def payment_headers(price=None):
+    return {'payment-signature': header_for(price)}
 
 
-def requirements_for(price):
-    return {'accepts': [{'scheme': 'exact', 'network': 'eip155:84532', 'amount': str(price)}]}
+PAYMENT_HEADERS = payment_headers()
 
 
 async def requirements_side_effect(resource_url, price, description):
@@ -117,13 +99,13 @@ def client_for(app):
 async def test_decorator_price_is_requested_verified_and_settled(client_mock):
     app = build_app()
     async with client_for(app) as client:
-        resp = await client.get('/api/expensive', headers=PAYMENT_HEADERS)
+        resp = await client.get('/api/expensive', headers=payment_headers(0.05))
 
     assert resp.status_code == 200
     assert app.state.executed == ['expensive']
     assert client_mock.aget_payment_requirements.call_args.kwargs['price'] == 0.05
-    assert client_mock.averify_payment.call_args.args[1]['amount'] == '0.05'
-    assert client_mock.asettle_payment.call_args.args[1]['amount'] == '0.05'
+    assert client_mock.averify_payment.call_args.args[1]['amount'] == '50000'
+    assert client_mock.asettle_payment.call_args.args[1]['amount'] == '50000'
 
 
 async def test_decorator_price_is_advertised_in_the_402(client_mock):
@@ -140,11 +122,11 @@ async def test_decorator_price_is_advertised_in_the_402(client_mock):
 async def test_string_price_with_currency_symbol_is_enforced(client_mock):
     app = build_app()
     async with client_for(app) as client:
-        resp = await client.get('/api/dollar', headers=PAYMENT_HEADERS)
+        resp = await client.get('/api/dollar', headers=payment_headers('$0.05'))
 
     assert resp.status_code == 200
     assert client_mock.aget_payment_requirements.call_args.kwargs['price'] == '$0.05'
-    assert client_mock.asettle_payment.call_args.args[1]['amount'] == '$0.05'
+    assert client_mock.asettle_payment.call_args.args[1]['amount'] == '50000'
 
 
 async def test_undecorated_route_keeps_middleware_price(client_mock):
@@ -154,17 +136,17 @@ async def test_undecorated_route_keeps_middleware_price(client_mock):
 
     assert resp.status_code == 200
     assert client_mock.aget_payment_requirements.call_args.kwargs['price'] == 0.01
-    assert client_mock.asettle_payment.call_args.args[1]['amount'] == '0.01'
+    assert client_mock.asettle_payment.call_args.args[1]['amount'] == '10000'
 
 
 async def test_decorated_route_outside_middleware_routes_is_charged(client_mock):
     app = build_app()
     async with client_for(app) as client:
-        resp = await client.get('/private/report', headers=PAYMENT_HEADERS)
+        resp = await client.get('/private/report', headers=payment_headers(0.2))
 
     assert resp.status_code == 200
     assert client_mock.aget_payment_requirements.call_args.kwargs['price'] == 0.2
-    assert client_mock.asettle_payment.call_args.args[1]['amount'] == '0.2'
+    assert client_mock.asettle_payment.call_args.args[1]['amount'] == '200000'
 
 
 async def test_decorated_route_outside_middleware_routes_requires_payment(client_mock):
@@ -180,7 +162,7 @@ async def test_decorator_price_follows_the_http_method(client_mock):
     app = build_app()
     async with client_for(app) as client:
         read = await client.get('/api/versioned', headers=PAYMENT_HEADERS)
-        write = await client.post('/api/versioned', headers=PAYMENT_HEADERS)
+        write = await client.post('/api/versioned', headers=payment_headers(0.07))
 
     assert read.status_code == 200
     assert write.status_code == 200

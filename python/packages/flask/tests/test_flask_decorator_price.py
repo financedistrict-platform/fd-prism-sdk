@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import base64
-import json
 from unittest.mock import patch
 
 import pytest
@@ -9,30 +7,12 @@ from flask import Flask
 
 from prism_flask import prism_payment_middleware, require_payment
 from prism_sdk_core import PrismMiddlewareConfig, RoutePaymentConfig
+from .payments import header_for, requirements_for
 
 CONFIG = PrismMiddlewareConfig(api_key='test-key')
 ROUTES = {'/api/*': RoutePaymentConfig(price=0.01, description='Cheap API')}
 
-PAYMENT = {
-    'x402Version': 2,
-    'accepted': {'scheme': 'exact', 'network': 'eip155:84532', 'asset': '0xASSET'},
-    'payload': {
-        'signature': '0xSIG',
-        'authorization': {
-            'from': '0xPAYER',
-            'to': '0xPAYEE',
-            'value': '10000',
-            'validAfter': '0',
-            'validBefore': '9999999999',
-            'nonce': '0x01',
-        },
-    },
-}
-PAYMENT_HEADER = base64.b64encode(json.dumps(PAYMENT).encode()).decode()
-
-
-def requirements_for(price):
-    return {'accepts': [{'scheme': 'exact', 'network': 'eip155:84532', 'amount': str(price)}]}
+PAYMENT_HEADER = header_for()
 
 
 @pytest.fixture
@@ -95,13 +75,13 @@ def build_app():
 
 def test_decorator_price_is_requested_verified_and_settled(client_mock):
     app = build_app()
-    resp = app.test_client().get('/api/expensive', headers={'PAYMENT-SIGNATURE': PAYMENT_HEADER})
+    resp = app.test_client().get('/api/expensive', headers={'PAYMENT-SIGNATURE': header_for(0.05)})
 
     assert resp.status_code == 200
     assert app.executed == ['expensive']
     assert client_mock.get_payment_requirements.call_args.kwargs['price'] == 0.05
-    assert client_mock.verify_payment.call_args.args[1]['amount'] == '0.05'
-    assert client_mock.settle_payment.call_args.args[1]['amount'] == '0.05'
+    assert client_mock.verify_payment.call_args.args[1]['amount'] == '50000'
+    assert client_mock.settle_payment.call_args.args[1]['amount'] == '50000'
 
 
 def test_decorator_price_is_advertised_in_the_402(client_mock):
@@ -116,11 +96,11 @@ def test_decorator_price_is_advertised_in_the_402(client_mock):
 
 def test_string_price_with_currency_symbol_is_enforced(client_mock):
     app = build_app()
-    resp = app.test_client().get('/api/dollar', headers={'PAYMENT-SIGNATURE': PAYMENT_HEADER})
+    resp = app.test_client().get('/api/dollar', headers={'PAYMENT-SIGNATURE': header_for('$0.05')})
 
     assert resp.status_code == 200
     assert client_mock.get_payment_requirements.call_args.kwargs['price'] == '$0.05'
-    assert client_mock.settle_payment.call_args.args[1]['amount'] == '$0.05'
+    assert client_mock.settle_payment.call_args.args[1]['amount'] == '50000'
 
 
 def test_undecorated_route_keeps_middleware_price(client_mock):
@@ -129,16 +109,16 @@ def test_undecorated_route_keeps_middleware_price(client_mock):
 
     assert resp.status_code == 200
     assert client_mock.get_payment_requirements.call_args.kwargs['price'] == 0.01
-    assert client_mock.settle_payment.call_args.args[1]['amount'] == '0.01'
+    assert client_mock.settle_payment.call_args.args[1]['amount'] == '10000'
 
 
 def test_decorated_view_outside_middleware_routes_is_charged(client_mock):
     app = build_app()
-    resp = app.test_client().get('/private/report', headers={'PAYMENT-SIGNATURE': PAYMENT_HEADER})
+    resp = app.test_client().get('/private/report', headers={'PAYMENT-SIGNATURE': header_for(0.2)})
 
     assert resp.status_code == 200
     assert client_mock.get_payment_requirements.call_args.kwargs['price'] == 0.2
-    assert client_mock.settle_payment.call_args.args[1]['amount'] == '0.2'
+    assert client_mock.settle_payment.call_args.args[1]['amount'] == '200000'
 
 
 def test_decorated_view_outside_middleware_routes_requires_payment(client_mock):

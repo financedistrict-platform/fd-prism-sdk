@@ -6,7 +6,6 @@ error scenarios, settlement, config normalization, and require_payment decorator
 from __future__ import annotations
 
 import json
-import base64
 from unittest.mock import patch, MagicMock
 
 import pytest
@@ -22,18 +21,13 @@ from prism_django import (
     require_payment,
 )
 from prism_sdk_core import PrismMiddlewareConfig, RoutePaymentConfig
+from .payments import header_for, requirements_for
 
 # ---------------------------------------------------------------------------
 # Shared mock data
 # ---------------------------------------------------------------------------
 
-MOCK_REQUIREMENTS = {
-    'x402Version': 2,
-    'amount': '1000000',
-    'network': 'eip155:84532',
-    'paymentAddress': '0xTEST',
-    'accepted': [{'url': 'http://testserver/api/premium/', 'description': 'Premium API'}],
-}
+MOCK_REQUIREMENTS = requirements_for()
 MOCK_VERIFICATION_VALID = {'valid': True, 'payment': {'signature': '0xSIG'}, 'payer': '0xPAYER'}
 MOCK_VERIFICATION_INVALID = {'valid': False, 'error': 'Invalid signature'}
 MOCK_SETTLEMENT_SUCCESS = {'success': True, 'transaction': '0xTXHASH'}
@@ -42,24 +36,7 @@ MOCK_SETTLEMENT_FAILURE = {'success': False, 'errorReason': 'Insufficient funds'
 factory = RequestFactory()
 
 
-def make_header(data: dict) -> str:
-    return base64.b64encode(json.dumps(data).encode()).decode()
-
-
-AUTHORIZATION = {
-    'from': '0xPAYER',
-    'to': '0xTEST',
-    'value': '1000000',
-    'validAfter': '0',
-    'validBefore': '9999999999',
-    'nonce': '0x01',
-}
-PAYLOAD = {'signature': '0xSIG', 'authorization': AUTHORIZATION}
-VALID_HEADER = make_header({
-    'x402Version': 2,
-    'accepted': {'scheme': 'exact', 'network': 'eip155:84532', 'asset': '0xASSET'},
-    'payload': PAYLOAD,
-})
+VALID_HEADER = header_for()
 
 
 def make_get_response(status: int = 200):

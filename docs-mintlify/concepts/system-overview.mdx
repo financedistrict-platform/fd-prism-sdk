@@ -111,9 +111,10 @@ graph TB
     3. **Payment Requirements** - Calls Gateway for payment quote
     4. **402 Response** - Returns X-PAYMENT header with payment options
     5. **Header Parsing** - Extracts X-PAYMENT-AUTHORIZATION from retry request
-    6. **Signature Verification** - Validates signature through Gateway
-    7. **Request Forwarding** - Passes valid requests to route handler
-    8. **Error Handling** - Returns 401/402 for invalid/missing payments
+    6. **Local Payment Checks** - Rejects, before any Gateway call, a payment whose accepted requirement, recipient, amount, resource or validity window does not match the route's payment requirements
+    7. **Signature Verification** - Validates signature through Gateway
+    8. **Request Forwarding** - Passes valid requests to route handler
+    9. **Error Handling** - Returns 401/402 for invalid/missing payments
     
     **Configuration:**
     ```typescript

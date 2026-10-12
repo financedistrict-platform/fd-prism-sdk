@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import base64
-import json
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -13,6 +11,8 @@ from django.views import View
 
 from prism_django import AsyncPrismPaymentMiddleware, PrismPaymentMiddleware, require_payment
 
+from .payments import header_for, requirements_for
+
 factory = RequestFactory()
 
 CONFIG = {
@@ -20,28 +20,9 @@ CONFIG = {
     'ROUTES': {'/api/*': {'price': 0.01, 'description': 'Cheap API'}},
 }
 
-PAYMENT = {
-    'x402Version': 2,
-    'accepted': {'scheme': 'exact', 'network': 'eip155:84532', 'asset': '0xASSET'},
-    'payload': {
-        'signature': '0xSIG',
-        'authorization': {
-            'from': '0xPAYER',
-            'to': '0xPAYEE',
-            'value': '10000',
-            'validAfter': '0',
-            'validBefore': '9999999999',
-            'nonce': '0x01',
-        },
-    },
-}
-PAYMENT_HEADER = base64.b64encode(json.dumps(PAYMENT).encode()).decode()
+PAYMENT_HEADER = header_for()
 
 executed = []
-
-
-def requirements_for(price):
-    return {'accepts': [{'scheme': 'exact', 'network': 'eip155:84532', 'amount': str(price)}]}
 
 
 def cheap(request):
@@ -139,13 +120,13 @@ def sync_get(url, **extra):
 
 @override_settings(ROOT_URLCONF=__name__, PRISM_CONFIG=CONFIG)
 def test_decorator_price_is_requested_verified_and_settled(client_mock):
-    response = sync_get('/api/expensive', HTTP_PAYMENT_SIGNATURE=PAYMENT_HEADER)
+    response = sync_get('/api/expensive', HTTP_PAYMENT_SIGNATURE=header_for(0.05))
 
     assert response.status_code == 200
     assert executed == ['expensive']
     assert client_mock.get_payment_requirements.call_args.kwargs['price'] == 0.05
-    assert client_mock.verify_payment.call_args.args[1]['amount'] == '0.05'
-    assert client_mock.settle_payment.call_args.args[1]['amount'] == '0.05'
+    assert client_mock.verify_payment.call_args.args[1]['amount'] == '50000'
+    assert client_mock.settle_payment.call_args.args[1]['amount'] == '50000'
 
 
 @override_settings(ROOT_URLCONF=__name__, PRISM_CONFIG=CONFIG)
@@ -160,11 +141,11 @@ def test_decorator_price_is_advertised_in_the_402(client_mock):
 
 @override_settings(ROOT_URLCONF=__name__, PRISM_CONFIG=CONFIG)
 def test_string_price_with_currency_symbol_is_enforced(client_mock):
-    response = sync_get('/api/dollar', HTTP_PAYMENT_SIGNATURE=PAYMENT_HEADER)
+    response = sync_get('/api/dollar', HTTP_PAYMENT_SIGNATURE=header_for('$0.05'))
 
     assert response.status_code == 200
     assert client_mock.get_payment_requirements.call_args.kwargs['price'] == '$0.05'
-    assert client_mock.settle_payment.call_args.args[1]['amount'] == '$0.05'
+    assert client_mock.settle_payment.call_args.args[1]['amount'] == '50000'
 
 
 @override_settings(ROOT_URLCONF=__name__, PRISM_CONFIG=CONFIG)
@@ -173,16 +154,16 @@ def test_undecorated_view_keeps_middleware_price(client_mock):
 
     assert response.status_code == 200
     assert client_mock.get_payment_requirements.call_args.kwargs['price'] == 0.01
-    assert client_mock.settle_payment.call_args.args[1]['amount'] == '0.01'
+    assert client_mock.settle_payment.call_args.args[1]['amount'] == '10000'
 
 
 @override_settings(ROOT_URLCONF=__name__, PRISM_CONFIG=CONFIG)
 def test_decorated_view_outside_middleware_routes_is_charged(client_mock):
-    response = sync_get('/private/report', HTTP_PAYMENT_SIGNATURE=PAYMENT_HEADER)
+    response = sync_get('/private/report', HTTP_PAYMENT_SIGNATURE=header_for(0.2))
 
     assert response.status_code == 200
     assert client_mock.get_payment_requirements.call_args.kwargs['price'] == 0.2
-    assert client_mock.settle_payment.call_args.args[1]['amount'] == '0.2'
+    assert client_mock.settle_payment.call_args.args[1]['amount'] == '200000'
 
 
 @override_settings(ROOT_URLCONF=__name__, PRISM_CONFIG=CONFIG)
@@ -209,12 +190,12 @@ async def test_async_middleware_enforces_decorator_price(client_mock):
         return call_view(request)
 
     mw = AsyncPrismPaymentMiddleware(get_response)
-    response = await mw(factory.get('/api/expensive', HTTP_PAYMENT_SIGNATURE=PAYMENT_HEADER))
+    response = await mw(factory.get('/api/expensive', HTTP_PAYMENT_SIGNATURE=header_for(0.05)))
 
     assert response.status_code == 200
     assert client_mock.aget_payment_requirements.call_args.kwargs['price'] == 0.05
-    assert client_mock.averify_payment.call_args.args[1]['amount'] == '0.05'
-    assert client_mock.asettle_payment.call_args.args[1]['amount'] == '0.05'
+    assert client_mock.averify_payment.call_args.args[1]['amount'] == '50000'
+    assert client_mock.asettle_payment.call_args.args[1]['amount'] == '50000'
 
 
 @pytest.mark.asyncio
@@ -239,13 +220,13 @@ def test_invalid_decorator_price_is_rejected_at_definition(bad_price):
 
 @override_settings(ROOT_URLCONF=__name__, PRISM_CONFIG=CONFIG)
 def test_method_decorator_on_dispatch_enforces_decorator_price(client_mock):
-    response = sync_get('/api/class-dispatch', HTTP_PAYMENT_SIGNATURE=PAYMENT_HEADER)
+    response = sync_get('/api/class-dispatch', HTTP_PAYMENT_SIGNATURE=header_for(0.05))
 
     assert response.status_code == 200
     assert executed == ['class-dispatch']
     assert client_mock.get_payment_requirements.call_args.kwargs['price'] == 0.05
     assert client_mock.get_payment_requirements.call_args.kwargs['description'] == 'Class dispatch API'
-    assert client_mock.settle_payment.call_args.args[1]['amount'] == '0.05'
+    assert client_mock.settle_payment.call_args.args[1]['amount'] == '50000'
 
 
 @override_settings(ROOT_URLCONF=__name__, PRISM_CONFIG=CONFIG)

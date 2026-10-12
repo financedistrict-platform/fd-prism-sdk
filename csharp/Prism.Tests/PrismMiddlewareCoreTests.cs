@@ -13,13 +13,13 @@ public class PrismMiddlewareCoreTests
     private static string Base64(string json) => Convert.ToBase64String(Encoding.UTF8.GetBytes(json));
 
     private static readonly string ValidV2Header = Base64(
-        "{\"x402Version\":2,\"accepted\":{\"scheme\":\"exact\",\"network\":\"eip155:8453\",\"asset\":\"0xUSDC\"}," +
-        "\"payload\":{\"signature\":\"0xsig\",\"authorization\":{\"from\":\"0xFrom\",\"to\":\"0xTo\",\"value\":\"1000000\"," +
+        "{\"x402Version\":2,\"accepted\":{\"scheme\":\"exact\",\"network\":\"eip155:8453\",\"asset\":\"0xUSDC\",\"amount\":\"1000000\",\"payTo\":\"0xPayTo\",\"maxTimeoutSeconds\":60}," +
+        "\"payload\":{\"signature\":\"0xsig\",\"authorization\":{\"from\":\"0xFrom\",\"to\":\"0xPayTo\",\"value\":\"1000000\"," +
         "\"validAfter\":\"0\",\"validBefore\":\"9999999999\",\"nonce\":\"0xnonce\"}}}");
 
     private static readonly string ValidV1Header = Base64(
         "{\"x402Version\":1,\"scheme\":\"exact\",\"network\":\"base-sepolia\"," +
-        "\"payload\":{\"signature\":\"0xsig\",\"authorization\":{\"from\":\"0xFrom\",\"to\":\"0xTo\",\"value\":\"1000000\"," +
+        "\"payload\":{\"signature\":\"0xsig\",\"authorization\":{\"from\":\"0xFrom\",\"to\":\"0xPayTo\",\"value\":\"1000000\"," +
         "\"validAfter\":\"0\",\"validBefore\":\"9999999999\",\"nonce\":\"0xnonce\"}}}");
 
     private static PrismMiddlewareConfig Config(int[]? allowedVersions = null) => new()
