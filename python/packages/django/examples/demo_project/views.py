@@ -3,6 +3,7 @@ Django views for Prism payment demo
 """
 
 from django.http import JsonResponse, HttpResponse
+from prism_django import get_payer, get_payment
 
 
 def home(request):
@@ -26,8 +27,8 @@ def home(request):
 
 def premium(request):
     """Payment-protected premium endpoint"""
-    payer = getattr(request, 'prism_payer', None)
-    payment = getattr(request, 'prism_payment', None)
+    payer = get_payer(request)
+    payment = get_payment(request)
     
     return JsonResponse({
         'message': 'Welcome to Premium API!',
@@ -46,7 +47,7 @@ def premium(request):
 
 def weather(request):
     """Payment-protected weather endpoint"""
-    payer = getattr(request, 'prism_payer', None)
+    payer = get_payer(request)
     
     return JsonResponse({
         'location': 'San Francisco',

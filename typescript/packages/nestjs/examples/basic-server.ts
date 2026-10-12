@@ -4,11 +4,10 @@
  * This example demonstrates how to set up a NestJS app with payment-protected routes.
  */
 
-import { Module, Controller, Get, UseGuards } from '@nestjs/common';
+import { Module, Controller, Get } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import {
   PrismModule,
-  PrismPaymentGuard,
   Payment,
   Payer,
 } from '@financedistrict/prism-x402-sdk-nestjs';
@@ -17,7 +16,6 @@ import {
  * API Controller with payment-protected endpoints
  */
 @Controller('api')
-@UseGuards(PrismPaymentGuard)
 export class ApiController {
   // Payment-protected endpoint using decorator
   @Payment({ price: 0.01, description: 'Premium API access' })
@@ -50,7 +48,6 @@ export class ApiController {
  * Data Controller with wildcard route
  */
 @Controller('data')
-@UseGuards(PrismPaymentGuard)
 export class DataController {
   @Payment({ price: 0.005, description: 'Data API access' })
   @Get(':resource')

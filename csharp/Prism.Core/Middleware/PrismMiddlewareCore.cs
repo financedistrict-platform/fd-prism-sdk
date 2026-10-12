@@ -41,8 +41,21 @@ public class PrismMiddlewareCore
         _client = client ?? new PrismClient(config);
         _defaultProtocolVersion = config.X402Version is 1 or 2 ? config.X402Version : 2;
         _allowedVersions = config.AllowedVersions ?? new[] { 2 };
+        EnsureNoCollidingRoutes(routes);
         _routes = routes;
         _logger = logger;
+    }
+
+    private static void EnsureNoCollidingRoutes(IReadOnlyDictionary<string, RoutePaymentConfig> routes)
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var route in routes.Keys)
+        {
+            if (!seen.Add(RouteMatcher.NormalizePath(route)))
+            {
+                throw new ArgumentException($"Route '{route}' collides with another route; paths are compared ignoring case and trailing slashes.", nameof(routes));
+            }
+        }
     }
 
     public async Task<MiddlewareResult> HandleRequestAsync(MiddlewareRequestData requestData)

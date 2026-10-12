@@ -108,8 +108,9 @@ mvn spring-boot:run
 - ✅ **Servlet filter** - Works with any servlet container
 - ✅ **Spring Boot auto-config** - Zero code configuration
 - ✅ **Type-safe configuration** - Builder pattern
-- ✅ **Route matching** - Exact and prefix matching
-- ✅ **Settlement callbacks** - Async, non-blocking
+- ✅ **Route matching** - Normalized paths, prefix matching on segment boundaries
+- ✅ **Route-bound proofs** - Every proof is verified and settled against the matched route
+- ✅ **Settlement callbacks** - Synchronous; the response is held until settlement succeeds
 
 ## 📖 API Reference
 
@@ -132,6 +133,24 @@ RoutePaymentConfig route = new RoutePaymentConfig(
     "Premium access"       // Description
 );
 ```
+
+### Route matching
+
+Routes are matched against `getServletPath() + getPathInfo()` (container-decoded, without the context path or `;params`), then normalized again:
+
+- percent-decoding is repeated until stable, `;params`, `//`, `.` and `..` segments are removed, `\` is treated as `/`, and matching is case-insensitive
+- a route matches its own path and every path below it on a segment boundary (`/api/premium` matches `/api/premium/1`, not `/api/premiumness`); the longest route wins
+- `/api/data/*` is the same as `/api/data`; a `*` anywhere else, or two routes that normalize to the same path, fail at startup
+- paths with control characters (such as an encoded NUL) get `400`
+- requests that match no route are passed through untouched; the `Authorization` header is never sent to the Gateway for them
+
+Route paths are relative to the context path, so a route for `/api/premium` also protects `/myapp/api/premium` when the app is deployed under `/myapp`.
+
+### Payment proofs
+
+The Gateway receives the matched route's `resource`, `price` and `description` (built on the server from `RoutePaymentConfig`, never from the request) with every `verify-payment` and `settlement-callback` call, so a proof is only accepted for the route it was issued for. Settlement runs before any response byte is sent; if it fails the client gets `402` instead of the content.
+
+`PrismMiddleware.handleRequest` returns a `PrismDecision` (respond, continue unprotected, or verified and awaiting `settle`).
 
 ### PrismFilter (Servlet)
 

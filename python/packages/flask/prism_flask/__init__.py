@@ -8,14 +8,17 @@ from __future__ import annotations
 import json
 import base64
 from typing import Dict, Callable, Optional
-from flask import g, jsonify, make_response
+from flask import current_app, g, jsonify, make_response
 from functools import wraps
 from prism_sdk_core import (
     PrismMiddlewareCore,
     PrismMiddlewareConfig,
     RoutePaymentConfig,
     HeaderAdapter,
-    detect_protocol_version
+    bind_decorator_route,
+    detect_protocol_version,
+    get_decorator_route,
+    prices_match
 )
 
 
@@ -58,11 +61,14 @@ def prism_payment_middleware(
                 protocol_version = detected
         g.prism_protocol_version = protocol_version
 
+        view = current_app.view_functions.get(request.endpoint)
+
         result = core.handle_request(
             path=request.path,
             resource_url=request.url,
             payment_header=payment_header,
-            protocol_version=protocol_version
+            protocol_version=protocol_version,
+            route_override=get_decorator_route(view)
         )
 
         if result.handled:
@@ -79,6 +85,7 @@ def prism_payment_middleware(
             g._prism_payment = result.payment_info['payment']
             g._prism_payer = result.payment_info['payer']
             g._prism_requirements = result.payment_info['payment_requirements']
+            g._prism_route_price = result.payment_info['route_price']
     
     @app.after_request
     def settle_payment(response):
@@ -124,22 +131,35 @@ def prism_payment_middleware(
         return response
 
 
+def get_payer() -> Optional[str]:
+    """Get the verified payer address for the current request"""
+    return getattr(g, '_prism_payer', None)
+
+
+def get_payment() -> Optional[Dict]:
+    """Get the verified payment object for the current request"""
+    return getattr(g, '_prism_payment', None)
+
+
 def require_payment(price: float | str, description: str):
     """
-    Decorator for protecting individual Flask routes
+    Decorator for protecting individual Flask routes.
+
+    The price given here is the price enforced for the view: the middleware
+    requests, verifies and settles payment against it instead of the price of
+    any middleware route that also covers the path. A view whose verified price
+    differs from the decorator's price is not run.
 
     Example:
         @app.route('/api/premium')
         @require_payment(price=0.01, description='Premium API')
         def premium():
-            payer = g._prism_payer
+            payer = get_payer()
             return {'message': 'Premium content', 'payer': payer}
     """
     def decorator(f: Callable):
         @wraps(f)
         def decorated_function(*args, **kwargs):
-            from flask import g
-
             # Use _prism_payment_verified flag (underscore-prefixed, set only by Prism middleware)
             # to prevent bypass via accidental attribute collision with other middleware
             if not getattr(g, '_prism_payment_verified', False):
@@ -148,9 +168,16 @@ def require_payment(price: float | str, description: str):
                     'message': description
                 }), 402
 
+            if not prices_match(getattr(g, '_prism_route_price', None), price):
+                return jsonify({
+                    'error': 'Payment configuration mismatch'
+                }), 500
+
             return f(*args, **kwargs)
+
+        bind_decorator_route(decorated_function, price, description)
         return decorated_function
     return decorator
 
 
-__all__ = ['prism_payment_middleware', 'require_payment']
+__all__ = ['prism_payment_middleware', 'require_payment', 'get_payer', 'get_payment']

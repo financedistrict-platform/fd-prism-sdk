@@ -50,6 +50,13 @@ public class PrismResponse {
         return new PrismResponse(402, headers, body);
     }
 
+    public static PrismResponse badRequest() {
+        Map<String, String> headers = new HashMap<>();
+        headers.put("Content-Type", "application/json");
+
+        return new PrismResponse(400, headers, "{\"error\":\"Bad request\",\"message\":\"Invalid request path\"}");
+    }
+
     /**
      * Creates a response that should continue to the next handler.
      *
