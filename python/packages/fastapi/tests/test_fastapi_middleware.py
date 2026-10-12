@@ -45,7 +45,20 @@ def make_header(data: dict) -> str:
     return base64.b64encode(json.dumps(data).encode()).decode()
 
 
-VALID_HEADER = make_header({'x402Version': 2, 'signature': '0xSIG', 'payer': '0xPAYER'})
+AUTHORIZATION = {
+    'from': '0xPAYER',
+    'to': '0xTEST',
+    'value': '1000000',
+    'validAfter': '0',
+    'validBefore': '9999999999',
+    'nonce': '0x01',
+}
+PAYLOAD = {'signature': '0xSIG', 'authorization': AUTHORIZATION}
+VALID_HEADER = make_header({
+    'x402Version': 2,
+    'accepted': {'scheme': 'exact', 'network': 'eip155:84532', 'asset': '0xASSET'},
+    'payload': PAYLOAD,
+})
 
 
 # ---------------------------------------------------------------------------
@@ -67,10 +80,9 @@ def mock_client():
         yield inst
 
 
-@pytest.fixture
-def fastapi_app(mock_client):
+def build_app(config):
     fastapi_app = FastAPI()
-    add_prism_middleware(fastapi_app, CONFIG, ROUTES)
+    add_prism_middleware(fastapi_app, config, ROUTES)
 
     @fastapi_app.get('/api/premium')
     async def premium(request: Request):
@@ -89,9 +101,24 @@ def fastapi_app(mock_client):
 
 
 @pytest.fixture
+def fastapi_app(mock_client):
+    return build_app(CONFIG)
+
+
+@pytest.fixture
 async def async_client(fastapi_app):
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=fastapi_app),
+        base_url='http://test'
+    ) as client:
+        yield client
+
+
+@pytest.fixture
+async def v1_client(mock_client):
+    app = build_app(PrismMiddlewareConfig(api_key='test-key', debug=True, allowed_versions=[1, 2]))
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
         base_url='http://test'
     ) as client:
         yield client
@@ -141,9 +168,14 @@ async def test_invalid_payment_returns_402(async_client, mock_client):
     assert resp.status_code == 402
 
 
-async def test_v1_x_payment_header_accepted(async_client):
-    v1_header = make_header({'x402Version': 1, 'signature': '0xSIG', 'payer': '0xPAYER'})
-    resp = await async_client.get('/api/premium', headers={'x-payment': v1_header})
+async def test_v1_x_payment_header_accepted(v1_client):
+    v1_header = make_header({
+        'x402Version': 1,
+        'scheme': 'exact',
+        'network': 'base-sepolia',
+        'payload': PAYLOAD,
+    })
+    resp = await v1_client.get('/api/premium', headers={'x-payment': v1_header})
     assert resp.status_code == 200
 
 
