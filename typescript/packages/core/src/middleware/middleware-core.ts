@@ -17,6 +17,9 @@ import {
   validatePaymentBinding,
   validatePaymentWindow,
   validatePaymentResource,
+  paymentProofKey,
+  replayGuardFor,
+  type PaymentReplayGuard,
   type MiddlewareResponse,
 } from '../utils';
 import {
@@ -89,6 +92,7 @@ export class PrismMiddlewareCore {
   private readonly mode: ConfigurationMode = 'on-demand';
   private readonly client: PrismClient;
   private readonly debug: boolean;
+  private readonly replayGuard: PaymentReplayGuard;
   private readonly defaultProtocolVersion: 1 | 2 = 2; // v2 is default
   private readonly allowedVersions: (1 | 2)[];
   private static readonly MAX_PAYMENT_HEADER_BYTES = 8192; // ~10× real x402 payload size
@@ -100,6 +104,7 @@ export class PrismMiddlewareCore {
     this.debug = config.debug || false;
     // Use injected client if provided (for testing), otherwise create new one
     this.client = config.client || new PrismClient(config);
+    this.replayGuard = replayGuardFor(config);
     // Allow configuration to override default protocol version
     if (config.x402Version === 1 || config.x402Version === 2) {
       this.defaultProtocolVersion = config.x402Version;
@@ -239,6 +244,7 @@ export class PrismMiddlewareCore {
     resourceUrl: string,
     protocolVersion: 1 | 2
   ): Promise<MiddlewareResult> {
+    let reservedKey: string | null = null;
     try {
       // Decode and parse payment header (supports both v1 and v2)
       const paymentPayload = this.decodePaymentHeader(paymentHeader);
@@ -333,10 +339,24 @@ export class PrismMiddlewareCore {
         };
       }
 
+      const proofKey = paymentProofKey(paymentPayload);
+      if (!proofKey || !this.replayGuard.tryReserve(proofKey)) {
+        const response = buildInvalidPaymentResponse(
+          'Payment proof is already being processed or has already been used',
+          protocolVersion
+        );
+        return {
+          handled: true,
+          ...response,
+        };
+      }
+      reservedKey = proofKey;
+
       // Verify payment with Gateway
       const verificationResult = await this.client.verifyPayment(paymentPayload as any, paymentRequirements);
 
       if (!verificationResult.isValid) {
+        this.replayGuard.release(proofKey);
         if (this.debug) {
           console.log('[PrismMiddlewareCore] Payment verification failed:', verificationResult.error);
         }
@@ -361,6 +381,9 @@ export class PrismMiddlewareCore {
         },
       };
     } catch (error: any) {
+      if (reservedKey) {
+        this.replayGuard.release(reservedKey);
+      }
       console.error('Error processing payment:', error);
 
       // Build appropriate error response
@@ -481,19 +504,38 @@ export class PrismMiddlewareCore {
     paymentRequirements: any,
     statusCode: number
   ): Promise<{ success: boolean; transaction?: string; payer?: string; network?: string; errorReason?: string } | null> {
+    const proofKey = paymentProofKey(paymentPayload);
+
     // Only settle if response was successful (< 400)
     if (statusCode >= 400) {
+      if (proofKey) {
+        this.replayGuard.release(proofKey);
+      }
       return null;
     }
 
     const mismatch = validatePaymentBinding(paymentPayload as any, paymentRequirements);
     if (mismatch) {
+      if (proofKey) {
+        this.replayGuard.release(proofKey);
+      }
       console.error('Settlement refused:', mismatch);
       return { success: false, errorReason: mismatch };
     }
 
     try {
       const settlementResult = await this.client.settlePayment(paymentPayload, paymentRequirements);
+
+      if (proofKey) {
+        if (settlementResult.success) {
+          this.replayGuard.markConsumed(
+            proofKey,
+            Number((paymentPayload as any)?.payload?.authorization?.validBefore)
+          );
+        } else {
+          this.replayGuard.release(proofKey);
+        }
+      }
 
       if (settlementResult.success && settlementResult.transaction) {
         console.log(
@@ -505,6 +547,9 @@ export class PrismMiddlewareCore {
 
       return settlementResult;
     } catch (error: any) {
+      if (proofKey) {
+        this.replayGuard.release(proofKey);
+      }
       console.error('Error during settlement:', error);
       return null;
     }

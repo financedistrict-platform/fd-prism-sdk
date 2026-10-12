@@ -148,6 +148,22 @@ Before any call to the Gateway, the SDK compares the payment with the payment re
 
 The same recipient, amount and `accepted` checks run again before settlement. The Gateway still performs signature and balance checks.
 
+### Step 6c: One Proof, One Execution
+
+After the local checks, the SDK reserves the proof before it calls the Gateway. The reservation key is the authorization's `from` address plus its `nonce` (case-insensitive), so a different signature over the same authorization is still the same proof. While a proof is reserved, every other request carrying it is rejected with `402` and never reaches your handler.
+
+| Event | Reservation |
+|-------|-------------|
+| Gateway rejects the payment, or verification throws | Released, the client may retry |
+| Handler responds with status `>= 400` and the status reaches `settlementCallback` | Released |
+| Settlement fails or throws | Released, the client may retry with the same payload |
+| Settlement succeeds | Kept until the authorization's `validBefore` |
+| Handler or adapter never reports back (error responses, thrown handlers) | Expires after 60 seconds |
+
+At most 10,000 proofs are tracked. Expired entries are dropped first, then the oldest settled proof. If every slot holds an active reservation, new proofs are refused with `402`.
+
+The guard lives in the process. Share one `PrismMiddlewareCore` / middleware instance for the whole app (in TypeScript, cores built from the same config object share one guard). Running several instances behind a load balancer does not coordinate reservations across instances.
+
 ### Step 7-8: Verify Payment
 
 Server verifies the payment signature with Gateway:
