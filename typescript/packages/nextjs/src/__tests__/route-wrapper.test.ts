@@ -1,10 +1,18 @@
 import * as nextjs from '../index';
 import { withPrismPayment, getPayer, getPaymentInfo } from '../index';
 
+const requirement = {
+  scheme: 'exact',
+  network: 'eip155:84532',
+  asset: '0xasset',
+  payTo: '0xmerchant',
+  amount: '10000',
+};
+
 const proof = Buffer.from(
   JSON.stringify({
     x402Version: 2,
-    accepted: { scheme: 'exact', network: 'eip155:84532', asset: '0xasset' },
+    accepted: requirement,
     payload: {
       signature: '0xsig',
       authorization: {
@@ -21,7 +29,7 @@ const proof = Buffer.from(
 
 const createClient = () => ({
   getPaymentRequirements: jest.fn().mockResolvedValue({
-    accepts: [{ scheme: 'exact', network: 'eip155:84532', asset: '0xasset' }],
+    accepts: [requirement],
   }),
   verifyPayment: jest.fn().mockResolvedValue({ isValid: true, payer: '0xpayer' }),
   settlePayment: jest.fn().mockResolvedValue({
@@ -163,9 +171,6 @@ describe('forged payment headers', () => {
 
   it('reports the verified payer and amount, not forged header values', async () => {
     const client = createClient();
-    client.getPaymentRequirements.mockResolvedValue({
-      accepts: [{ scheme: 'exact', network: 'eip155:84532', asset: '0xasset', amount: '10000' }],
-    });
     let payer: string | null = null;
     let info: ReturnType<typeof getPaymentInfo> | null = null;
     const route = withPrismPayment(
