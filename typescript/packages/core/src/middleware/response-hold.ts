@@ -10,6 +10,10 @@ export interface SettlementRejection {
   body: Record<string, unknown>;
 }
 
+type Settle = () => Promise<SettlementRejection | null>;
+
+const responseHolds = new WeakMap<ServerResponse, (settle: Settle) => boolean>();
+
 export type VerifiedPaymentInfo = NonNullable<MiddlewareResult['paymentInfo']>;
 
 const BODY_DESCRIBING_HEADERS = [
@@ -127,9 +131,15 @@ export function createResponseSettler(
 
 export function holdResponseUntilSettled(
   res: ServerResponse,
-  settle: () => Promise<SettlementRejection | null>,
+  initialSettle: Settle,
   options: { protocolVersion: 1 | 2; maxHeldBytes: number }
-): void {
+): boolean {
+  const existing = responseHolds.get(res);
+  if (existing) {
+    return existing(initialSettle);
+  }
+
+  let settle = initialSettle;
   const originalWrite = res.write.bind(res) as (...args: any[]) => boolean;
   const originalEnd = res.end.bind(res) as (...args: any[]) => ServerResponse;
   const originalWriteHead = res.writeHead.bind(res) as (...args: any[]) => ServerResponse;
@@ -179,6 +189,14 @@ export function holdResponseUntilSettled(
     held.push(chunk);
     return true;
   };
+
+  responseHolds.set(res, (next) => {
+    if (phase !== 'holding') {
+      return false;
+    }
+    settle = next;
+    return true;
+  });
 
   res.on('close', () => {
     if (res.writableFinished) {
@@ -289,4 +307,6 @@ export function holdResponseUntilSettled(
     });
     return res;
   } as any;
+
+  return true;
 }

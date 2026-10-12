@@ -128,11 +128,15 @@ export function prismPaymentMiddleware(
       req.payment = result.paymentInfo.payment;
       req.payer = result.paymentInfo.payer;
 
-      holdResponseUntilSettled(
+      const registered = holdResponseUntilSettled(
         res,
         createResponseSettler(core, result.paymentInfo, res, protocolVersion),
         { protocolVersion, maxHeldBytes }
       );
+
+      if (!registered) {
+        return true;
+      }
     }
 
     // Allow request to continue (payment verified or route not protected)

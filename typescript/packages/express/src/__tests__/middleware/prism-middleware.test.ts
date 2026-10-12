@@ -1,4 +1,4 @@
-import express, { Express, Request, Response } from 'express';
+import express, { Express, NextFunction, Request, Response } from 'express';
 import request from 'supertest';
 import http from 'http';
 import path from 'path';
@@ -914,23 +914,76 @@ describe('prismPaymentMiddleware', () => {
       expect(mockSettlePayment.mock.calls[0][1].description).toBe('override');
     });
 
-    it('fails closed when a payment middleware runs after settlement has begun', async () => {
-      allowPayment();
-      mockSettlePayment.mockResolvedValue(settlementResult);
-      const late = prismPaymentMiddleware(config(), globalRoutes);
-      const lateNext = jest.fn();
-      app.use(prismPaymentMiddleware(config(), globalRoutes));
-      app.get('/api/expensive', async (req, res) => {
-        res.end(SECRET);
-        await late(req, res, lateNext);
+    describe('payment middleware reached after the response ended', () => {
+      const mountLate = (errorHandler: jest.Mock) => {
+        app.use(prismPaymentMiddleware(config(), globalRoutes));
+        app.get('/api/expensive', (_req, res, next) => {
+          res.end(SECRET);
+          next();
+        });
+        app.use(prismPaymentMiddleware(config(), globalRoutes));
+        app.use((error: Error, _req: Request, res: Response, next: NextFunction) => {
+          errorHandler(error);
+          res.status(500).send(`<html>${'x'.repeat(400)}</html>`);
+        });
+      };
+
+      const getWithTimeout = (port: number) =>
+        new Promise<{ status: number; body: string }>((resolve, reject) => {
+          const clientReq = http.get(
+            { port, path: '/api/expensive', headers: { 'X-Payment': validPaymentHeader() }, timeout: 1500 },
+            (res) => {
+              let body = '';
+              res.on('data', (chunk) => (body += chunk));
+              res.on('end', () => resolve({ status: res.statusCode || 0, body }));
+            }
+          );
+          clientReq.on('timeout', () => {
+            clientReq.destroy();
+            reject(new Error('response never completed'));
+          });
+          clientReq.on('error', reject);
+        });
+
+      it('delivers the response once, settles once and never reaches the error handler', async () => {
+        allowPayment();
+        mockSettlePayment.mockResolvedValue(settlementResult);
+        const errorHandler = jest.fn();
+        mountLate(errorHandler);
+
+        const server = app.listen(0);
+        try {
+          const { port } = server.address() as AddressInfo;
+          const response = await getWithTimeout(port);
+
+          expect(response.status).toBe(200);
+          expect(response.body).toBe(SECRET);
+          expect(errorHandler).not.toHaveBeenCalled();
+          expect(mockSettlePayment).toHaveBeenCalledTimes(1);
+        } finally {
+          server.close();
+        }
       });
 
-      const response = await pay();
+      it('still withholds the content when the single settlement fails', async () => {
+        allowPayment();
+        mockSettlePayment.mockResolvedValue({ success: false, errorReason: 'insufficient_funds' });
+        const errorHandler = jest.fn();
+        mountLate(errorHandler);
 
-      expect(response.status).toBe(200);
-      expect(lateNext).toHaveBeenCalledTimes(1);
-      expect(lateNext.mock.calls[0][0]).toBeInstanceOf(Error);
-      expect(mockSettlePayment).toHaveBeenCalledTimes(1);
+        const server = app.listen(0);
+        try {
+          const { port } = server.address() as AddressInfo;
+          const response = await getWithTimeout(port);
+
+          expect(response.status).toBe(402);
+          expect(response.body).not.toContain(SECRET);
+          expect(errorHandler).not.toHaveBeenCalled();
+          expect(mockSettlePayment).toHaveBeenCalledTimes(1);
+        } finally {
+          server.close();
+        }
+      });
     });
   });
 });
