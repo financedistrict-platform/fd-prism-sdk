@@ -2,6 +2,7 @@ package org.fdtech.prism.core;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonSyntaxException;
 import okhttp3.*;
 
 import java.io.IOException;
@@ -29,81 +30,78 @@ public class PrismClient {
     /**
      * Get payment requirements for a route.
      *
-     * @param price The price in wei
-     * @param description The payment description
-     * @return JSON response from Gateway(long price, String description) throws IOException {
-        JsonObject requestBody = new JsonObject();
-        requestBody.addProperty("price", String.valueOf(price));
-        requestBody.addProperty("description", description);
-
-        Request request = new Request.Builder()
-                .url(baseUrl + "/v1/get-payment-requirements")
-                .header("Authorization", "Bearer " + apiKey)
-                .header("Content-Type", "application/json")
-                .post(RequestBody.create(
-                        gson.toJson(requestBody),
-                        MediaType.parse("application/json")
-                ))
-                .build();
-
-        try (Response response = httpClient.newCall(request).execute()) {
-            if (!response.isSuccessful()) {
-                throw new IOException("Failed to get payment requirements: " + response.code());
-            }
-            String responseBody = response.body().string();
-            return gson.fromJson(responseBody, JsonObject.class);
-        }
+     * @param route The matched route configuration
+     * @return JSON response from Gateway
+     * @throws IOException if the Gateway cannot be reached or rejects the call
+     */
+    public JsonObject getPaymentRequirements(RoutePaymentConfig route) throws IOException {
+        return postForJson("/v1/get-payment-requirements", requirementsBody(route), "Failed to get payment requirements");
     }
 
     /**
-     * Verify a payment proof.
+     * Verify a payment proof against the requirements of a route.
      *
      * @param proof The payment proof from the client
-     * @return JSON response from Gateway(String proof) throws IOException {
-        JsonObject requestBody = new JsonObject();
+     * @param route The matched route configuration the proof must satisfy
+     * @return JSON response from Gateway
+     * @throws IOException if the Gateway cannot be reached or rejects the call
+     */
+    public JsonObject verifyPayment(String proof, RoutePaymentConfig route) throws IOException {
+        JsonObject requestBody = requirementsBody(route);
         requestBody.addProperty("proof", proof);
-
-        Request request = new Request.Builder()
-                .url(baseUrl + "/v1/verify-payment")
-                .header("Authorization", "Bearer " + apiKey)
-                .header("Content-Type", "application/json")
-                .post(RequestBody.create(
-                        gson.toJson(requestBody),
-                        MediaType.parse("application/json")
-                ))
-                .build();
-
-        try (Response response = httpClient.newCall(request).execute()) {
-            if (!response.isSuccessful()) {
-                throw new IOException("Failed to verify payment: " + response.code());
-            }
-            String responseBody = response.body().string();
-            return gson.fromJson(responseBody, JsonObject.class);
-        }
+        return postForJson("/v1/verify-payment", requestBody, "Failed to verify payment");
     }
 
     /**
-     * Submit a settlement callback.
+     * Submit a settlement callback for a proof that was verified against a route.
      *
-     * <p>Unlike the previous best-effort implementation, this method now surfaces
-     * failures to the caller (via {@link IOException}) instead of silently
-     * swallowing them, so callers can decide whether a failed settlement should
-     * block a response. Failures are still logged here for operator visibility.
+     * <p>Failures are surfaced to the caller (via {@link IOException}) so a failed
+     * settlement can block the response. Failures are also logged for operator
+     * visibility.
      *
      * @param paymentHash The payment hash
+     * @param route The route the proof was verified against
      * @param status The settlement status
      * @param details Additional details
      * @throws IOException if the settlement callback receives a non-2xx response
      *         or a network error occurs while performing the request
      */
-    public void settlementCallback(String paymentHash, String status, String details) throws IOException {
-        JsonObject requestBody = new JsonObject();
+    public void settlementCallback(String paymentHash, RoutePaymentConfig route, String status, String details)
+            throws IOException {
+        JsonObject requestBody = requirementsBody(route);
         requestBody.addProperty("paymentHash", paymentHash);
         requestBody.addProperty("status", status);
         requestBody.addProperty("details", details);
 
+        try {
+            post("/v1/settlement-callback", requestBody, "Settlement callback failed");
+        } catch (IOException e) {
+            System.err.println("Settlement callback error: " + e.getMessage());
+            throw e;
+        }
+    }
+
+    private JsonObject requirementsBody(RoutePaymentConfig route) {
+        JsonObject body = new JsonObject();
+        body.addProperty("resource", route.getPath());
+        body.addProperty("price", String.valueOf(route.getPrice()));
+        body.addProperty("description", route.getDescription());
+        return body;
+    }
+
+    private JsonObject postForJson(String endpoint, JsonObject requestBody, String failureMessage) throws IOException {
+        String responseBody = post(endpoint, requestBody, failureMessage);
+        try {
+            JsonObject parsed = gson.fromJson(responseBody, JsonObject.class);
+            return parsed == null ? new JsonObject() : parsed;
+        } catch (JsonSyntaxException e) {
+            throw new IOException(failureMessage + ": malformed response", e);
+        }
+    }
+
+    private String post(String endpoint, JsonObject requestBody, String failureMessage) throws IOException {
         Request request = new Request.Builder()
-                .url(baseUrl + "/v1/settlement-callback")
+                .url(baseUrl + endpoint)
                 .header("Authorization", "Bearer " + apiKey)
                 .header("Content-Type", "application/json")
                 .post(RequestBody.create(
@@ -112,22 +110,12 @@ public class PrismClient {
                 ))
                 .build();
 
-        Response response;
-        try {
-            response = httpClient.newCall(request).execute();
-        } catch (IOException e) {
-            System.err.println("Settlement callback error: " + e.getMessage());
-            throw e;
-        }
-
-        try {
+        try (Response response = httpClient.newCall(request).execute()) {
             if (!response.isSuccessful()) {
-                String message = "Settlement callback failed: " + response.code();
-                System.err.println(message);
-                throw new IOException(message);
+                throw new IOException(failureMessage + ": " + response.code());
             }
-        } finally {
-            response.close();
+            ResponseBody body = response.body();
+            return body == null ? "" : body.string();
         }
     }
 }

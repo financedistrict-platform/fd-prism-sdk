@@ -1,6 +1,7 @@
 package org.fdtech.prism.servlet;
 
 import org.fdtech.prism.core.PrismConfig;
+import org.fdtech.prism.core.PrismDecision;
 import org.fdtech.prism.core.PrismMiddleware;
 import org.fdtech.prism.core.PrismResponse;
 
@@ -12,6 +13,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
+import java.nio.charset.Charset;
 import java.util.Map;
 
 /**
@@ -28,6 +30,10 @@ public class PrismFilter implements Filter {
      */
     public PrismFilter(PrismConfig config) {
         this.middleware = new PrismMiddleware(config);
+    }
+
+    public PrismFilter(PrismMiddleware middleware) {
+        this.middleware = middleware;
     }
 
     /**
@@ -75,17 +81,15 @@ public class PrismFilter implements Filter {
         HttpServletRequest httpRequest = (HttpServletRequest) request;
         HttpServletResponse httpResponse = (HttpServletResponse) response;
 
-        // Get request path and Authorization header
-        String path = httpRequest.getRequestURI();
-        String authHeader = httpRequest.getHeader("Authorization");
+        PrismDecision decision = middleware.handleRequest(
+                routedPath(httpRequest),
+                httpRequest.getHeader("Authorization")
+        );
 
-        // Check if payment is required
-        PrismResponse prismResponse = middleware.handleRequest(path, authHeader);
-
+        PrismResponse prismResponse = decision.getResponse();
         if (prismResponse != null) {
-            // Payment required - return 402
             httpResponse.setStatus(prismResponse.getStatusCode());
-            
+
             for (Map.Entry<String, String> header : prismResponse.getHeaders().entrySet()) {
                 httpResponse.setHeader(header.getKey(), header.getValue());
             }
@@ -94,19 +98,19 @@ public class PrismFilter implements Filter {
             return;
         }
 
-        // Wrap response to capture output
+        if (!decision.requiresSettlement()) {
+            chain.doFilter(request, response);
+            return;
+        }
+
         ResponseWrapper responseWrapper = new ResponseWrapper(httpResponse);
-        
-        // Continue to next filter/servlet
+
         chain.doFilter(request, responseWrapper);
 
-        // Only proceed with settlement if response was successful
         if (responseWrapper.getStatus() < 400) {
-            // Try to perform settlement
-            String settlementHeader = middleware.getSettlementHeader(authHeader);
-            
+            String settlementHeader = middleware.settle(decision);
+
             if (settlementHeader == null) {
-                // Settlement failed - DO NOT send data, return 402
                 httpResponse.reset();
                 httpResponse.setStatus(402);
                 httpResponse.setContentType("application/json");
@@ -117,59 +121,109 @@ public class PrismFilter implements Filter {
                 );
                 return;
             }
-            
-            // Settlement succeeded - add header and send response
+
             httpResponse.setHeader("X-Settlement", settlementHeader);
         }
-        
-        // Copy wrapped response to actual response
-        responseWrapper.flushBuffer();
+
+        responseWrapper.commit();
+    }
+
+    private static String routedPath(HttpServletRequest request) {
+        String servletPath = request.getServletPath();
+        String pathInfo = request.getPathInfo();
+        return (servletPath == null ? "" : servletPath) + (pathInfo == null ? "" : pathInfo);
     }
 
     /**
      * Response wrapper to capture output and delay sending
      */
     private static class ResponseWrapper extends HttpServletResponseWrapper {
-        private ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+        private final ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+        private ServletOutputStream outputStream;
         private PrintWriter writer;
 
         public ResponseWrapper(HttpServletResponse response) {
             super(response);
-            writer = new PrintWriter(new OutputStreamWriter(outputStream));
         }
 
         @Override
         public ServletOutputStream getOutputStream() {
-            return new ServletOutputStream() {
-                @Override
-                public void write(int b) {
-                    outputStream.write(b);
-                }
+            if (writer != null) {
+                throw new IllegalStateException("getWriter() has already been called");
+            }
+            if (outputStream == null) {
+                outputStream = new ServletOutputStream() {
+                    @Override
+                    public void write(int b) {
+                        buffer.write(b);
+                    }
 
-                @Override
-                public boolean isReady() {
-                    return true;
-                }
+                    @Override
+                    public void write(byte[] bytes, int offset, int length) {
+                        buffer.write(bytes, offset, length);
+                    }
 
-                @Override
-                public void setWriteListener(WriteListener writeListener) {
-                    // Not implemented
-                }
-            };
+                    @Override
+                    public boolean isReady() {
+                        return true;
+                    }
+
+                    @Override
+                    public void setWriteListener(WriteListener writeListener) {
+                        // Not implemented
+                    }
+                };
+            }
+            return outputStream;
         }
 
         @Override
         public PrintWriter getWriter() {
+            if (outputStream != null) {
+                throw new IllegalStateException("getOutputStream() has already been called");
+            }
+            if (writer == null) {
+                writer = new PrintWriter(new OutputStreamWriter(buffer, Charset.forName(getCharacterEncoding())));
+            }
             return writer;
         }
 
-        public void flushBuffer() throws IOException {
+        @Override
+        public void flushBuffer() {
+        }
+
+        @Override
+        public boolean isCommitted() {
+            return false;
+        }
+
+        @Override
+        public void resetBuffer() {
+            buffer.reset();
+            super.resetBuffer();
+        }
+
+        @Override
+        public void reset() {
+            buffer.reset();
+            super.reset();
+        }
+
+        @Override
+        public void sendRedirect(String location) {
+            buffer.reset();
+            setStatus(SC_FOUND);
+            setHeader("Location", location);
+        }
+
+        public void commit() throws IOException {
             if (writer != null) {
                 writer.flush();
             }
-            if (outputStream.size() > 0) {
-                getResponse().getOutputStream().write(outputStream.toByteArray());
+            if (buffer.size() > 0) {
+                getResponse().getOutputStream().write(buffer.toByteArray());
             }
+            getResponse().flushBuffer();
         }
     }
 
