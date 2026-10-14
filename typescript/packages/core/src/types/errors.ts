@@ -1,3 +1,32 @@
+export interface ErrorSummary {
+  name: string;
+  message: string;
+  code?: string;
+  statusCode?: number;
+  traceId?: string;
+}
+
+export function describeError(error: unknown): ErrorSummary {
+  if (typeof error !== 'object' || error === null) {
+    return { name: 'Error', message: String(error) };
+  }
+  const source = error as Record<string, unknown>;
+  const summary: ErrorSummary = {
+    name: typeof source.name === 'string' ? source.name : 'Error',
+    message: typeof source.message === 'string' ? source.message : '',
+  };
+  if (typeof source.code === 'string') {
+    summary.code = source.code;
+  }
+  if (typeof source.statusCode === 'number') {
+    summary.statusCode = source.statusCode;
+  }
+  if (typeof source.traceId === 'string') {
+    summary.traceId = source.traceId;
+  }
+  return summary;
+}
+
 /**
  * Base error class for all Prism SDK errors
  */
@@ -74,12 +103,12 @@ export class PrismGatewayError extends PrismError {
  * ```
  */
 export class PrismNetworkError extends PrismError {
-  constructor(
-    message: string,
-    public readonly originalError: any
-  ) {
-    super(message, 'NETWORK_ERROR', 503, originalError);
+  public readonly originalError: ErrorSummary;
+
+  constructor(message: string, cause: unknown) {
+    super(message, 'NETWORK_ERROR', 503);
     this.name = 'PrismNetworkError';
+    this.originalError = describeError(cause);
   }
 }
 

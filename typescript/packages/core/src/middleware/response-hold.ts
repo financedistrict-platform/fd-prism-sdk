@@ -1,6 +1,6 @@
 import type { ServerResponse } from 'http';
 import { HeaderAdapter } from '../compatibility';
-import { PrismConfigError } from '../types/errors';
+import { PrismConfigError, describeError } from '../types/errors';
 import type { PrismMiddlewareCore, MiddlewareResult } from './middleware-core';
 
 export const DEFAULT_MAX_HELD_RESPONSE_BYTES = 8 * 1024 * 1024;
@@ -116,7 +116,7 @@ export function createResponseSettler(
       }
       return null;
     } catch (error: any) {
-      console.error('Settlement error:', error);
+      console.error('Settlement error:', describeError(error));
       return {
         status: 500,
         body: {
@@ -301,7 +301,7 @@ export function holdResponseUntilSettled(
     }
     phase = 'ending';
     finish(done).catch((error) => {
-      console.error('Response release failed:', error);
+      console.error('Response release failed:', describeError(error));
       discard();
       res.destroy();
     });
