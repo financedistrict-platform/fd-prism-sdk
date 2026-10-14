@@ -495,7 +495,7 @@ All Prism errors extend the base `PrismError` class and include:
     
     **Properties:**
     - `message` - Network error description
-    - `originalError` - Original axios/network error
+    - `originalError` - Summary of the network error (`name`, `message`, `code`). The request body and headers are not retained
     
     **Example Response:**
     ```json
@@ -1298,7 +1298,7 @@ Network connectivity issues (timeout, DNS error, connection refused).
 
 **Additional Properties:**
 
-- `originalError` (any) - Original network error from axios
+- `originalError` (`ErrorSummary`) - `name`, `message` and `code` of the network error. The request body and headers are not retained, so the error is safe to log
 
 **Status Code:** Always 503
 

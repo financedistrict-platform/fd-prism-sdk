@@ -27,7 +27,7 @@ import {
   detectProtocolVersion,
   getDeclaredProtocolVersion,
 } from '../compatibility';
-import { PrismGatewayError } from '../types/errors';
+import { PrismGatewayError, describeError } from '../types/errors';
 import type { PaymentPayloadV1 } from '../types/v1';
 import type { PaymentPayload as PaymentPayloadV2 } from '../types/v2';
 
@@ -236,7 +236,7 @@ export class PrismMiddlewareCore {
         ...response,
       };
     } catch (error: any) {
-      console.error('Error generating payment requirements:', error);
+      console.error('Error generating payment requirements:', describeError(error));
 
       // Build appropriate error response
       const response = buildErrorResponse(error, 'requirements', protocolVersion);
@@ -411,7 +411,7 @@ export class PrismMiddlewareCore {
       if (reservedKey) {
         this.replayGuard.release(reservedKey);
       }
-      console.error('Error processing payment:', error);
+      console.error('Error processing payment:', describeError(error));
 
       // Build appropriate error response
       const response = buildErrorResponse(error, 'payment', protocolVersion);
@@ -583,7 +583,7 @@ export class PrismMiddlewareCore {
           this.replayGuard.markConsumed(proofKey, paymentValidBefore(paymentPayload));
         }
       }
-      console.error('Error during settlement:', error);
+      console.error('Error during settlement:', describeError(error));
       return null;
     }
   }

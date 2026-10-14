@@ -21,7 +21,9 @@ export {
   PrismNetworkError,
   PrismConfigError,
   PrismPaymentError,
-  PrismValidationError
+  PrismValidationError,
+  describeError,
+  type ErrorSummary
 } from './types/errors';
 
 // Export middleware core

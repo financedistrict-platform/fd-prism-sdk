@@ -1,4 +1,6 @@
+import util from 'util';
 import {
+  describeError,
   PrismError,
   PrismGatewayError,
   PrismNetworkError,
@@ -156,6 +158,42 @@ describe('PrismGatewayError', () => {
   });
 });
 
+describe('describeError', () => {
+  it('keeps only name, message, code, statusCode and traceId', () => {
+    const error = Object.assign(new Error('boom'), {
+      code: 'E_BOOM',
+      statusCode: 502,
+      traceId: 'trace-1',
+      config: { data: 'secret' },
+    });
+
+    expect(describeError(error)).toEqual({
+      name: 'Error',
+      message: 'boom',
+      code: 'E_BOOM',
+      statusCode: 502,
+      traceId: 'trace-1',
+    });
+  });
+
+  it('summarizes a Prism error without its details', () => {
+    const error = new PrismGatewayError('Gateway down', 502, 'trace-2', undefined, { detail: 'secret' });
+
+    expect(describeError(error)).toEqual({
+      name: 'PrismGatewayError',
+      message: 'Gateway down',
+      code: 'GATEWAY_ERROR',
+      statusCode: 502,
+      traceId: 'trace-2',
+    });
+  });
+
+  it('handles values that are not error objects', () => {
+    expect(describeError('plain failure')).toEqual({ name: 'Error', message: 'plain failure' });
+    expect(describeError(undefined)).toEqual({ name: 'Error', message: 'undefined' });
+  });
+});
+
 describe('PrismNetworkError', () => {
   describe('constructor', () => {
     it('should always have statusCode 503', () => {
@@ -168,16 +206,15 @@ describe('PrismNetworkError', () => {
       expect(error.statusCode).toBe(503);
       expect(error.message).toBe('Network request failed');
       expect(error.code).toBe('NETWORK_ERROR');
-      expect(error.originalError).toBe(originalError);
+      expect(error.originalError).toEqual({ name: 'Error', message: 'Connection timeout' });
       expect(error.name).toBe('PrismNetworkError');
     });
 
-    it('should store originalError', () => {
-      const originalError = new Error('ETIMEDOUT');
+    it('should store a summary of the original error', () => {
+      const originalError = Object.assign(new Error('ETIMEDOUT'), { code: 'ECONNABORTED' });
       const error = new PrismNetworkError('Connection timeout', originalError);
 
-      expect(error.originalError).toBe(originalError);
-      expect(error.originalError.message).toBe('ETIMEDOUT');
+      expect(error.originalError).toEqual({ name: 'Error', message: 'ETIMEDOUT', code: 'ECONNABORTED' });
     });
 
     it('should be an instance of PrismError', () => {
@@ -188,12 +225,27 @@ describe('PrismNetworkError', () => {
       expect(error).toBeInstanceOf(PrismNetworkError);
     });
 
-    it('should pass originalError as details to parent', () => {
-      const originalError = new Error('ECONNREFUSED');
-      const error = new PrismNetworkError('Connection refused', originalError);
+    it('should not retain the request data of the original error', () => {
+      const originalError = Object.assign(new Error('socket hang up'), {
+        code: 'ECONNRESET',
+        config: {
+          data: '{"paymentPayload":{"payload":{"signature":"0xsecretsignature"}}}',
+          headers: { 'X-API-Key': 'secret-api-key' },
+        },
+        request: { _currentUrl: 'http://gateway.invalid/api/v2/payment/settle' },
+      });
+      const error = new PrismNetworkError('Failed to reach Prism Gateway', originalError);
 
-      // originalError passed as 4th param (details) to PrismError
-      expect(error.details).toBe(originalError);
+      const serialized = JSON.stringify(error);
+      const inspected = util.inspect(error, { depth: null });
+
+      expect(error.details).toBeUndefined();
+      expect(error.originalError).toEqual({ name: 'Error', message: 'socket hang up', code: 'ECONNRESET' });
+      for (const text of [serialized, inspected]) {
+        expect(text).not.toContain('0xsecretsignature');
+        expect(text).not.toContain('secret-api-key');
+        expect(text).not.toContain('paymentPayload');
+      }
     });
   });
 });

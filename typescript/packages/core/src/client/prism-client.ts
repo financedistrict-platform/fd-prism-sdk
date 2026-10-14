@@ -12,6 +12,7 @@ import {
   PrismGatewayError,
   PrismNetworkError,
   PrismConfigError,
+  describeError,
 } from '../types/errors';
 
 /**
@@ -82,7 +83,7 @@ export class PrismClient {
     if (error.code === 'ERR_BAD_OPTION_VALUE' || error.code === 'ERR_BAD_OPTION') {
       throw new PrismConfigError(
         `Invalid Prism client configuration: ${error.message}`,
-        error
+        describeError(error)
       );
     }
 
@@ -91,7 +92,7 @@ export class PrismClient {
       error.message || `${context} failed`,
       'UNKNOWN_ERROR',
       500,
-      error
+      describeError(error)
     );
   }
 
