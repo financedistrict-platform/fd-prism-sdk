@@ -121,7 +121,7 @@ export class PrismMiddlewareCore {
   private readonly replayGuard: PaymentReplayGuard = processReplayGuard;
   private readonly inFlightTtlMs: number;
   private readonly defaultProtocolVersion: 1 | 2 = 2; // v2 is default
-  private readonly allowedVersions: (1 | 2)[];
+  private readonly allowedVersions: 2[];
   private static readonly MAX_PAYMENT_HEADER_BYTES = 8192; // ~10× real x402 payload size
 
   constructor(
@@ -137,7 +137,7 @@ export class PrismMiddlewareCore {
       this.defaultProtocolVersion = config.x402Version;
     }
     // Allowed versions whitelist — default to v2 only
-    this.allowedVersions = config.allowedVersions ?? [2];
+    this.allowedVersions = (config.allowedVersions ?? [2]).filter((version): version is 2 => version === 2);
   }
 
   /**
@@ -285,7 +285,7 @@ export class PrismMiddlewareCore {
       }
 
       const payloadVersion = getDeclaredProtocolVersion(paymentPayload);
-      if (!payloadVersion || !this.allowedVersions.includes(payloadVersion)) {
+      if (payloadVersion !== 2 || !this.allowedVersions.includes(payloadVersion)) {
         if (this.debug) {
           console.log(`[PrismMiddlewareCore] Protocol version ${payloadVersion} not in allowedVersions: [${this.allowedVersions}]`);
         }

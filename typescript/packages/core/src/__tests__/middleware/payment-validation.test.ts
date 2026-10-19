@@ -26,24 +26,6 @@ const v2RequirementsResponse = {
   accepts: [v2Requirement],
 };
 
-const v1Requirement = {
-  scheme: 'exact',
-  network: 'base-sepolia',
-  maxAmountRequired: '10000',
-  resource: RESOURCE_URL,
-  description: 'Premium API',
-  mimeType: 'application/json',
-  payTo: PAY_TO,
-  maxTimeoutSeconds: 60,
-  asset: ASSET,
-  extra: null,
-};
-
-const v1RequirementsResponse = {
-  x402Version: 1,
-  accepts: [v1Requirement],
-};
-
 let nonceSequence = 0;
 
 const buildAuthorization = (overrides: Record<string, string> = {}) => ({
@@ -72,16 +54,6 @@ const buildV2Payload = (
   },
 });
 
-const buildV1Payload = (authorization: Record<string, string> = {}) => ({
-  x402Version: 1,
-  scheme: 'exact',
-  network: 'base-sepolia',
-  payload: {
-    signature: '0xsignature',
-    authorization: buildAuthorization(authorization),
-  },
-});
-
 const encode = (value: unknown): string =>
   Buffer.from(JSON.stringify(value), 'utf-8').toString('base64');
 
@@ -92,11 +64,7 @@ describe('PrismMiddlewareCore local payment validation', () => {
     settlePayment: jest.fn(),
   };
 
-  const createCore = (allowedVersions: (1 | 2)[] = [2]) =>
-    new PrismMiddlewareCore(
-      { apiKey: 'test-key', client: mockClient as any, allowedVersions },
-      routes
-    );
+  const createCore = () => new PrismMiddlewareCore({ apiKey: 'test-key', client: mockClient as any }, routes);
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -251,37 +219,6 @@ describe('PrismMiddlewareCore local payment validation', () => {
     it('rejects a payload bound to a different resource', async () => {
       await expectRejectedLocally(
         buildV2Payload({ resource: { url: 'https://example.com/api/other' } })
-      );
-    });
-  });
-
-  describe('v1 payload', () => {
-    beforeEach(() => {
-      mockClient.getPaymentRequirements.mockResolvedValue(v1RequirementsResponse);
-    });
-
-    it('is forwarded to verify when it satisfies the requirement', async () => {
-      const result = await submit(buildV1Payload(), createCore([1, 2]));
-
-      expect(result.handled).toBe(false);
-      expect(mockClient.verifyPayment).toHaveBeenCalledTimes(1);
-    });
-
-    it('rejects an authorization paying a different recipient', async () => {
-      await expectRejectedLocally(
-        buildV1Payload({ to: '0x2222222222222222222222222222222222222222' }),
-        createCore([1, 2])
-      );
-    });
-
-    it('rejects an authorization with a different value', async () => {
-      await expectRejectedLocally(buildV1Payload({ value: '1' }), createCore([1, 2]));
-    });
-
-    it('rejects an expired authorization', async () => {
-      await expectRejectedLocally(
-        buildV1Payload({ validBefore: String(NOW_SECONDS - 1) }),
-        createCore([1, 2])
       );
     });
   });
