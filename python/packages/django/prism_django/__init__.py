@@ -12,6 +12,8 @@ from django.http import JsonResponse, HttpRequest, HttpResponse
 from django.conf import settings
 from django.urls import Resolver404, resolve
 from prism_sdk_core import (
+    is_deliverable,
+    settlement_error_reason,
     PrismMiddlewareCore,
     PrismMiddlewareConfig,
     RoutePaymentConfig,
@@ -128,7 +130,7 @@ class PrismPaymentMiddleware:
         
         # Process through middleware core
         result = self.core.handle_request(
-            path=request.path,
+            path=request.path_info,
             resource_url=resource_url,
             payment_header=payment_header,
             protocol_version=protocol_version,
@@ -171,7 +173,7 @@ class PrismPaymentMiddleware:
                     response.status_code
                 )
                 
-                if settlement_result.get('success') and settlement_result.get('transaction'):
+                if is_deliverable(settlement_result):
                     # Use HeaderAdapter to set correct header based on protocol version
                     import json
                     import base64
@@ -183,14 +185,13 @@ class PrismPaymentMiddleware:
                         response['PAYMENT-RESPONSE'] = settlement_base64
                     else:
                         response['X-PAYMENT-RESPONSE'] = settlement_base64
-                elif settlement_result and not settlement_result.get('success'):
-                    # Settlement failed - DO NOT send data, return 402 Payment Required
-                    error_reason = settlement_result.get('errorReason', 'Unknown error')
+                else:
+                    error_reason = settlement_error_reason(settlement_result)
                     print(f"[Prism] Settlement failed: {error_reason}")
                     return JsonResponse({
                         'x402Version': protocol_version,
                         'error': 'Payment settlement failed',
-                        'details': error_reason or 'Payment could not be settled. Please try again.'
+                        'details': error_reason
                     }, status=402)
             except Exception as e:
                 print(f"[Prism] Settlement error: {e}")
@@ -295,7 +296,7 @@ class AsyncPrismPaymentMiddleware:
                 protocol_version = detected
 
         result = await self.core.ahandle_request(
-            path=request.path,
+            path=request.path_info,
             resource_url=resource_url,
             payment_header=payment_header,
             protocol_version=protocol_version,
@@ -326,7 +327,7 @@ class AsyncPrismPaymentMiddleware:
                     result.payment_info['payment_requirements'],
                     response.status_code,
                 )
-                if settlement_result.get('success') and settlement_result.get('transaction'):
+                if is_deliverable(settlement_result):
                     settlement_base64 = base64.b64encode(
                         json.dumps(settlement_result).encode()
                     ).decode()
@@ -335,11 +336,11 @@ class AsyncPrismPaymentMiddleware:
                         settlement_base64,
                         protocol_version,
                     )
-                elif settlement_result and not settlement_result.get('success'):
+                else:
                     return JsonResponse({
                         'x402Version': protocol_version,
                         'error': 'Payment settlement failed',
-                        'details': settlement_result.get('errorReason', 'Unknown error'),
+                        'details': settlement_error_reason(settlement_result),
                     }, status=402)
             except Exception as e:
                 if self.config.debug:

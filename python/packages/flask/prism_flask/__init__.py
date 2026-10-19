@@ -11,6 +11,8 @@ from typing import Dict, Callable, Optional
 from flask import current_app, g, jsonify, make_response
 from functools import wraps
 from prism_sdk_core import (
+    is_deliverable,
+    settlement_error_reason,
     PrismMiddlewareCore,
     PrismMiddlewareConfig,
     RoutePaymentConfig,
@@ -101,7 +103,7 @@ def prism_payment_middleware(
                     g._prism_requirements,
                     response.status_code
                 )
-                if settlement_result.get('success') and settlement_result.get('transaction'):
+                if is_deliverable(settlement_result):
                     settlement_base64 = base64.b64encode(
                         json.dumps(settlement_result).encode()
                     ).decode()
@@ -110,15 +112,12 @@ def prism_payment_middleware(
                         settlement_base64,
                         protocol_version
                     )
-                elif settlement_result and not settlement_result.get('success'):
-                    error_reason = settlement_result.get('errorReason', 'Unknown error')
-                    # after_request must return a Response object, not a tuple
-                    err = make_response(jsonify({
+                else:
+                    return make_response(jsonify({
                         'x402Version': protocol_version,
                         'error': 'Payment settlement failed',
-                        'details': error_reason
+                        'details': settlement_error_reason(settlement_result)
                     }), 402)
-                    return err
             except Exception as e:
                 print(f"[Prism] Settlement error: {e}")
                 # Settlement error - return generic 500 error
