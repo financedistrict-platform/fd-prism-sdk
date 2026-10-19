@@ -59,6 +59,19 @@ export interface SettlementOutcome {
   errorReason?: string;
 }
 
+export const SETTLEMENT_NOT_CONFIRMED = 'settlement_not_confirmed';
+
+export function isDeliverable(
+  result: { success?: unknown; transaction?: unknown } | null | undefined
+): result is SettlementOutcome & { success: true; transaction: string } {
+  return result?.success === true && typeof result.transaction === 'string' && result.transaction.length > 0;
+}
+
+export function settlementErrorReason(result: { errorReason?: unknown } | null | undefined): string {
+  const reason = result?.errorReason;
+  return typeof reason === 'string' && reason.length > 0 ? reason : SETTLEMENT_NOT_CONFIRMED;
+}
+
 /**
  * Request data for middleware processing
  */
@@ -386,11 +399,8 @@ export class PrismMiddlewareCore {
 
       if (routeConfig.settleBeforeHandler) {
         const settlement = await this.settlementCallback(paymentPayload as any, paymentRequirements, 200);
-        if (!settlement || !settlement.success) {
-          const response = buildInvalidPaymentResponse(
-            settlement?.errorReason || 'Payment settlement failed',
-            protocolVersion
-          );
+        if (!isDeliverable(settlement)) {
+          const response = buildInvalidPaymentResponse(settlementErrorReason(settlement), protocolVersion);
           return {
             handled: true,
             ...response,
@@ -559,19 +569,19 @@ export class PrismMiddlewareCore {
       const settlementResult = await this.client.settlePayment(paymentPayload, paymentRequirements);
 
       if (proofKey) {
-        if (settlementResult.success) {
+        if (isDeliverable(settlementResult)) {
           this.replayGuard.markConsumed(proofKey, paymentValidBefore(paymentPayload), settlementResult);
         } else {
           this.replayGuard.release(proofKey);
         }
       }
 
-      if (settlementResult.success && settlementResult.transaction) {
+      if (isDeliverable(settlementResult)) {
         console.log(
           `Payment settled: ${settlementResult.transaction} on ${settlementResult.network || 'unknown'} by ${settlementResult.payer}`
         );
-      } else if (settlementResult.errorReason) {
-        console.error('Settlement failed:', settlementResult.errorReason);
+      } else {
+        console.error('Settlement failed:', settlementErrorReason(settlementResult));
       }
 
       return settlementResult;

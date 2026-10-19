@@ -352,6 +352,18 @@ describe('PrismMiddlewareCore parallel proof replay', () => {
     expect(results.filter((r) => r.handled)).toHaveLength(50);
   });
 
+  it('releases the proof when settlement after the handler returns success without a transaction', async () => {
+    const core = createCore();
+    const payload = buildPayload('0xunconfirmed-after-handler');
+    mockClient.settlePayment.mockResolvedValueOnce({ success: true });
+
+    const admitted = await submit(core, payload);
+    await core.settlementCallback(admitted.paymentInfo!.payment, admitted.paymentInfo!.paymentRequirements, 200);
+    const retried = await submit(core, payload);
+
+    expect(retried.paymentInfo).toBeDefined();
+  });
+
   describe('routes that settle before the handler', () => {
     const settlingRoutes: RoutesConfig = {
       [ROUTE_PATH]: { price: 0.01, description: 'Premium API', settleBeforeHandler: true },
@@ -429,6 +441,40 @@ describe('PrismMiddlewareCore parallel proof replay', () => {
       expect(retried.handled).toBe(true);
       expect(retried.statusCode).toBe(402);
       expect(retried.paymentInfo).toBeUndefined();
+    });
+
+    it.each([
+      ['success without a transaction', { success: true }],
+      ['an empty transaction', { success: true, transaction: '' }],
+      ['an empty reply', {}],
+    ])('rejects the request and releases the proof when settlement returns %s', async (_label, reply) => {
+      const core = createSettlingCore();
+      const payload = buildPayload(`0xunconfirmed-${_label}`);
+      mockClient.settlePayment.mockResolvedValueOnce(reply);
+
+      const rejected = await submit(core, payload);
+      const retried = await submit(core, payload);
+
+      expect(rejected.handled).toBe(true);
+      expect(rejected.statusCode).toBe(402);
+      expect(rejected.paymentInfo).toBeUndefined();
+      expect(JSON.stringify(rejected.body)).toContain('settlement_not_confirmed');
+      expect(retried.paymentInfo).toBeDefined();
+      expect(mockClient.settlePayment).toHaveBeenCalledTimes(2);
+    });
+
+    it('runs the handler and consumes the proof when settlement returns a transaction', async () => {
+      const core = createSettlingCore();
+      const payload = buildPayload('0xsettled-with-transaction');
+      mockClient.settlePayment.mockResolvedValueOnce({ success: true, transaction: '0x1' });
+
+      const admitted = await submit(core, payload);
+      const replay = await submit(core, payload);
+
+      expect(admitted.paymentInfo).toBeDefined();
+      expect(replay.handled).toBe(true);
+      expect(replay.statusCode).toBe(402);
+      expect(mockClient.settlePayment).toHaveBeenCalledTimes(1);
     });
 
     it('keeps the proof consumed when the handler fails after settlement', async () => {

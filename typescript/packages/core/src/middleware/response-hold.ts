@@ -1,7 +1,7 @@
 import type { ServerResponse } from 'http';
 import { HeaderAdapter } from '../compatibility';
 import { PrismConfigError, describeError } from '../types/errors';
-import type { PrismMiddlewareCore, MiddlewareResult } from './middleware-core';
+import { isDeliverable, settlementErrorReason, type PrismMiddlewareCore, type MiddlewareResult } from './middleware-core';
 
 export const DEFAULT_MAX_HELD_RESPONSE_BYTES = 8 * 1024 * 1024;
 
@@ -93,8 +93,8 @@ export function createResponseSettler(
         res.statusCode
       );
 
-      if (!settlementResult || !settlementResult.success || !settlementResult.transaction) {
-        const errorReason = settlementResult?.errorReason || 'Settlement processing failed';
+      if (!isDeliverable(settlementResult)) {
+        const errorReason = settlementErrorReason(settlementResult);
         console.error('Settlement failed:', errorReason);
         return {
           status: 402,
