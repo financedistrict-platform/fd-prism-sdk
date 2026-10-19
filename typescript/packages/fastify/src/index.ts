@@ -10,8 +10,11 @@ import {
   type PrismMiddlewareConfig,
   type RoutesConfig,
   HeaderAdapter,
+  createResponseSettler,
   detectProtocolVersion,
   findMatchingRoute,
+  holdResponseUntilSettled,
+  resolveMaxHeldResponseBytes,
 } from '@financedistrict/prism-x402-sdk';
 
 export interface PrismFastifyOptions extends PrismMiddlewareConfig {
@@ -41,10 +44,7 @@ const prismPluginCore: FastifyPluginAsync<PrismFastifyOptions> = async (fastify,
 
   // Create middleware core instance
   const core = new PrismMiddlewareCore(config, routes);
-
-  // Store payment info per request
-  const requestPaymentInfo = new WeakMap<FastifyRequest, any>();
-  const requestProtocolVersion = new WeakMap<FastifyRequest, 1 | 2>();
+  const maxHeldBytes = resolveMaxHeldResponseBytes(config.maxHeldResponseBytes);
 
   // Add onRequest hook for payment verification
   fastify.addHook('onRequest', async (request: FastifyRequest, reply: FastifyReply) => {
@@ -66,9 +66,6 @@ const prismPluginCore: FastifyPluginAsync<PrismFastifyOptions> = async (fastify,
       }
     }
 
-    // Store protocol version for onSend hook
-    requestProtocolVersion.set(request, protocolVersion);
-
     const requestPath = request.url.split('?')[0];
     const registeredPath = request.routeOptions?.url ?? request.routerPath;
     const isConfiguredKey = (candidate: string) => findMatchingRoute(candidate, routes) === candidate;
@@ -83,6 +80,7 @@ const prismPluginCore: FastifyPluginAsync<PrismFastifyOptions> = async (fastify,
       paymentHeader: paymentHeader || undefined,
       resourceUrl,
       protocolVersion,
+      requestScope: reply.raw,
     });
 
     // If middleware handled the request (returned error or 402)
@@ -98,74 +96,20 @@ const prismPluginCore: FastifyPluginAsync<PrismFastifyOptions> = async (fastify,
       return;
     }
 
-    // Payment verified or route not protected
     if (result.paymentInfo) {
-      // Store payment info in request for route handler access
       (request as any).payment = result.paymentInfo.payment;
       (request as any).payer = result.paymentInfo.payer;
 
-      // Store for onSend hook
-      requestPaymentInfo.set(request, result.paymentInfo);
-    }
-  });
+      const registered = holdResponseUntilSettled(
+        reply.raw,
+        createResponseSettler(core, result.paymentInfo, reply.raw, protocolVersion),
+        { protocolVersion, maxHeldBytes }
+      );
 
-  // Add onSend hook for settlement after successful response
-  fastify.addHook('onSend', async (request: FastifyRequest, reply: FastifyReply, payload) => {
-    const paymentInfo = requestPaymentInfo.get(request);
-    const protocolVersion = requestProtocolVersion.get(request) || config.x402Version || 2;
-
-    // Perform settlement BEFORE sending response (if status < 400)
-    if (paymentInfo && reply.statusCode < 400) {
-      try {
-        const settlementResult = await core.settlementCallback(
-          paymentInfo.payment,
-          paymentInfo.paymentRequirements,
-          reply.statusCode
-        );
-
-        if (settlementResult && settlementResult.success && settlementResult.transaction) {
-          // Set settlement response header (v1 or v2 format)
-          const settlementResponse = JSON.stringify(settlementResult);
-          const settlementBase64 = Buffer.from(settlementResponse).toString('base64');
-          HeaderAdapter.setSettlementResponse(
-            (name, value) => reply.header(name, value),
-            settlementBase64,
-            protocolVersion
-          );
-        } else if (!settlementResult || (settlementResult && !settlementResult.success)) {
-          // Settlement failed or returned null - DO NOT send data, return 402 Payment Required
-          const errorReason = settlementResult?.errorReason || 'Settlement processing failed';
-          fastify.log.error(`Settlement failed: ${errorReason}`);
-          reply.code(402);
-          reply.header('Content-Type', 'application/json');
-          requestPaymentInfo.delete(request);
-          requestProtocolVersion.delete(request);
-          return JSON.stringify({
-            x402Version: protocolVersion,
-            error: 'Payment settlement failed',
-            details: errorReason,
-          });
-        }
-      } catch (error: any) {
-        fastify.log.error(`Settlement error: ${error.message || error}`);
-        // Settlement error - DO NOT send data, return 500 error
-        reply.code(500);
-        reply.header('Content-Type', 'application/json');
-        requestPaymentInfo.delete(request);
-        requestProtocolVersion.delete(request);
-        return JSON.stringify({
-          x402Version: protocolVersion,
-          error: 'Settlement processing error',
-          details: 'An error occurred while settling the payment. Please try again.',
-        });
+      if (!registered) {
+        reply.hijack();
       }
-
-      // Clean up
-      requestPaymentInfo.delete(request);
-      requestProtocolVersion.delete(request);
     }
-
-    return payload;
   });
 
   // Add decorators for accessing payment info in routes
