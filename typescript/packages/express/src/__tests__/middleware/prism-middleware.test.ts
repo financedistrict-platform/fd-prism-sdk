@@ -20,6 +20,8 @@ const createMockClient = () => ({
   getAuthInfo: mockGetAuthInfo,
 });
 
+let nonceSequence = 0;
+
 const validPaymentHeader = () =>
   Buffer.from(
     JSON.stringify({
@@ -34,7 +36,7 @@ const validPaymentHeader = () =>
           value: '10000',
           validAfter: '0',
           validBefore: '9999999999',
-          nonce: '0xnonce123',
+          nonce: `0x${(++nonceSequence).toString(16)}`,
         },
       },
     })
@@ -1025,5 +1027,50 @@ describe('prismPaymentMiddleware', () => {
         }
       });
     });
+  });
+});
+
+describe('prismPaymentMiddleware under a mount prefix', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockGetPaymentRequirements.mockResolvedValue(paidRequirements);
+  });
+
+  const mountedApp = () => {
+    const app = express();
+    const router = express.Router();
+    router.use(
+      prismPaymentMiddleware(
+        { apiKey: 'test-api-key', client: createMockClient() },
+        { '/api/paid': { price: '10000', description: 'Mounted paid route' } }
+      )
+    );
+    router.get('/paid', (_req: Request, res: Response) => {
+      res.json({ content: 'paid-content-secret' });
+    });
+    router.get('/free', (_req: Request, res: Response) => {
+      res.json({ content: 'free' });
+    });
+    app.use('/api', router);
+    return app;
+  };
+
+  it('charges the configured full path of a route mounted under a prefix', async () => {
+    const response = await request(mountedApp()).get('/api/paid');
+
+    expect(response.status).toBe(402);
+    expect(response.text).not.toContain('paid-content-secret');
+  });
+
+  it('charges the mounted route when a query string is present', async () => {
+    const response = await request(mountedApp()).get('/api/paid?x=1');
+
+    expect(response.status).toBe(402);
+  });
+
+  it('leaves other mounted routes free', async () => {
+    const response = await request(mountedApp()).get('/api/free');
+
+    expect(response.status).toBe(200);
   });
 });

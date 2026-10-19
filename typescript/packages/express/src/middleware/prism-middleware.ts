@@ -63,7 +63,7 @@ export function prismPaymentMiddleware(
 
     // Process request through middleware core
     const result = await core.handleRequest({
-      path: req.path,
+      path: `${req.baseUrl}${req.path}`,
       paymentHeader: paymentHeader || undefined,
       resourceUrl,
       protocolVersion,
@@ -72,6 +72,10 @@ export function prismPaymentMiddleware(
 
     // If middleware handled the request (returned error or 402)
     if (result.handled) {
+      if (res.headersSent) {
+        return;
+      }
+
       // Set headers
       if (result.headers) {
         Object.entries(result.headers).forEach(([key, value]) => {
