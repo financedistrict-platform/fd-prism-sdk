@@ -17,6 +17,8 @@ const createMockClient = () => ({
   getAuthInfo: mockGetAuthInfo,
 });
 
+let nonceCounter = 0;
+
 const validPaymentHeader = () =>
   Buffer.from(
     JSON.stringify({
@@ -31,7 +33,7 @@ const validPaymentHeader = () =>
           value: '10000',
           validAfter: '0',
           validBefore: '9999999999',
-          nonce: '0xnonce123',
+          nonce: `0xnonce-${++nonceCounter}`,
         },
       },
     })

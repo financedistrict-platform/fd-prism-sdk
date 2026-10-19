@@ -15,7 +15,8 @@ export {
   PaymentReplayGuard,
   paymentProofKey,
   paymentValidBefore,
-  replayGuardFor,
+  processReplayGuard,
+  reservationTtlMs,
 } from './payment-replay-guard';
 export {
   build402Response,

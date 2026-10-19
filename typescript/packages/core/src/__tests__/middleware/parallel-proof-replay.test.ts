@@ -341,15 +341,18 @@ describe('PrismMiddlewareCore parallel proof replay', () => {
     expect(guard.tryReserve('key', NOW_SECONDS + 30)).toBe(true);
   });
 
-  it('stays bounded and fails closed when every slot is an active reservation', async () => {
-    const core = createCore();
-    const results = await Promise.all(
-      Array.from({ length: 10_050 }, (_, i) => submit(core, buildPayload(`0xflood-${i}`)))
-    );
+  it('stays bounded and fails closed when every slot is an active reservation', () => {
+    const guard = new PaymentReplayGuard(3);
 
-    const admitted = results.filter((r) => r.paymentInfo).length;
-    expect(admitted).toBe(10_000);
-    expect(results.filter((r) => r.handled)).toHaveLength(50);
+    expect(['a', 'b', 'c'].map((key) => guard.tryReserve(key, NOW_SECONDS + 60))).toEqual([true, true, true]);
+    expect(guard.tryReserve('d', NOW_SECONDS + 60)).toBe(false);
+    guard.markConsumed('a', NOW_SECONDS + 60);
+    expect(guard.tryReserve('d', NOW_SECONDS + 60)).toBe(true);
+    expect(guard.tryReserve('e', NOW_SECONDS + 60)).toBe(false);
+    guard.release('b');
+    expect(guard.tryReserve('e', NOW_SECONDS + 60)).toBe(true);
+    (Date.now as jest.Mock).mockReturnValue(NOW_SECONDS * 1000 + 601_000);
+    expect(guard.tryReserve('f', NOW_SECONDS + 700)).toBe(true);
   });
 
   it('releases the proof when settlement after the handler returns success without a transaction', async () => {

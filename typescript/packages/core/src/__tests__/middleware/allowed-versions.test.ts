@@ -39,13 +39,17 @@ const v1Requirement = {
   extra: null,
 };
 
+let nonceSequence = 0;
+
 const authorization = {
   from: '0x1111111111111111111111111111111111111111',
   to: PAY_TO,
   value: '10000',
   validAfter: String(NOW_SECONDS - 60),
   validBefore: String(NOW_SECONDS + 60),
-  nonce: '0xnonce',
+  get nonce() {
+    return `0x${(++nonceSequence).toString(16)}`;
+  },
 };
 
 const v1Payload = {

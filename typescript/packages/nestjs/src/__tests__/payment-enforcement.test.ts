@@ -17,43 +17,40 @@ const mockClient = {
   getAuthInfo: mockGetAuthInfo,
 };
 
-const requirements = {
-  x402Version: 1,
-  accepts: [
-    {
-      scheme: 'eip3009',
-      network: '1',
-      maxAmountRequired: '10000',
-      resource: 'http://127.0.0.1/api/premium',
-      description: 'Premium API access',
-      mimeType: 'application/json',
-      payTo: '0x1234567890abcdef',
-      maxTimeoutSeconds: 60,
-      asset: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
-      extra: null,
-    },
-  ],
+const requirement = {
+  scheme: 'exact',
+  network: 'eip155:84532',
+  amount: '10000',
+  asset: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
+  payTo: '0xAbCdEf0123456789aBcDeF0123456789AbCdEf01',
+  maxTimeoutSeconds: 60,
 };
 
-const paymentHeader = Buffer.from(
-  JSON.stringify({
-    x402Version: 1,
-    scheme: 'eip3009',
-    network: '1',
-    asset: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
-    payload: {
-      signature: '0xsignature123',
-      authorization: {
-        from: '0xabcdef1234567890',
-        to: '0x1234567890abcdef',
-        value: '10000',
-        validAfter: '0',
-        validBefore: '9999999999',
-        nonce: '0x01',
+const requirements = {
+  x402Version: 2,
+  accepts: [requirement],
+};
+
+let nonceSequence = 0;
+
+const paymentHeader = () =>
+  Buffer.from(
+    JSON.stringify({
+      x402Version: 2,
+      accepted: requirement,
+      payload: {
+        signature: '0xsignature123',
+        authorization: {
+          from: '0x1111111111111111111111111111111111111111',
+          to: requirement.payTo,
+          value: '10000',
+          validAfter: '0',
+          validBefore: '9999999999',
+          nonce: `0x${(++nonceSequence).toString(16)}`,
+        },
       },
-    },
-  }),
-).toString('base64');
+    }),
+  ).toString('base64');
 
 @Controller('api')
 class InlineConfigController {
@@ -120,7 +117,7 @@ class ExplicitGuardController {
 }
 
 const prismModule = (routes: Record<string, { price: string; description?: string }> = {}) =>
-  PrismModule.forRoot({ apiKey: 'test-api-key', allowedVersions: [1, 2], client: mockClient as any, routes });
+  PrismModule.forRoot({ apiKey: 'test-api-key', allowedVersions: [2], client: mockClient as any, routes });
 
 async function createAppWithMiddleware(routes: Record<string, { price: string }>): Promise<INestApplication> {
   @Module({ imports: [prismModule(routes)], controllers: [InlineConfigController] })
@@ -197,11 +194,24 @@ describe('PrismModule payment enforcement', () => {
 
       const response = await request(app.getHttpServer())
         .get('/api/premium')
-        .set('X-Payment', paymentHeader);
+        .set('Payment-Signature', paymentHeader());
 
       expect(response.status).toBe(200);
       expect(response.body).toEqual({ data: 'Premium content', payer: '0xabcdef1234567890' });
       expect(mockVerifyPayment).toHaveBeenCalledTimes(1);
+      expect(mockSettlePayment).toHaveBeenCalledTimes(1);
+    });
+
+    it('refuses a replayed proof on an inline-priced route', async () => {
+      app = await createApp([prismModule()], [InlineConfigController]);
+      const proof = paymentHeader();
+
+      const first = await request(app.getHttpServer()).get('/api/premium').set('Payment-Signature', proof);
+      const replay = await request(app.getHttpServer()).get('/api/premium').set('Payment-Signature', proof);
+
+      expect(first.status).toBe(200);
+      expect(replay.status).toBe(402);
+      expect(handlerSpy).toHaveBeenCalledTimes(1);
       expect(mockSettlePayment).toHaveBeenCalledTimes(1);
     });
 
@@ -211,7 +221,7 @@ describe('PrismModule payment enforcement', () => {
 
       const response = await request(app.getHttpServer())
         .get('/api/premium')
-        .set('X-Payment', paymentHeader);
+        .set('Payment-Signature', paymentHeader());
 
       expect(response.status).toBe(402);
       expect(handlerSpy).not.toHaveBeenCalled();
@@ -258,7 +268,7 @@ describe('PrismModule payment enforcement', () => {
 
       const response = await request(app.getHttpServer())
         .get('/api/premium')
-        .set('X-Payment', paymentHeader);
+        .set('Payment-Signature', paymentHeader());
 
       expect(response.status).toBe(200);
       expect(mockSettlePayment).toHaveBeenCalledTimes(1);
@@ -272,7 +282,7 @@ describe('PrismModule payment enforcement', () => {
 
       const response = await request(app.getHttpServer())
         .get('/api/unpriced')
-        .set('X-Payment', paymentHeader);
+        .set('Payment-Signature', paymentHeader());
 
       expect(response.status).toBe(500);
       expect(handlerSpy).not.toHaveBeenCalled();
@@ -286,7 +296,7 @@ describe('PrismModule payment enforcement', () => {
 
       const response = await request(app.getHttpServer())
         .get('/api/strict')
-        .set('X-Payment', paymentHeader);
+        .set('Payment-Signature', paymentHeader());
 
       expect(response.status).toBe(500);
       expect(handlerSpy).not.toHaveBeenCalled();
@@ -298,7 +308,7 @@ describe('PrismModule payment enforcement', () => {
 
       const response = await request(app.getHttpServer())
         .get('/api/strict')
-        .set('X-Payment', paymentHeader);
+        .set('Payment-Signature', paymentHeader());
 
       expect(response.status).toBe(500);
       expect(handlerSpy).not.toHaveBeenCalled();
@@ -310,7 +320,7 @@ describe('PrismModule payment enforcement', () => {
 
       const response = await request(app.getHttpServer())
         .get('/api/strict')
-        .set('X-Payment', paymentHeader);
+        .set('Payment-Signature', paymentHeader());
 
       expect(response.status).toBe(200);
       expect(mockVerifyPayment).toHaveBeenCalledTimes(1);
@@ -350,7 +360,7 @@ describe('PrismModule payment enforcement', () => {
 
       const response = await request(app.getHttpServer())
         .get('/legacy/premium')
-        .set('X-Payment', paymentHeader);
+        .set('Payment-Signature', paymentHeader());
 
       expect(response.status).toBe(200);
       expect(mockVerifyPayment).toHaveBeenCalledTimes(1);
@@ -362,7 +372,7 @@ describe('PrismModule payment enforcement', () => {
 
       const response = await request(app.getHttpServer())
         .get('/api/premium')
-        .set('X-Payment', paymentHeader);
+        .set('Payment-Signature', paymentHeader());
 
       expect(response.status).toBe(200);
       expect(mockVerifyPayment).toHaveBeenCalledTimes(1);
@@ -371,38 +381,7 @@ describe('PrismModule payment enforcement', () => {
   });
 });
 
-const V2_PAY_TO = '0xAbCdEf0123456789aBcDeF0123456789AbCdEf01';
 const PAID_CONTENT = 'paid-content-secret';
-
-const v2Requirement = {
-  scheme: 'exact',
-  network: 'eip155:84532',
-  amount: '10000',
-  asset: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
-  payTo: V2_PAY_TO,
-  maxTimeoutSeconds: 60,
-};
-
-let v2NonceCounter = 0;
-
-const v2PaymentHeader = () =>
-  Buffer.from(
-    JSON.stringify({
-      x402Version: 2,
-      accepted: v2Requirement,
-      payload: {
-        signature: '0xsignature',
-        authorization: {
-          from: '0x1111111111111111111111111111111111111111',
-          to: V2_PAY_TO,
-          value: '10000',
-          validAfter: '0',
-          validBefore: '9999999999',
-          nonce: `0xnest-settlement-${++v2NonceCounter}`,
-        },
-      },
-    }),
-  ).toString('base64');
 
 @Controller('held')
 class HeldContentController {
@@ -430,7 +409,7 @@ describe('PrismModule settlement before delivery', () => {
   beforeEach(() => {
     jest.spyOn(console, 'error').mockImplementation(() => undefined);
     jest.spyOn(console, 'log').mockImplementation(() => undefined);
-    mockGetPaymentRequirements.mockResolvedValue({ x402Version: 2, accepts: [v2Requirement] });
+    mockGetPaymentRequirements.mockResolvedValue(requirements);
     mockVerifyPayment.mockResolvedValue({ isValid: true, payer: '0x1111111111111111111111111111111111111111' });
   });
 
@@ -447,7 +426,7 @@ describe('PrismModule settlement before delivery', () => {
     mockSettlePayment.mockResolvedValue(reply);
     app = await createApp([heldModule()], [HeldContentController]);
 
-    const response = await request(app.getHttpServer()).get('/held/small').set('Payment-Signature', v2PaymentHeader());
+    const response = await request(app.getHttpServer()).get('/held/small').set('Payment-Signature', paymentHeader());
 
     expect(response.status).toBe(402);
     expect(response.text).not.toContain(PAID_CONTENT);
@@ -458,7 +437,7 @@ describe('PrismModule settlement before delivery', () => {
     mockSettlePayment.mockResolvedValue({ success: true, transaction: '0x1' });
     app = await createApp([heldModule()], [HeldContentController]);
 
-    const response = await request(app.getHttpServer()).get('/held/small').set('Payment-Signature', v2PaymentHeader());
+    const response = await request(app.getHttpServer()).get('/held/small').set('Payment-Signature', paymentHeader());
 
     expect(response.status).toBe(200);
     expect(response.text).toContain(PAID_CONTENT);
@@ -469,7 +448,7 @@ describe('PrismModule settlement before delivery', () => {
     mockSettlePayment.mockResolvedValue({ success: true, transaction: '0x1' });
     app = await createApp([heldModule()], [HeldContentController]);
 
-    const response = await request(app.getHttpServer()).get('/held/large').set('Payment-Signature', v2PaymentHeader());
+    const response = await request(app.getHttpServer()).get('/held/large').set('Payment-Signature', paymentHeader());
 
     expect(response.status).toBe(500);
     expect(response.text).not.toContain(PAID_CONTENT);

@@ -30,6 +30,9 @@ const proofFor = (nonce: string) =>
 
 const proof = proofFor('0xnonce');
 
+let nonceCounter = 0;
+const freshProof = () => proofFor(`0xnextjs-${++nonceCounter}`);
+
 const createClient = () => ({
   getPaymentRequirements: jest.fn().mockResolvedValue({
     accepts: [requirement],
@@ -44,7 +47,7 @@ const createClient = () => ({
   getAuthInfo: jest.fn(),
 });
 
-const paidRequest = (path: string, extraHeaders: Record<string, string> = {}, paymentProof: string = proof) =>
+const paidRequest = (path: string, extraHeaders: Record<string, string> = {}, paymentProof: string = freshProof()) =>
   new Request(`http://localhost${path}`, {
     headers: { 'PAYMENT-SIGNATURE': paymentProof, ...extraHeaders },
   });
@@ -126,8 +129,9 @@ describe('withPrismPayment', () => {
     );
     const routeB = withPrismPayment(handlerB, { price: 0.01, description: 'b' }, config);
 
-    const first = await routeA(paidRequest('/api/a'));
-    const second = await routeB(paidRequest('/api/b'));
+    const shared = proofFor('0xnonce-shared-config');
+    const first = await routeA(paidRequest('/api/a', {}, shared));
+    const second = await routeB(paidRequest('/api/b', {}, shared));
 
     expect(first.status).toBe(200);
     expect(second.status).toBe(402);
@@ -148,6 +152,46 @@ describe('withPrismPayment', () => {
 
     expect(response.status).toBe(402);
     expect(await response.text()).not.toContain('secret');
+  });
+
+  it.each([
+    ['success without a transaction', { success: true }],
+    ['an empty transaction', { success: true, transaction: '' }],
+  ])('withholds the handler response on %s', async (_label, reply) => {
+    const client = createClient();
+    client.settlePayment.mockResolvedValue(reply);
+    const route = withPrismPayment(
+      jest.fn().mockResolvedValue(Response.json({ secret: true })),
+      { price: 0.01, description: 'a' },
+      { apiKey: 'k', client: client as any }
+    );
+
+    const response = await route(paidRequest('/api/a'));
+
+    expect(response.status).toBe(402);
+    expect(await response.text()).not.toContain('secret');
+    expect(response.headers.get('PAYMENT-RESPONSE')).toBeNull();
+  });
+
+  it('refuses a proof on a second route built from a different config object', async () => {
+    const client = createClient();
+    const handlerB = jest.fn().mockResolvedValue(Response.json({ secret: 'b' }));
+    const routeA = withPrismPayment(
+      jest.fn().mockResolvedValue(Response.json({ route: 'a' })),
+      { price: 0.01, description: 'a' },
+      { apiKey: 'k', client: client as any }
+    );
+    const routeB = withPrismPayment(handlerB, { price: 0.01, description: 'b' }, { apiKey: 'k', client: client as any });
+    const shared = proofFor('0xnonce-distinct-configs');
+
+    const first = await routeA(paidRequest('/api/a', {}, shared));
+    const second = await routeB(paidRequest('/api/b', {}, shared));
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(402);
+    expect(await second.text()).not.toContain('secret');
+    expect(handlerB).not.toHaveBeenCalled();
+    expect(client.settlePayment).toHaveBeenCalledTimes(1);
   });
 });
 

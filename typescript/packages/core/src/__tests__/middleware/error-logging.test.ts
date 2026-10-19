@@ -35,6 +35,8 @@ const requirementsResponse = {
   accepts: [requirement],
 };
 
+let nonceSequence = 0;
+
 const payload = {
   x402Version: 2,
   accepted: requirement,
@@ -46,7 +48,9 @@ const payload = {
       value: '10000',
       validAfter: String(NOW_SECONDS - 60),
       validBefore: String(NOW_SECONDS + 60),
-      nonce: NONCE,
+      get nonce() {
+        return `${NONCE}${++nonceSequence}`;
+      },
     },
   },
 };
