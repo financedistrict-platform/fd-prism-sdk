@@ -25,11 +25,14 @@ import {
   type PrismMiddlewareConfig,
   type RoutesConfig,
   type RoutePaymentConfig,
-  type MiddlewareResult,
+  type VerifiedPaymentInfo,
   HeaderAdapter,
+  createResponseSettler,
   detectProtocolVersion,
   findMatchingRoute,
+  holdResponseUntilSettled,
   parsePrice,
+  resolveMaxHeldResponseBytes,
 } from '@financedistrict/prism-x402-sdk';
 
 /**
@@ -42,143 +45,18 @@ export interface PrismModuleOptions extends PrismMiddlewareConfig {
 const PRISM_PAYMENT_KEY = 'prism:payment';
 const PRISM_PAYMENT_HANDLED = Symbol('prism:payment-handled');
 
-type VerifiedPayment = NonNullable<MiddlewareResult['paymentInfo']>;
-
 const requestPath = (req: Request): string => req.originalUrl.split('?')[0];
 
-const toBuffer = (chunk: any, encoding?: BufferEncoding): Buffer =>
-  Buffer.isBuffer(chunk) ? chunk : typeof chunk === 'string' ? Buffer.from(chunk, encoding) : Buffer.from(chunk);
-
-const encodingOf = (value: unknown): BufferEncoding | undefined =>
-  typeof value === 'string' ? (value as BufferEncoding) : undefined;
-
-const applyHeaders = (res: Response, headers: unknown): void => {
-  if (!headers) {
-    return;
-  }
-  const pairs: Array<[string, any]> = Array.isArray(headers)
-    ? Array.isArray(headers[0])
-      ? (headers as Array<[string, any]>)
-      : Array.from({ length: Math.floor(headers.length / 2) }, (_, i): [string, any] => [headers[2 * i], headers[2 * i + 1]])
-    : Object.entries(headers as Record<string, any>);
-  pairs.forEach(([name, value]) => {
-    if (value !== undefined) {
-      res.setHeader(name, value);
-    }
-  });
-};
-
-function settleBeforeEnd(
+const holdUntilSettled = (
   res: Response,
   core: PrismMiddlewareCore,
-  paymentInfo: VerifiedPayment,
+  paymentInfo: VerifiedPaymentInfo,
   protocolVersion: 1 | 2,
-): void {
-  const originalEnd = res.end.bind(res);
-  const originalWrite = res.write.bind(res) as (...args: any[]) => boolean;
-  const originalWriteHead = res.writeHead.bind(res) as (...args: any[]) => Response;
-  const originalFlushHeaders = res.flushHeaders.bind(res);
-  const held: Buffer[] = [];
-  let endCalled = false;
-  let released = false;
-
-  (res as any).writeHead = function (statusCode: number, reasonOrHeaders?: any, headers?: any) {
-    if (released) {
-      return originalWriteHead(statusCode, reasonOrHeaders, headers);
-    }
-    res.statusCode = statusCode;
-    if (typeof reasonOrHeaders === 'string') {
-      res.statusMessage = reasonOrHeaders;
-      applyHeaders(res, headers);
-    } else {
-      applyHeaders(res, reasonOrHeaders);
-    }
-    return res;
-  };
-
-  res.flushHeaders = function () {
-    if (released) {
-      originalFlushHeaders();
-    }
-  };
-
-  (res as any).write = function (chunk: any, encodingOrCallback?: any, callback?: any): boolean {
-    if (released) {
-      return originalWrite(chunk, encodingOrCallback, callback);
-    }
-    const done = typeof encodingOrCallback === 'function' ? encodingOrCallback : callback;
-    if (endCalled) {
-      if (typeof done === 'function') {
-        process.nextTick(done, new Error('write after end'));
-      }
-      return false;
-    }
-    held.push(toBuffer(chunk, encodingOf(encodingOrCallback)));
-    if (typeof done === 'function') {
-      process.nextTick(done);
-    }
-    return true;
-  };
-
-  const failClosed = (status: number, body: Record<string, unknown>) => {
-    released = true;
-    held.length = 0;
-    if (!res.headersSent) {
-      res.status(status);
-      res.setHeader('Content-Type', 'application/json');
-      res.removeHeader('Content-Length');
-      res.removeHeader('Transfer-Encoding');
-      res.removeHeader('ETag');
-    }
-    return originalEnd(JSON.stringify({ x402Version: protocolVersion, ...body }));
-  };
-
-  (res as any).end = async function (chunk?: any, encodingOrCallback?: any, callback?: any): Promise<any> {
-    if (released) {
-      return originalEnd(chunk, encodingOrCallback, callback);
-    }
-    if (endCalled) {
-      return res;
-    }
-    endCalled = true;
-
-    if (res.statusCode < 400) {
-      try {
-        const settlementResult = await core.settlementCallback(
-          paymentInfo.payment,
-          paymentInfo.paymentRequirements,
-          res.statusCode,
-        );
-
-        if (settlementResult && settlementResult.success && settlementResult.transaction) {
-          if (!res.headersSent) {
-            const settlementBase64 = Buffer.from(JSON.stringify(settlementResult)).toString('base64');
-            HeaderAdapter.setSettlementResponse(
-              (name, value) => res.setHeader(name, value),
-              settlementBase64,
-              protocolVersion,
-            );
-          }
-        } else if (!settlementResult || !settlementResult.success) {
-          const errorReason = settlementResult?.errorReason || 'Settlement processing failed';
-          console.error('Settlement failed:', errorReason);
-          return failClosed(402, { error: 'Payment settlement failed', details: errorReason });
-        }
-      } catch (error: any) {
-        console.error('Settlement error:', error);
-        return failClosed(500, {
-          error: 'Settlement processing error',
-          details: 'An error occurred while settling the payment. Please try again.',
-        });
-      }
-    }
-
-    released = true;
-    held.forEach((part) => originalWrite(part));
-    held.length = 0;
-    return originalEnd(chunk, encodingOrCallback, callback);
-  };
-}
+): boolean =>
+  holdResponseUntilSettled(res, createResponseSettler(core, paymentInfo, res, protocolVersion), {
+    protocolVersion,
+    maxHeldBytes: resolveMaxHeldResponseBytes((core as any).config.maxHeldResponseBytes),
+  });
 
 const routePrice = (routes: RoutesConfig, path: string): number | undefined => {
   const matched = findMatchingRoute(path, routes);
@@ -320,9 +198,7 @@ export class PrismPaymentGuard implements CanActivate {
       (request as any).payment = result.paymentInfo.payment;
       (request as any).payer = result.paymentInfo.payer;
 
-      settleBeforeEnd(response, tempCore, result.paymentInfo, protocolVersion);
-
-      return true;
+      return holdUntilSettled(response, tempCore, result.paymentInfo, protocolVersion);
     }
 
     // A @Payment route that was neither charged nor rejected must never reach the handler
@@ -372,7 +248,9 @@ export class PrismPaymentMiddleware implements NestMiddleware {
       (req as any)[PRISM_PAYMENT_HANDLED] = { price: routePrice((this.core as any).routes, requestPath(req)) };
       (req as any).payment = result.paymentInfo.payment;
       (req as any).payer = result.paymentInfo.payer;
-      settleBeforeEnd(res, this.core, result.paymentInfo, protocolVersion);
+      if (!holdUntilSettled(res, this.core, result.paymentInfo, protocolVersion)) {
+        return;
+      }
     }
 
     next();
@@ -438,6 +316,7 @@ export class PrismRouteValidator implements OnModuleInit {
 export class PrismModule {
   static forRoot(options: PrismModuleOptions): DynamicModule {
     const { routes = {}, ...config } = options;
+    resolveMaxHeldResponseBytes(config.maxHeldResponseBytes);
 
     // Create middleware core instance
     const core = new PrismMiddlewareCore(config, routes);

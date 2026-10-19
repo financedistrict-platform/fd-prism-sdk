@@ -370,3 +370,109 @@ describe('PrismModule payment enforcement', () => {
     });
   });
 });
+
+const V2_PAY_TO = '0xAbCdEf0123456789aBcDeF0123456789AbCdEf01';
+const PAID_CONTENT = 'paid-content-secret';
+
+const v2Requirement = {
+  scheme: 'exact',
+  network: 'eip155:84532',
+  amount: '10000',
+  asset: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
+  payTo: V2_PAY_TO,
+  maxTimeoutSeconds: 60,
+};
+
+let v2NonceCounter = 0;
+
+const v2PaymentHeader = () =>
+  Buffer.from(
+    JSON.stringify({
+      x402Version: 2,
+      accepted: v2Requirement,
+      payload: {
+        signature: '0xsignature',
+        authorization: {
+          from: '0x1111111111111111111111111111111111111111',
+          to: V2_PAY_TO,
+          value: '10000',
+          validAfter: '0',
+          validBefore: '9999999999',
+          nonce: `0xnest-settlement-${++v2NonceCounter}`,
+        },
+      },
+    }),
+  ).toString('base64');
+
+@Controller('held')
+class HeldContentController {
+  @Payment({ price: '10000', description: 'Held content' })
+  @Get('small')
+  small() {
+    handlerSpy('small');
+    return { content: PAID_CONTENT };
+  }
+
+  @Payment({ price: '10000', description: 'Held content' })
+  @Get('large')
+  large() {
+    handlerSpy('large');
+    return { content: PAID_CONTENT.repeat(64) };
+  }
+}
+
+describe('PrismModule settlement before delivery', () => {
+  let app: INestApplication | undefined;
+
+  const heldModule = () =>
+    PrismModule.forRoot({ apiKey: 'test-api-key', client: mockClient as any, maxHeldResponseBytes: 256 });
+
+  beforeEach(() => {
+    jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    jest.spyOn(console, 'log').mockImplementation(() => undefined);
+    mockGetPaymentRequirements.mockResolvedValue({ x402Version: 2, accepts: [v2Requirement] });
+    mockVerifyPayment.mockResolvedValue({ isValid: true, payer: '0x1111111111111111111111111111111111111111' });
+  });
+
+  afterEach(async () => {
+    await app?.close();
+    app = undefined;
+  });
+
+  it.each([
+    ['success without a transaction', { success: true }],
+    ['an empty transaction', { success: true, transaction: '' }],
+    ['a declined settlement', { success: false, errorReason: 'insufficient_funds' }],
+  ])('withholds the content on %s', async (_label, reply) => {
+    mockSettlePayment.mockResolvedValue(reply);
+    app = await createApp([heldModule()], [HeldContentController]);
+
+    const response = await request(app.getHttpServer()).get('/held/small').set('Payment-Signature', v2PaymentHeader());
+
+    expect(response.status).toBe(402);
+    expect(response.text).not.toContain(PAID_CONTENT);
+    expect(response.headers['payment-response']).toBeUndefined();
+  });
+
+  it('delivers the content once the transaction is settled', async () => {
+    mockSettlePayment.mockResolvedValue({ success: true, transaction: '0x1' });
+    app = await createApp([heldModule()], [HeldContentController]);
+
+    const response = await request(app.getHttpServer()).get('/held/small').set('Payment-Signature', v2PaymentHeader());
+
+    expect(response.status).toBe(200);
+    expect(response.text).toContain(PAID_CONTENT);
+    expect(response.headers['payment-response']).toBeDefined();
+  });
+
+  it('does not send a body larger than the hold limit and does not settle it', async () => {
+    mockSettlePayment.mockResolvedValue({ success: true, transaction: '0x1' });
+    app = await createApp([heldModule()], [HeldContentController]);
+
+    const response = await request(app.getHttpServer()).get('/held/large').set('Payment-Signature', v2PaymentHeader());
+
+    expect(response.status).toBe(500);
+    expect(response.text).not.toContain(PAID_CONTENT);
+    expect(mockSettlePayment).not.toHaveBeenCalled();
+  });
+});
