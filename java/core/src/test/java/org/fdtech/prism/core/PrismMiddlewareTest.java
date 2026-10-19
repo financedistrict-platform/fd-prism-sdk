@@ -213,7 +213,8 @@ class PrismMiddlewareTest {
 
         String header = middleware.settle(decision);
 
-        assertEquals("proof=" + proof, header);
+        assertEquals("settled", header);
+        assertFalse(header.contains(proof));
         assertEquals(proof, client.settledProofs.get(0));
         assertEquals("/api/cheap", client.settledRoutes.get(0).getPath());
     }

@@ -89,7 +89,7 @@ class PrismFilterBufferingTest {
         filter.doFilter(request("/api/premium", "Bearer " + PROOF), response.proxy(), servletWriting(SECRET, false));
 
         assertEquals(SECRET, response.body());
-        assertEquals("proof=" + PROOF, response.headers.get("X-Settlement"));
+        assertEquals("settled", response.headers.get("X-Settlement"));
         assertEquals(List.of("/v1/verify-payment", "/v1/settlement-callback"), gatewayCalls);
     }
 

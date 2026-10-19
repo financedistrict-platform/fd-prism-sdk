@@ -316,7 +316,7 @@ class PrismMiddlewareReplayTest {
         String innerHeader = middleware.settle(inner);
         String outerHeader = middleware.settle(outer);
 
-        assertEquals("proof=" + proof, innerHeader);
+        assertEquals("settled", innerHeader);
         assertEquals(innerHeader, outerHeader);
         assertEquals(1, client.settledProofs.size());
     }
@@ -347,7 +347,7 @@ class PrismMiddlewareReplayTest {
 
         assertTrue(admitted(decision));
         assertEquals(List.of(proof), client.settledProofs);
-        assertEquals("proof=" + proof, middleware.settle(decision));
+        assertEquals("settled", middleware.settle(decision));
         assertEquals(1, client.settledProofs.size());
     }
 

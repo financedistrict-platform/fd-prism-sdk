@@ -14,6 +14,7 @@ import java.util.Map;
 public class PrismMiddleware {
     private static final String PROOF_IN_USE = "Payment proof is already being processed or has already been used";
     private static final String SETTLEMENT_FAILED = "Payment settlement failed";
+    public static final String SETTLED_HEADER_VALUE = "settled";
 
     private final PrismClient client;
     private final Map<String, RoutePaymentConfig> routeMap;
@@ -165,9 +166,8 @@ public class PrismMiddleware {
             return null;
         }
 
-        String settlement = "proof=" + decision.getProof();
-        replayGuard.markConsumed(identity.key(), identity.validBeforeMillis(), settlement);
-        return settlement;
+        replayGuard.markConsumed(identity.key(), identity.validBeforeMillis(), SETTLED_HEADER_VALUE);
+        return SETTLED_HEADER_VALUE;
     }
 
     /**
