@@ -60,7 +60,6 @@ jobs:
       - name: Run tests
         run: npm run test
         working-directory: typescript
-        continue-on-error: true
 
       - name: Configure Git
         run: |
@@ -112,13 +111,6 @@ jobs:
           npm version ${{ github.event.inputs.version_bump }} --no-git-tag-version
         working-directory: typescript
 
-      - name: Commit version changes
-        if: github.event.inputs.version_bump != ''
-        run: |
-          git add -A
-          git commit -m "chore: bump ${{ github.event.inputs.package }} package(s) to ${{ github.event.inputs.version_bump }}" || echo "No changes to commit"
-          git push origin HEAD:${{ github.ref_name }}
-
       - name: Publish Core Package
         if: github.event.inputs.package == 'all' || github.event.inputs.package == 'core'
         run: npm publish
@@ -160,6 +152,13 @@ jobs:
         working-directory: typescript/packages/nextjs
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Commit version changes
+        if: github.event.inputs.version_bump != ''
+        run: |
+          git add -A
+          git commit -m "chore: bump ${{ github.event.inputs.package }} package(s) to ${{ github.event.inputs.version_bump }}" || echo "No changes to commit"
+          git push origin HEAD:${{ github.ref_name }}
 
       - name: Get Package Version
         if: github.event.inputs.version_bump != ''

@@ -50,20 +50,17 @@ jobs:
           export PATH="$HOME/.local/bin:$PATH"
           poetry --version
 
-      - name: Install dependencies
+      - name: Install dependencies and run tests
         run: |
-          cd python
+          set -euo pipefail
           export PATH="$HOME/.local/bin:$PATH"
-          poetry install
-
-      - name: Run tests
-        run: |
-          export PATH="$HOME/.local/bin:$PATH"
-          cd python/packages/core && poetry run pytest || true
-          cd ../flask && poetry run pytest || true
-          cd ../fastapi && poetry run pytest || true
-          cd ../django && poetry run pytest || true
-        continue-on-error: true
+          for package in core flask fastapi django; do
+            (
+              cd "python/packages/$package"
+              poetry install --no-interaction
+              poetry run pytest -q
+            )
+          done
 
       - name: Configure Git
         run: |
@@ -102,13 +99,6 @@ jobs:
           poetry version ${{ github.event.inputs.version_bump }}
         working-directory: python
 
-      - name: Commit version changes
-        if: github.event.inputs.version_bump != ''
-        run: |
-          git add -A
-          git commit -m "chore: bump Python ${{ github.event.inputs.package }} package(s) to ${{ github.event.inputs.version_bump }}" || echo "No changes to commit"
-          git push origin HEAD:${{ github.ref_name }}
-
       - name: Build & Publish Core Package
         if: github.event.inputs.package == 'all' || github.event.inputs.package == 'core'
         run: |
@@ -140,6 +130,13 @@ jobs:
           poetry build
           poetry publish --username __token__ --password ${{ secrets.PYPI_TOKEN }}
         working-directory: python/packages/django
+
+      - name: Commit version changes
+        if: github.event.inputs.version_bump != ''
+        run: |
+          git add python/packages/*/pyproject.toml
+          git commit -m "chore: bump Python ${{ github.event.inputs.package }} package(s) to ${{ github.event.inputs.version_bump }}" || echo "No changes to commit"
+          git push origin HEAD:${{ github.ref_name }}
 
       - name: Get Package Version
         if: github.event.inputs.version_bump != ''
