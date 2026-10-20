@@ -76,6 +76,13 @@ jobs:
           export PATH="$HOME/.local/bin:$PATH"
           cd packages/core
           poetry version ${{ github.event.inputs.version_bump }}
+          CORE_VERSION=$(poetry version -s)
+          NEXT_MAJOR=$(( ${CORE_VERSION%%.*} + 1 ))
+          cd ..
+          for adapter in flask fastapi django; do
+            sed -i -E "s/^prism-sdk-core = \"[^\"]*\"/prism-sdk-core = \">=${CORE_VERSION},<${NEXT_MAJOR}\"/" "$adapter/pyproject.toml"
+            grep -q "^prism-sdk-core = \">=${CORE_VERSION},<${NEXT_MAJOR}\"" "$adapter/pyproject.toml"
+          done
         working-directory: python
 
       - name: Bump Flask Version
