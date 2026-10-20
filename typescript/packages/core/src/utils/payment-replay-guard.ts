@@ -28,7 +28,12 @@ export class PaymentReplayGuard {
     private readonly inFlightTtlMs: number = DEFAULT_IN_FLIGHT_TTL_MS
   ) {}
 
-  tryReserve(key: string, validBeforeSeconds?: number, owner?: object): boolean {
+  tryReserve(
+    key: string,
+    validBeforeSeconds?: number,
+    owner?: object,
+    inFlightTtlMs: number = this.inFlightTtlMs
+  ): boolean {
     const now = Date.now();
     const existing = this.entries.get(key);
     if (existing && existing.expiresAt > now) {
@@ -44,7 +49,7 @@ export class PaymentReplayGuard {
     }
 
     const validBeforeMs = (validBeforeSeconds ?? NaN) * 1000;
-    const expiresAt = Number.isFinite(validBeforeMs) ? Math.min(now + this.inFlightTtlMs, validBeforeMs) : now + this.inFlightTtlMs;
+    const expiresAt = Number.isFinite(validBeforeMs) ? Math.min(now + inFlightTtlMs, validBeforeMs) : now + inFlightTtlMs;
     this.entries.set(key, { expiresAt, consumed: false, owner });
     return true;
   }
@@ -91,15 +96,13 @@ export class PaymentReplayGuard {
   }
 }
 
-const guardsByConfig = new WeakMap<object, PaymentReplayGuard>();
+const PROCESS_REPLAY_GUARD = Symbol.for('financedistrict.prism.paymentReplayGuard');
 
-export function replayGuardFor(config: { replayReservationSeconds?: number }): PaymentReplayGuard {
-  let guard = guardsByConfig.get(config);
-  if (!guard) {
-    const seconds = config.replayReservationSeconds;
-    const ttlMs = seconds !== undefined && Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : DEFAULT_IN_FLIGHT_TTL_MS;
-    guard = new PaymentReplayGuard(DEFAULT_MAX_TRACKED_PROOFS, ttlMs);
-    guardsByConfig.set(config, guard);
-  }
-  return guard;
+const processScope = globalThis as typeof globalThis & { [PROCESS_REPLAY_GUARD]?: PaymentReplayGuard };
+
+export const processReplayGuard: PaymentReplayGuard = (processScope[PROCESS_REPLAY_GUARD] ??= new PaymentReplayGuard());
+
+export function reservationTtlMs(config: { replayReservationSeconds?: number }): number {
+  const seconds = config.replayReservationSeconds;
+  return seconds !== undefined && Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : DEFAULT_IN_FLIGHT_TTL_MS;
 }

@@ -12,6 +12,7 @@ import pytest
 from django.test import RequestFactory, override_settings
 from django.core.exceptions import ImproperlyConfigured
 from django.http import HttpResponse
+from django.urls import path, resolve
 
 from prism_django import (
     PrismPaymentMiddleware,
@@ -288,3 +289,122 @@ def test_accessors_ignore_unprefixed_attributes():
     assert get_payer(request) is None
     assert get_payment(request) is None
 
+
+
+UNCONFIRMED_SETTLEMENTS = [
+    pytest.param({'success': True}, 'settlement_not_confirmed', id='success-without-transaction'),
+    pytest.param({}, 'settlement_not_confirmed', id='empty-reply'),
+    pytest.param({'success': False, 'errorReason': 'x'}, 'x', id='declined'),
+    pytest.param({'success': True, 'transaction': ''}, 'settlement_not_confirmed', id='empty-transaction'),
+    pytest.param({'success': 'true', 'transaction': '0x1'}, 'settlement_not_confirmed', id='non-boolean-success'),
+]
+
+PAID_CONTENT = 'paid-content'
+
+
+def paid_response(request):
+    return HttpResponse(PAID_CONTENT)
+
+
+async def async_paid_response(request):
+    return HttpResponse(PAID_CONTENT)
+
+
+def async_middleware(inst, settlement):
+    from unittest.mock import AsyncMock
+    inst.aget_payment_requirements = AsyncMock(return_value=MOCK_REQUIREMENTS)
+    inst.averify_payment = AsyncMock(return_value=MOCK_VERIFICATION_VALID)
+    inst.asettle_payment = AsyncMock(return_value=settlement)
+    return AsyncPrismPaymentMiddleware(async_paid_response)
+
+
+def assert_withheld(response, details):
+    assert response.status_code == 402
+    assert PAID_CONTENT not in response.content.decode()
+    assert json.loads(response.content)['details'] == details
+    assert 'PAYMENT-RESPONSE' not in response
+
+
+def assert_delivered(response):
+    assert response.status_code == 200
+    assert response.content.decode() == PAID_CONTENT
+    assert 'PAYMENT-RESPONSE' in response
+
+
+@pytest.mark.parametrize('settlement, details', UNCONFIRMED_SETTLEMENTS)
+@patch('prism_sdk_core.PrismClient')
+def test_unconfirmed_settlement_withholds_content(MockClient, settlement, details):
+    inst = MockClient.return_value
+    mw = make_middleware(inst, paid_response)
+    inst.settle_payment.return_value = settlement
+    response = mw(factory.get('/api/premium/', HTTP_PAYMENT_SIGNATURE=VALID_HEADER))
+    assert_withheld(response, details)
+
+
+@patch('prism_sdk_core.PrismClient')
+def test_settled_transaction_delivers_content_with_settlement_header(MockClient):
+    inst = MockClient.return_value
+    mw = make_middleware(inst, paid_response)
+    inst.settle_payment.return_value = {'success': True, 'transaction': '0x1'}
+    response = mw(factory.get('/api/premium/', HTTP_PAYMENT_SIGNATURE=VALID_HEADER))
+    assert_delivered(response)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('settlement, details', UNCONFIRMED_SETTLEMENTS)
+@patch('prism_sdk_core.PrismClient')
+async def test_async_unconfirmed_settlement_withholds_content(MockClient, settlement, details):
+    mw = async_middleware(MockClient.return_value, settlement)
+    response = await mw(factory.get('/api/premium/', HTTP_PAYMENT_SIGNATURE=VALID_HEADER))
+    assert_withheld(response, details)
+
+
+@pytest.mark.asyncio
+@patch('prism_sdk_core.PrismClient')
+async def test_async_settled_transaction_delivers_content_with_settlement_header(MockClient):
+    mw = async_middleware(MockClient.return_value, {'success': True, 'transaction': '0x1'})
+    response = await mw(factory.get('/api/premium/', HTTP_PAYMENT_SIGNATURE=VALID_HEADER))
+    assert_delivered(response)
+
+
+@require_payment(price=0.01, description='Decorated under a script prefix')
+def decorated_view(request):
+    return HttpResponse(PAID_CONTENT)
+
+
+urlpatterns = [
+    path('api/decorated/', decorated_view),
+    path('api/premium/', paid_response),
+]
+
+
+def resolve_view(request):
+    match = resolve(request.path_info)
+    return match.func(request, *match.args, **match.kwargs)
+
+
+async def async_resolve_view(request):
+    return resolve_view(request)
+
+
+@override_settings(ROOT_URLCONF=__name__)
+@pytest.mark.parametrize('route', ['/api/premium/', '/api/decorated/'])
+@patch('prism_sdk_core.PrismClient')
+def test_script_name_prefix_is_charged(MockClient, route):
+    mw = make_middleware(MockClient.return_value, resolve_view)
+    response = mw(factory.get(route, SCRIPT_NAME='/shop'))
+    assert response.status_code == 402
+    assert PAID_CONTENT not in response.content.decode()
+
+
+@pytest.mark.asyncio
+@override_settings(ROOT_URLCONF=__name__)
+@pytest.mark.parametrize('route', ['/api/premium/', '/api/decorated/'])
+@patch('prism_sdk_core.PrismClient')
+async def test_async_script_name_prefix_is_charged(MockClient, route):
+    from unittest.mock import AsyncMock
+    MockClient.return_value.aget_payment_requirements = AsyncMock(return_value=MOCK_REQUIREMENTS)
+    mw = AsyncPrismPaymentMiddleware(async_resolve_view)
+    response = await mw(factory.get(route, SCRIPT_NAME='/shop'))
+    assert response.status_code == 402
+    assert PAID_CONTENT not in response.content.decode()

@@ -10,6 +10,8 @@ import {
   MiddlewareResult,
   HeaderAdapter,
   detectProtocolVersion,
+  isDeliverable,
+  settlementErrorReason,
 } from '@financedistrict/prism-x402-sdk';
 
 export interface VerifiedPaymentInfo {
@@ -132,8 +134,7 @@ export function withPrismPayment(
           response.status
         );
 
-        if (settlementResult && settlementResult.success && settlementResult.transaction) {
-          // Settlement succeeded - add payment response header to response
+        if (isDeliverable(settlementResult)) {
           const settlementResponse = JSON.stringify(settlementResult);
           const settlementBase64 = Buffer.from(settlementResponse).toString('base64');
           const newHeaders = new Headers(response.headers);
@@ -147,23 +148,6 @@ export function withPrismPayment(
             statusText: response.statusText,
             headers: newHeaders,
           });
-        }
-
-        if (settlementResult && !settlementResult.success) {
-          // Settlement failed - DO NOT return data, return 402 Payment Required
-          const errorReason = settlementResult.errorReason || 'Settlement processing failed';
-          console.error('Settlement failed:', errorReason);
-          return new Response(
-            JSON.stringify({
-              x402Version: protocolVersion,
-              error: 'Payment settlement failed',
-              details: errorReason,
-            }),
-            {
-              status: 402,
-              headers: { 'Content-Type': 'application/json' },
-            }
-          );
         }
 
         if (!settlementResult) {
@@ -181,6 +165,20 @@ export function withPrismPayment(
             }
           );
         }
+
+        const errorReason = settlementErrorReason(settlementResult);
+        console.error('Settlement failed:', errorReason);
+        return new Response(
+          JSON.stringify({
+            x402Version: protocolVersion,
+            error: 'Payment settlement failed',
+            details: errorReason,
+          }),
+          {
+            status: 402,
+            headers: { 'Content-Type': 'application/json' },
+          }
+        );
       } catch (error) {
         console.error('Settlement error:', error);
         // Settlement error - DO NOT return data, return 500 error

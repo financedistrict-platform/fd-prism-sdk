@@ -39,13 +39,17 @@ const v1Requirement = {
   extra: null,
 };
 
+let nonceSequence = 0;
+
 const authorization = {
   from: '0x1111111111111111111111111111111111111111',
   to: PAY_TO,
   value: '10000',
   validAfter: String(NOW_SECONDS - 60),
   validBefore: String(NOW_SECONDS + 60),
-  nonce: '0xnonce',
+  get nonce() {
+    return `0x${(++nonceSequence).toString(16)}`;
+  },
 };
 
 const v1Payload = {
@@ -71,9 +75,9 @@ describe('PrismMiddlewareCore allowedVersions enforcement', () => {
     settlePayment: jest.fn(),
   };
 
-  const createCore = (allowedVersions?: (1 | 2)[]) =>
+  const createCore = (allowedVersions?: number[]) =>
     new PrismMiddlewareCore(
-      { apiKey: 'test-key', client: mockClient as any, allowedVersions },
+      { apiKey: 'test-key', client: mockClient as any, allowedVersions: allowedVersions as unknown as 2[] | undefined },
       routes
     );
 
@@ -169,14 +173,28 @@ describe('PrismMiddlewareCore allowedVersions enforcement', () => {
     expectNoGatewayCalls();
   });
 
-  it('accepts a v1 payload when v1 is explicitly allowed', async () => {
+  it.each([[[1]], [[1, 2]]])('refuses a v1 payload even when the config passes %j through a cast', async (versions) => {
     mockClient.getPaymentRequirements.mockResolvedValue({ x402Version: 1, accepts: [v1Requirement] });
 
-    const result = await createCore([1, 2]).handleRequest({
+    const result = await createCore(versions).handleRequest({
       path: ROUTE_PATH,
       paymentHeader: encode(v1Payload),
       resourceUrl: RESOURCE_URL,
       protocolVersion: 1,
+    });
+
+    expect(result.handled).toBe(true);
+    expect(result.statusCode).toBe(402);
+    expect(result.paymentInfo).toBeUndefined();
+    expectNoGatewayCalls();
+  });
+
+  it('still accepts a v2 payload when the config also lists v1', async () => {
+    const result = await createCore([1, 2]).handleRequest({
+      path: ROUTE_PATH,
+      paymentHeader: encode(v2Payload),
+      resourceUrl: RESOURCE_URL,
+      protocolVersion: 2,
     });
 
     expect(result.handled).toBe(false);

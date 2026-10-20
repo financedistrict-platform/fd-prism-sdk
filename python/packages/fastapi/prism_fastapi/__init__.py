@@ -12,6 +12,8 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.routing import Match
 from prism_sdk_core import (
+    is_deliverable,
+    settlement_error_reason,
     PrismMiddlewareCore,
     PrismMiddlewareConfig,
     RoutePaymentConfig,
@@ -107,7 +109,7 @@ class PrismPaymentMiddleware(BaseHTTPMiddleware):
                     response.status_code,
                 )
                 
-                if settlement_result.get('success') and settlement_result.get('transaction'):
+                if is_deliverable(settlement_result):
                     # Use HeaderAdapter to set correct header based on protocol version
                     import json
                     import base64
@@ -118,16 +120,15 @@ class PrismPaymentMiddleware(BaseHTTPMiddleware):
                         settlement_base64,
                         protocol_version
                     )
-                elif settlement_result and not settlement_result.get('success'):
-                    # Settlement failed - DO NOT send data, return 402 Payment Required
-                    error_reason = settlement_result.get('errorReason', 'Unknown error')
+                else:
+                    error_reason = settlement_error_reason(settlement_result)
                     print(f"[Prism] Settlement failed: {error_reason}")
                     return JSONResponse(
                         status_code=402,
                         content={
                             'x402Version': protocol_version,
                             'error': 'Payment settlement failed',
-                            'details': error_reason or 'Payment could not be settled. Please try again.'
+                            'details': error_reason
                         }
                     )
             except Exception as e:

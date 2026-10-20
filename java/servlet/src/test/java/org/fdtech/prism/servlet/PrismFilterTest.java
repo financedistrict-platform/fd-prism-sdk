@@ -196,7 +196,7 @@ class PrismFilterTest {
         assertEquals(List.of(0), bytesSentAtSettlement);
         assertEquals(List.of("/api/premium"), settledFor);
         assertEquals(200, response.status());
-        assertEquals("proof=" + proof, response.header("X-Settlement"));
+        assertEquals("settled", response.header("X-Settlement"));
         assertEquals("ran", response.header("X-Handler"));
         assertEquals("premium content", response.body());
     }

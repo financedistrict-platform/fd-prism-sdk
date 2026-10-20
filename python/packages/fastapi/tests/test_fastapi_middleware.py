@@ -203,3 +203,30 @@ async def test_v1_payment_rejected_with_402_before_any_gateway_call_when_only_v2
     mock_client.aget_payment_requirements.assert_not_called()
     mock_client.averify_payment.assert_not_called()
     mock_client.asettle_payment.assert_not_called()
+
+
+UNCONFIRMED_SETTLEMENTS = [
+    pytest.param({'success': True}, 'settlement_not_confirmed', id='success-without-transaction'),
+    pytest.param({}, 'settlement_not_confirmed', id='empty-reply'),
+    pytest.param({'success': False, 'errorReason': 'x'}, 'x', id='declined'),
+    pytest.param({'success': True, 'transaction': ''}, 'settlement_not_confirmed', id='empty-transaction'),
+    pytest.param({'success': 'true', 'transaction': '0x1'}, 'settlement_not_confirmed', id='non-boolean-success'),
+]
+
+
+@pytest.mark.parametrize('settlement, details', UNCONFIRMED_SETTLEMENTS)
+async def test_unconfirmed_settlement_withholds_content(async_client, mock_client, settlement, details):
+    mock_client.asettle_payment.return_value = settlement
+    resp = await async_client.get('/api/premium', headers={'payment-signature': VALID_HEADER})
+    assert resp.status_code == 402
+    assert '0xPAYER' not in resp.text
+    assert resp.json()['details'] == details
+    assert 'payment-response' not in resp.headers
+
+
+async def test_settled_transaction_delivers_content_with_settlement_header(async_client, mock_client):
+    mock_client.asettle_payment.return_value = {'success': True, 'transaction': '0x1'}
+    resp = await async_client.get('/api/premium', headers={'payment-signature': VALID_HEADER})
+    assert resp.status_code == 200
+    assert resp.json()['payer'] == '0xPAYER'
+    assert 'payment-response' in resp.headers

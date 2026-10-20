@@ -76,8 +76,7 @@ export interface PrismMiddlewareConfig {
 
   // Allowed protocol versions from clients (default: [2]).
   // Rejects payment payloads whose x402Version is not in this list.
-  // Set to [1, 2] to accept legacy v1 clients.
-  allowedVersions?: (1 | 2)[];
+  allowedVersions?: 2[];
 
   // Seconds an admitted payment proof stays reserved while its request is being handled
   // (default: 600). A reservation never outlives the proof's own validBefore.

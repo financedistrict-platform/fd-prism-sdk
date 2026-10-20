@@ -474,3 +474,42 @@ class TestSettleClientOutcomes:
             result = prism_client.settle_payment({}, {}, 200)
 
         assert result == {'success': False, 'errorReason': 'nonce used'}
+
+
+UNCONFIRMED_SETTLEMENTS = [
+    pytest.param({'success': True}, id='success-without-transaction'),
+    pytest.param({}, id='empty-reply'),
+    pytest.param({'success': True, 'transaction': ''}, id='empty-transaction'),
+]
+
+
+class TestUnconfirmedSettlement:
+    @pytest.mark.parametrize('settlement', UNCONFIRMED_SETTLEMENTS)
+    @pytest.mark.parametrize('is_async', [False, True], ids=['sync', 'async'])
+    def test_proof_is_released_after_the_handler(self, is_async, settlement, core, client):
+        client.settle_payment.return_value = settlement
+        client.asettle_payment.return_value = settlement
+        submit = submit_async if is_async else submit_sync
+        first = submit(core, v2_payload('0xunconfirmed'))
+
+        settle(core, first, 200, is_async)
+        retried = submit(core, v2_payload('0xunconfirmed'))
+
+        assert retried.payment_info is not None
+
+    @pytest.mark.parametrize('settlement', UNCONFIRMED_SETTLEMENTS)
+    @pytest.mark.parametrize('submit', SUBMITTERS)
+    def test_settle_before_handler_rejects_and_releases_the_proof(self, submit, settlement, settling_core, client):
+        client.settle_payment.return_value = settlement
+        client.asettle_payment.return_value = settlement
+        rejected = submit(settling_core, v2_payload('0xunconfirmed-first'))
+
+        client.settle_payment.return_value = {'success': True, 'transaction': '0x1'}
+        client.asettle_payment.return_value = {'success': True, 'transaction': '0x1'}
+        retried = submit(settling_core, v2_payload('0xunconfirmed-first'))
+
+        assert rejected.handled is True
+        assert rejected.status_code == 402
+        assert rejected.payment_info is None
+        assert rejected.body['message'] == 'settlement_not_confirmed'
+        assert retried.payment_info is not None

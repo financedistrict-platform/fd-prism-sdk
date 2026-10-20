@@ -217,3 +217,30 @@ def test_accessors_ignore_unprefixed_attributes():
         assert get_payer() is None
         assert get_payment() is None
 
+
+
+UNCONFIRMED_SETTLEMENTS = [
+    pytest.param({'success': True}, 'settlement_not_confirmed', id='success-without-transaction'),
+    pytest.param({}, 'settlement_not_confirmed', id='empty-reply'),
+    pytest.param({'success': False, 'errorReason': 'x'}, 'x', id='declined'),
+    pytest.param({'success': True, 'transaction': ''}, 'settlement_not_confirmed', id='empty-transaction'),
+    pytest.param({'success': 'true', 'transaction': '0x1'}, 'settlement_not_confirmed', id='non-boolean-success'),
+]
+
+
+@pytest.mark.parametrize('settlement, details', UNCONFIRMED_SETTLEMENTS)
+def test_unconfirmed_settlement_withholds_content(client, mock_client, settlement, details):
+    mock_client.settle_payment.return_value = settlement
+    resp = client.get('/api/premium', headers={'PAYMENT-SIGNATURE': VALID_HEADER})
+    assert resp.status_code == 402
+    assert b'"ok"' not in resp.data
+    assert resp.get_json()['details'] == details
+    assert 'PAYMENT-RESPONSE' not in resp.headers
+
+
+def test_settled_transaction_delivers_content_with_settlement_header(client, mock_client):
+    mock_client.settle_payment.return_value = {'success': True, 'transaction': '0x1'}
+    resp = client.get('/api/premium', headers={'PAYMENT-SIGNATURE': VALID_HEADER})
+    assert resp.status_code == 200
+    assert resp.get_json()['message'] == 'ok'
+    assert 'PAYMENT-RESPONSE' in resp.headers

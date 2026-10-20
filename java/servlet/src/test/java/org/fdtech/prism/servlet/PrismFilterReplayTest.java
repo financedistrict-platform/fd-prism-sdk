@@ -256,7 +256,7 @@ class PrismFilterReplayTest {
         assertEquals("premium content", response.body());
         assertEquals(1, runs.get());
         assertEquals(1, settlements.get());
-        assertEquals("proof=" + proof, response.header("X-Settlement"));
+        assertEquals("settled", response.header("X-Settlement"));
     }
 
     @Test
@@ -301,7 +301,7 @@ class PrismFilterReplayTest {
 
         assertEquals(List.of("settle", "handler"), events);
         assertEquals(200, response.status());
-        assertEquals("proof=" + proof, response.header("X-Settlement"));
+        assertEquals("settled", response.header("X-Settlement"));
         assertEquals(1, settlements.get());
     }
 

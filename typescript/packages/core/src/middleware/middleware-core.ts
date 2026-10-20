@@ -19,7 +19,8 @@ import {
   validatePaymentResource,
   paymentProofKey,
   paymentValidBefore,
-  replayGuardFor,
+  processReplayGuard,
+  reservationTtlMs,
   type PaymentReplayGuard,
   type MiddlewareResponse,
 } from '../utils';
@@ -57,6 +58,19 @@ export interface SettlementOutcome {
   payer?: string;
   network?: string;
   errorReason?: string;
+}
+
+export const SETTLEMENT_NOT_CONFIRMED = 'settlement_not_confirmed';
+
+export function isDeliverable(
+  result: { success?: unknown; transaction?: unknown } | null | undefined
+): result is SettlementOutcome & { success: true; transaction: string } {
+  return result?.success === true && typeof result.transaction === 'string' && result.transaction.length > 0;
+}
+
+export function settlementErrorReason(result: { errorReason?: unknown } | null | undefined): string {
+  const reason = result?.errorReason;
+  return typeof reason === 'string' && reason.length > 0 ? reason : SETTLEMENT_NOT_CONFIRMED;
 }
 
 /**
@@ -104,9 +118,10 @@ export class PrismMiddlewareCore {
   private readonly mode: ConfigurationMode = 'on-demand';
   private readonly client: PrismClient;
   private readonly debug: boolean;
-  private readonly replayGuard: PaymentReplayGuard;
+  private readonly replayGuard: PaymentReplayGuard = processReplayGuard;
+  private readonly inFlightTtlMs: number;
   private readonly defaultProtocolVersion: 1 | 2 = 2; // v2 is default
-  private readonly allowedVersions: (1 | 2)[];
+  private readonly allowedVersions: 2[];
   private static readonly MAX_PAYMENT_HEADER_BYTES = 8192; // ~10× real x402 payload size
 
   constructor(
@@ -116,13 +131,13 @@ export class PrismMiddlewareCore {
     this.debug = config.debug || false;
     // Use injected client if provided (for testing), otherwise create new one
     this.client = config.client || new PrismClient(config);
-    this.replayGuard = replayGuardFor(config);
+    this.inFlightTtlMs = reservationTtlMs(config);
     // Allow configuration to override default protocol version
     if (config.x402Version === 1 || config.x402Version === 2) {
       this.defaultProtocolVersion = config.x402Version;
     }
     // Allowed versions whitelist — default to v2 only
-    this.allowedVersions = config.allowedVersions ?? [2];
+    this.allowedVersions = (config.allowedVersions ?? [2]).filter((version): version is 2 => version === 2);
   }
 
   /**
@@ -270,7 +285,7 @@ export class PrismMiddlewareCore {
       }
 
       const payloadVersion = getDeclaredProtocolVersion(paymentPayload);
-      if (!payloadVersion || !this.allowedVersions.includes(payloadVersion)) {
+      if (payloadVersion !== 2 || !this.allowedVersions.includes(payloadVersion)) {
         if (this.debug) {
           console.log(`[PrismMiddlewareCore] Protocol version ${payloadVersion} not in allowedVersions: [${this.allowedVersions}]`);
         }
@@ -353,7 +368,7 @@ export class PrismMiddlewareCore {
       }
 
       const proofKey = paymentProofKey(paymentPayload);
-      if (!proofKey || !this.replayGuard.tryReserve(proofKey, paymentValidBefore(paymentPayload), requestScope)) {
+      if (!proofKey || !this.replayGuard.tryReserve(proofKey, paymentValidBefore(paymentPayload), requestScope, this.inFlightTtlMs)) {
         const response = buildInvalidPaymentResponse(
           'Payment proof is already being processed or has already been used',
           protocolVersion
@@ -386,11 +401,8 @@ export class PrismMiddlewareCore {
 
       if (routeConfig.settleBeforeHandler) {
         const settlement = await this.settlementCallback(paymentPayload as any, paymentRequirements, 200);
-        if (!settlement || !settlement.success) {
-          const response = buildInvalidPaymentResponse(
-            settlement?.errorReason || 'Payment settlement failed',
-            protocolVersion
-          );
+        if (!isDeliverable(settlement)) {
+          const response = buildInvalidPaymentResponse(settlementErrorReason(settlement), protocolVersion);
           return {
             handled: true,
             ...response,
@@ -559,19 +571,19 @@ export class PrismMiddlewareCore {
       const settlementResult = await this.client.settlePayment(paymentPayload, paymentRequirements);
 
       if (proofKey) {
-        if (settlementResult.success) {
+        if (isDeliverable(settlementResult)) {
           this.replayGuard.markConsumed(proofKey, paymentValidBefore(paymentPayload), settlementResult);
         } else {
           this.replayGuard.release(proofKey);
         }
       }
 
-      if (settlementResult.success && settlementResult.transaction) {
+      if (isDeliverable(settlementResult)) {
         console.log(
           `Payment settled: ${settlementResult.transaction} on ${settlementResult.network || 'unknown'} by ${settlementResult.payer}`
         );
-      } else if (settlementResult.errorReason) {
-        console.error('Settlement failed:', settlementResult.errorReason);
+      } else {
+        console.error('Settlement failed:', settlementErrorReason(settlementResult));
       }
 
       return settlementResult;

@@ -5,6 +5,10 @@
 
 export {
   PrismMiddlewareCore,
+  isDeliverable,
+  settlementErrorReason,
+  SETTLEMENT_NOT_CONFIRMED,
+  type SettlementOutcome,
   type MiddlewareResult,
   type MiddlewareRequestData,
 } from './middleware-core';

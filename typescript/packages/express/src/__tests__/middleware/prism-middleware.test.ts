@@ -20,43 +20,40 @@ const createMockClient = () => ({
   getAuthInfo: mockGetAuthInfo,
 });
 
+const paymentRequirement = {
+  scheme: 'exact',
+  network: 'eip155:84532',
+  amount: '10000',
+  asset: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
+  payTo: '0xAbCdEf0123456789aBcDeF0123456789AbCdEf01',
+  maxTimeoutSeconds: 60,
+};
+
+const paidRequirements = {
+  x402Version: 2,
+  accepts: [paymentRequirement],
+};
+
+let nonceSequence = 0;
+
 const validPaymentHeader = () =>
   Buffer.from(
     JSON.stringify({
-      x402Version: 1,
-      scheme: 'eip3009',
-      network: '1',
+      x402Version: 2,
+      accepted: paymentRequirement,
       payload: {
         signature: '0xsignature123',
         authorization: {
-          from: '0xabcdef1234567890',
-          to: '0x1234567890abcdef',
+          from: '0x1111111111111111111111111111111111111111',
+          to: paymentRequirement.payTo,
           value: '10000',
           validAfter: '0',
           validBefore: '9999999999',
-          nonce: '0xnonce123',
+          nonce: `0x${(++nonceSequence).toString(16)}`,
         },
       },
     })
   ).toString('base64');
-
-const paidRequirements = {
-  x402Version: 1,
-  accepts: [
-    {
-      scheme: 'eip3009',
-      network: '1',
-      maxAmountRequired: '10000',
-      resource: 'http://127.0.0.1/api/premium',
-      description: 'Premium API access',
-      mimeType: 'application/json',
-      payTo: '0x1234567890abcdef',
-      maxTimeoutSeconds: 60,
-      asset: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
-      extra: null,
-    },
-  ],
-};
 
 describe('prismPaymentMiddleware', () => {
   let app: Express;
@@ -217,23 +214,7 @@ describe('prismPaymentMiddleware', () => {
     );
 
     it('should allow access with valid payment header', async () => {
-      const mockRequirements = {
-        x402Version: 1,
-        accepts: [
-          {
-            scheme: 'eip3009',
-            network: '1',
-            maxAmountRequired: '10000',
-            resource: 'http://127.0.0.1/api/premium',
-            description: 'Premium API access',
-            mimeType: 'application/json',
-            payTo: '0x1234567890abcdef',
-            maxTimeoutSeconds: 60,
-            asset: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
-            extra: null,
-          },
-        ],
-      };
+      const mockRequirements = paidRequirements;
 
       const mockVerification = {
         isValid: true,
@@ -255,7 +236,7 @@ describe('prismPaymentMiddleware', () => {
         prismPaymentMiddleware(
           {
             apiKey: 'test-api-key',
-            allowedVersions: [1, 2],
+            allowedVersions: [2],
             client: createMockClient(), // Inject mock client
           },
           {
@@ -275,7 +256,7 @@ describe('prismPaymentMiddleware', () => {
 
       const response = await request(app)
         .get('/api/premium')
-        .set('X-Payment', paymentHeader);
+        .set('Payment-Signature', paymentHeader);
 
       expect(response.status).toBe(200);
       expect(response.body.data).toBe('Premium content');
@@ -284,23 +265,7 @@ describe('prismPaymentMiddleware', () => {
     });
 
     it('should reject invalid payment', async () => {
-      const mockRequirements = {
-        x402Version: 1,
-        accepts: [
-          {
-            scheme: 'eip3009',
-            network: '1',
-            maxAmountRequired: '10000',
-            resource: 'http://127.0.0.1/api/premium',
-            description: 'Premium API access',
-            mimeType: 'application/json',
-            payTo: '0x1234567890abcdef',
-            maxTimeoutSeconds: 60,
-            asset: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
-            extra: null,
-          },
-        ],
-      };
+      const mockRequirements = paidRequirements;
 
       const mockVerification = {
         isValid: false,
@@ -333,7 +298,7 @@ describe('prismPaymentMiddleware', () => {
 
       const response = await request(app)
         .get('/api/premium')
-        .set('X-Payment', paymentHeader);
+        .set('Payment-Signature', paymentHeader);
 
       expect(response.status).toBe(402);
     });
@@ -418,14 +383,14 @@ describe('prismPaymentMiddleware', () => {
     ) => {
       app.use(
         prismPaymentMiddleware(
-          { apiKey: 'test-api-key', allowedVersions: [1, 2], client: createMockClient(), ...extraConfig },
+          { apiKey: 'test-api-key', allowedVersions: [2], client: createMockClient(), ...extraConfig },
           { '/api/premium': { price: '10000', description: 'Premium API access' } }
         )
       );
       app.get('/api/premium', handler);
     };
 
-    const pay = () => request(app).get('/api/premium').set('X-Payment', validPaymentHeader());
+    const pay = () => request(app).get('/api/premium').set('Payment-Signature', validPaymentHeader());
 
     const allowPayment = () => {
       mockGetPaymentRequirements.mockResolvedValue(paidRequirements);
@@ -563,7 +528,7 @@ describe('prismPaymentMiddleware', () => {
         const { port } = server.address() as AddressInfo;
         const settledAtFirstByte = await new Promise<boolean>((resolve, reject) => {
           const clientReq = http.get(
-            { port, path: '/api/premium', headers: { 'X-Payment': validPaymentHeader() } },
+            { port, path: '/api/premium', headers: { 'Payment-Signature': validPaymentHeader() } },
             (clientRes) => {
               const settledAtHeaders = settled;
               clientRes.once('data', () => resolve(settledAtHeaders && settled));
@@ -592,7 +557,7 @@ describe('prismPaymentMiddleware', () => {
 
       expect(response.status).toBe(200);
       expect(response.text).toBe('alpha-beta-gamma');
-      expect(response.headers['x-payment-response']).toBeDefined();
+      expect(response.headers['payment-response']).toBeDefined();
       expect(mockSettlePayment).toHaveBeenCalledTimes(1);
     });
 
@@ -747,7 +712,7 @@ describe('prismPaymentMiddleware', () => {
     describe('client disconnect', () => {
       const getPaid = (port: number) =>
         http.get(
-          { port, path: '/api/premium', headers: { 'X-Payment': validPaymentHeader() } },
+          { port, path: '/api/premium', headers: { 'Payment-Signature': validPaymentHeader() } },
           () => undefined
         );
 
@@ -820,7 +785,7 @@ describe('prismPaymentMiddleware', () => {
           const { port } = server.address() as AddressInfo;
           const outcome = await new Promise<string>((resolve) => {
             const clientReq = http.get(
-              { port, path: '/api/premium', headers: { 'X-Payment': validPaymentHeader() } },
+              { port, path: '/api/premium', headers: { 'Payment-Signature': validPaymentHeader() } },
               (clientRes) => {
                 clientRes.on('data', () => undefined);
                 clientRes.on('end', () => resolve('completed'));
@@ -842,7 +807,7 @@ describe('prismPaymentMiddleware', () => {
 
   describe('Stacked payment middleware', () => {
     const SECRET = 'PAID-CONTENT-SECRET';
-    const config = () => ({ apiKey: 'test-api-key', allowedVersions: [1, 2] as (1 | 2)[], client: createMockClient() });
+    const config = () => ({ apiKey: 'test-api-key', allowedVersions: [2] as 2[], client: createMockClient() });
     const globalRoutes = { '/api/*': { price: '10000', description: 'API' } };
     const overrideRoutes = { '/api/expensive': { price: '10000', description: 'Expensive operation' } };
 
@@ -851,7 +816,7 @@ describe('prismPaymentMiddleware', () => {
       app.get('/api/expensive', prismPaymentMiddleware(config(), overrideRoutes), handler);
     };
 
-    const pay = () => request(app).get('/api/expensive').set('X-Payment', validPaymentHeader());
+    const pay = () => request(app).get('/api/expensive').set('Payment-Signature', validPaymentHeader());
 
     const allowPayment = () => {
       mockGetPaymentRequirements.mockResolvedValue(paidRequirements);
@@ -876,7 +841,7 @@ describe('prismPaymentMiddleware', () => {
 
       expect(response.status).toBe(200);
       expect(response.body.result).toBe(SECRET);
-      expect(response.headers['x-payment-response'] || response.headers['payment-response']).toBeDefined();
+      expect(response.headers['payment-response']).toBeDefined();
       expect(mockSettlePayment).toHaveBeenCalledTimes(1);
     });
 
@@ -933,11 +898,11 @@ describe('prismPaymentMiddleware', () => {
     it('settles against the route-level requirements, not the global ones', async () => {
       const globalRequirements = {
         ...paidRequirements,
-        accepts: [{ ...paidRequirements.accepts[0], maxAmountRequired: '10000' }],
+        accepts: [{ ...paidRequirements.accepts[0], amount: '10000' }],
       };
       const overrideRequirements = {
         ...paidRequirements,
-        accepts: [{ ...paidRequirements.accepts[0], maxAmountRequired: '10000', description: 'override' }],
+        accepts: [{ ...paidRequirements.accepts[0], amount: '10000', description: 'override' }],
       };
       mockGetPaymentRequirements
         .mockResolvedValueOnce(globalRequirements)
@@ -971,7 +936,7 @@ describe('prismPaymentMiddleware', () => {
       const getWithTimeout = (port: number) =>
         new Promise<{ status: number; body: string }>((resolve, reject) => {
           const clientReq = http.get(
-            { port, path: '/api/expensive', headers: { 'X-Payment': validPaymentHeader() }, timeout: 1500 },
+            { port, path: '/api/expensive', headers: { 'Payment-Signature': validPaymentHeader() }, timeout: 1500 },
             (res) => {
               let body = '';
               res.on('data', (chunk) => (body += chunk));
@@ -1025,5 +990,50 @@ describe('prismPaymentMiddleware', () => {
         }
       });
     });
+  });
+});
+
+describe('prismPaymentMiddleware under a mount prefix', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockGetPaymentRequirements.mockResolvedValue(paidRequirements);
+  });
+
+  const mountedApp = () => {
+    const app = express();
+    const router = express.Router();
+    router.use(
+      prismPaymentMiddleware(
+        { apiKey: 'test-api-key', client: createMockClient() },
+        { '/api/paid': { price: '10000', description: 'Mounted paid route' } }
+      )
+    );
+    router.get('/paid', (_req: Request, res: Response) => {
+      res.json({ content: 'paid-content-secret' });
+    });
+    router.get('/free', (_req: Request, res: Response) => {
+      res.json({ content: 'free' });
+    });
+    app.use('/api', router);
+    return app;
+  };
+
+  it('charges the configured full path of a route mounted under a prefix', async () => {
+    const response = await request(mountedApp()).get('/api/paid');
+
+    expect(response.status).toBe(402);
+    expect(response.text).not.toContain('paid-content-secret');
+  });
+
+  it('charges the mounted route when a query string is present', async () => {
+    const response = await request(mountedApp()).get('/api/paid?x=1');
+
+    expect(response.status).toBe(402);
+  });
+
+  it('leaves other mounted routes free', async () => {
+    const response = await request(mountedApp()).get('/api/free');
+
+    expect(response.status).toBe(200);
   });
 });

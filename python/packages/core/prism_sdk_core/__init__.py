@@ -365,6 +365,21 @@ class PrismClient:
             raise
 
 
+SETTLEMENT_NOT_CONFIRMED = 'settlement_not_confirmed'
+
+
+def is_deliverable(settlement: Any) -> bool:
+    if not isinstance(settlement, dict) or settlement.get('success') is not True:
+        return False
+    transaction = settlement.get('transaction')
+    return isinstance(transaction, str) and len(transaction) > 0
+
+
+def settlement_error_reason(settlement: Any) -> str:
+    reason = settlement.get('errorReason') if isinstance(settlement, dict) else None
+    return reason if isinstance(reason, str) and reason else SETTLEMENT_NOT_CONFIRMED
+
+
 def _valid_before(payment: Dict[str, Any]) -> Any:
     authorization = (payment.get('payload') or {}).get('authorization') or {}
     return authorization.get('validBefore')
@@ -505,7 +520,7 @@ class PrismMiddlewareCore:
 
             if route_config.settle_before_handler:
                 settlement = self.settlement_callback(submitted_payment, single_requirement, 200)
-                if not settlement.get('success'):
+                if not is_deliverable(settlement):
                     return self._settlement_rejection(settlement, requirements_for_client)
 
             # Store single_requirement for settlement (not the full envelope)
@@ -619,7 +634,7 @@ class PrismMiddlewareCore:
         proof_key = payment_proof_key(payment)
         if proof_key is None:
             return
-        if result.get('success'):
+        if is_deliverable(result):
             self.replay_guard.mark_consumed(proof_key, _valid_before(payment), result)
         else:
             self.replay_guard.release(proof_key)
@@ -648,7 +663,7 @@ class PrismMiddlewareCore:
             headers={'Content-Type': 'application/json'},
             body={
                 'error': 'Invalid Payment',
-                'message': settlement.get('errorReason') or 'Payment settlement failed',
+                'message': settlement_error_reason(settlement),
                 'payment': requirements_for_client,
             },
         )
@@ -852,7 +867,7 @@ class PrismMiddlewareCore:
                 )
             if route_config.settle_before_handler:
                 settlement = await self.asettlement_callback(submitted_payment, single_requirement, 200)
-                if not settlement.get('success'):
+                if not is_deliverable(settlement):
                     return self._settlement_rejection(settlement, requirements_for_client)
 
             return MiddlewareResult(
@@ -906,6 +921,9 @@ __all__ = [
     'PrismMiddlewareConfig',
     'RoutePaymentConfig',
     'normalize_routes',
+    'is_deliverable',
+    'settlement_error_reason',
+    'SETTLEMENT_NOT_CONFIRMED',
     'normalize_price',
     'prices_match',
     'bind_decorator_route',
