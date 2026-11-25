@@ -27,10 +27,11 @@ packages = [{include = "prism_django"}]
 
 [tool.poetry.dependencies]
 python = "^3.8"
-prism-sdk-core = {path = "../core", develop = true}
+prism-sdk-core = ">=1.0.1,<2"
 django = "^4.2.0"
 
 [tool.poetry.group.dev.dependencies]
+prism-sdk-core = {path = "../core", develop = true}
 pytest = "^7.4.0"
 pytest-django = "^4.5.0"
 pytest-asyncio = "^0.21.0"
