@@ -1,0 +1,61 @@
+name: NuGet dependency submission
+
+# Submits the NuGet dependency graph for the default branch with resolved versions, so Dependabot
+# alerts cover transitive packages and central package versions. GitHub's built-in NuGet parsing
+# only sees PackageReference names, not the versions restored. This restores the solution first,
+# then hands the restored projects to Component Detection. The only write is the dependency snapshot.
+# Same workflow as fd-prism-services.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "**/*.csproj"
+      - "**/*.props"
+      - "**/*.targets"
+      - "**/*.sln"
+      - "**/*.slnx"
+      - "**/packages.lock.json"
+      - "**/global.json"
+      - "**/nuget.config"
+      - "**/NuGet.config"
+      - ".github/workflows/nuget-dependency-submission.yml"
+  pull_request:
+    # Only to prove this file works before it is merged; ordinary PRs do not trigger it.
+    paths:
+      - ".github/workflows/nuget-dependency-submission.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write # the dependency submission API requires it
+
+concurrency:
+  group: nuget-dependency-submission-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  submit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DOTNET_NOLOGO: "true"
+      DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Restore solution
+        run: dotnet restore csharp/Prism.SDK.sln
+
+      - name: Submit NuGet dependency snapshot
+        uses: advanced-security/component-detection-dependency-submission-action@a02aeda7a175ad4dd38a13c4d3ff2df9da8f2cf0 # v0.2.0
+        with:
+          filePath: csharp
+          detectorsCategories: NuGet
+          correlator: nuget
